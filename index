@@ -9,10 +9,14 @@
 <link rel="stylesheet" href="assets/style.css">
 </head>
 <body>
+
+<!-- ĐOẠN SCRIPT TÍCH HỢP FIREBASE & FIRESTORE CHO VAT TU LAB -->
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-  import { getFirestore, doc, getDoc, updateDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+  import { getAnalytics } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-analytics.js";
+  import { getFirestore, doc, getDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
+  // Cấu hình dự án Firebase của bạn
   const firebaseConfig = {
     apiKey: "AIzaSyAzE8Eb7Jd2j2FTt6nVw3gJ57ENBV-soeA",
     authDomain: "minigame-8a94c.firebaseapp.com",
@@ -23,19 +27,32 @@
     measurementId: "G-CFHQK07M55"
   };
 
+  // Khởi tạo Firebase
   const app = initializeApp(firebaseConfig);
+  const analytics = getAnalytics(app);
   const db = getFirestore(app);
 
-  // Ví dụ hàm đọc dữ liệu từ Firestore dựa trên cấu trúc "vattulab-8a94c-f63ef" -> "vattulab"
-  async function docDuLieu() {
-    const docRef = doc(db, "vattulab-8a94c-f63ef", "vattulab");
-    const docSnap = await getDoc(docRef);
-    if (docSnap.exists()) {
-      console.log("Dữ liệu vật tư:", docSnap.data());
+  // Gán vào window để các module JS khác (như app.js) có thể sử dụng chung kết nối `db`
+  window.firebaseDb = db;
+
+  // Hàm mẫu kiểm tra đọc dữ liệu từ đúng collection/document quản lý vật tư lab
+  async function kiemTraKetNoiFirestore() {
+    try {
+      const docRef = doc(db, "vattulab-8a94c-f63ef", "vattulab");
+      const docSnap = await getDoc(docRef);
+      if (docSnap.exists()) {
+        console.log("Kết nối Firestore thành công! Dữ liệu vật tư:", docSnap.data());
+      } else {
+        console.log("Chưa tìm thấy Document 'vattulab' trong Firestore.");
+      }
+    } catch (error) {
+      console.error("Lỗi kết nối Firestore:", error);
     }
   }
-  docDuLieu();
+
+  kiemTraKetNoiFirestore();
 </script>
+
 <div id="boot" class="boot"><div class="spinner"></div><p>Đang tải dữ liệu…</p></div>
 
 <header class="topbar" id="topbar" hidden>
@@ -83,35 +100,6 @@
 
 <input type="file" id="fileIn" accept="application/json,.json" hidden>
 <div id="toast" class="toast" role="status" aria-live="polite"></div>
-
-<!-- ĐOẠN SCRIPT TÍCH HỢP FIREBASE VÀ FIRESTORE -->
-<script type="module">
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-  import { getAnalytics } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-analytics.js";
-  import { getFirestore, collection, getDocs, addDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
-
-  // Cấu hình Firebase của bạn
-  const firebaseConfig = {
-    apiKey: "AIzaSyAzE8Eb7Jd2j2FTt6nVw3gJ57ENBV-soeA",
-    authDomain: "minigame-8a94c.firebaseapp.com",
-    databaseURL: "https://minigame-8a94c-default-rtdb.asia-southeast1.firebasedatabase.app",
-    projectId: "minigame-8a94c",
-    storageBucket: "minigame-8a94c.firebasestorage.app",
-    messagingSenderId: "604735984087",
-    appId: "1:604735984087:web:d9a0721b68ba6213c6bb92",
-    measurementId: "G-215BHKYN3L"
-  };
-
-  // Khởi tạo Firebase
-  const app = initializeApp(firebaseConfig);
-  const analytics = getAnalytics(app);
-  const db = getFirestore(app);
-
-  // Đưa các biến này ra window nếu các script khác (như app.js) muốn dùng chung `db`
-  window.firebaseDb = db;
-
-  console.log("Firebase & Firestore đã được khởi tạo thành công cho dự án:", firebaseConfig.projectId);
-</script>
 
 <script src="assets/config.js"></script>
 <script src="assets/data.js"></script>
