@@ -9,7 +9,33 @@
 <link rel="stylesheet" href="assets/style.css">
 </head>
 <body>
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+  import { getFirestore, doc, getDoc, updateDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
+  const firebaseConfig = {
+    apiKey: "AIzaSyAzE8Eb7Jd2j2FTt6nVw3gJ57ENBV-soeA",
+    authDomain: "minigame-8a94c.firebaseapp.com",
+    projectId: "minigame-8a94c",
+    storageBucket: "minigame-8a94c.firebasestorage.app",
+    messagingSenderId: "604735984087",
+    appId: "1:604735984087:web:5f33810121c3be91c6bb92",
+    measurementId: "G-CFHQK07M55"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const db = getFirestore(app);
+
+  // Ví dụ hàm đọc dữ liệu từ Firestore dựa trên cấu trúc "vattulab-8a94c-f63ef" -> "vattulab"
+  async function docDuLieu() {
+    const docRef = doc(db, "vattulab-8a94c-f63ef", "vattulab");
+    const docSnap = await getDoc(docRef);
+    if (docSnap.exists()) {
+      console.log("Dữ liệu vật tư:", docSnap.data());
+    }
+  }
+  docDuLieu();
+</script>
 <div id="boot" class="boot"><div class="spinner"></div><p>Đang tải dữ liệu…</p></div>
 
 <header class="topbar" id="topbar" hidden>
