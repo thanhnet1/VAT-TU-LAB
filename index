@@ -58,11 +58,39 @@
 <input type="file" id="fileIn" accept="application/json,.json" hidden>
 <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
+<!-- ĐOẠN SCRIPT TÍCH HỢP FIREBASE VÀ FIRESTORE -->
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+  import { getAnalytics } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-analytics.js";
+  import { getFirestore, collection, getDocs, addDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+
+  // Cấu hình Firebase của bạn
+  const firebaseConfig = {
+    apiKey: "AIzaSyAzE8Eb7Jd2j2FTt6nVw3gJ57ENBV-soeA",
+    authDomain: "minigame-8a94c.firebaseapp.com",
+    databaseURL: "https://minigame-8a94c-default-rtdb.asia-southeast1.firebasedatabase.app",
+    projectId: "minigame-8a94c",
+    storageBucket: "minigame-8a94c.firebasestorage.app",
+    messagingSenderId: "604735984087",
+    appId: "1:604735984087:web:d9a0721b68ba6213c6bb92",
+    measurementId: "G-215BHKYN3L"
+  };
+
+  // Khởi tạo Firebase
+  const app = initializeApp(firebaseConfig);
+  const analytics = getAnalytics(app);
+  const db = getFirestore(app);
+
+  // Đưa các biến này ra window nếu các script khác (như app.js) muốn dùng chung `db`
+  window.firebaseDb = db;
+
+  console.log("Firebase & Firestore đã được khởi tạo thành công cho dự án:", firebaseConfig.projectId);
+</script>
+
 <script src="assets/config.js"></script>
 <script src="assets/data.js"></script>
-<!-- Thư viện xuất Excel (tuỳ chọn). Nếu không tải được, web vẫn chạy và tự chuyển sang xuất CSV. -->
+<!-- Thư viện xuất Excel (tuỳ chọn) -->
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js" defer></script>
 <script src="assets/app.js" defer></script>
 </body>
 </html>
-
