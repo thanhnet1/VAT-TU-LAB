@@ -10,51 +10,6 @@
 </head>
 <body>
 
-<!-- KHỞI TẠO FIREBASE & FIRESTORE CHÍNH XÁC THEO MÀN HÌNH CONSOLE -->
-<script type="module">
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-  import { getAnalytics } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-analytics.js";
-  import { getFirestore, doc, getDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
-
-  // Cấu hình chuẩn xác lấy trực tiếp từ Project Settings trên Firebase Console của bạn
-  const firebaseConfig = {
-    apiKey: "AIzaSyAzE8Eb7Jd2j2FTt6nVw3gJ57ENBV-soeA",
-    authDomain: "minigame-8a94c.firebaseapp.com",
-    databaseURL: "https://minigame-8a94c-default-rtdb.asia-southeast1.firebasedatabase.app",
-    projectId: "minigame-8a94c",
-    storageBucket: "minigame-8a94c.firebasestorage.app",
-    messagingSenderId: "604735984087",
-    appId: "1:604735984087:web:d9a0721b68ba6213c6bb92",
-    measurementId: "G-215BHKYN3L"
-  };
-
-  // Khởi tạo Firebase
-  const app = initializeApp(firebaseConfig);
-  const analytics = getAnalytics(app);
-  const db = getFirestore(app);
-
-  // Đưa ra biến toàn cục để các script khác sử dụng
-  window.firebaseDb = db;
-
-  // Hàm kiểm tra kết nối và tải dữ liệu mẫu từ Firestore
-  async function taiDuLieuTuCloud() {
-    try {
-      // Trỏ đúng Collection "vattulab-8a94c-f63ef" và Document "vattulab"
-      const docRef = doc(db, "vattulab-8a94c-f63ef", "vattulab");
-      const docSnap = await getDoc(docRef);
-      if (docSnap.exists()) {
-        console.log("Dữ liệu tải thành công từ Firestore:", docSnap.data());
-      } else {
-        console.warn("Không tìm thấy Document 'vattulab' trên Firestore.");
-      }
-    } catch (error) {
-      console.error("Lỗi đọc dữ liệu Firestore:", error);
-    }
-  }
-
-  taiDuLieuTuCloud();
-</script>
-
 <div id="boot" class="boot"><div class="spinner"></div><p>Đang tải dữ liệu…</p></div>
 
 <header class="topbar" id="topbar" hidden>
@@ -70,6 +25,8 @@
   </label>
   <div class="actions">
     <span id="dirty" class="dirty" hidden title="Bạn đã chỉnh sửa dữ liệu – chỉ lưu trên trình duyệt này">● Đã chỉnh sửa</span>
+    <button id="btnPXK" class="btn accent" type="button" title="Tạo phiếu xuất kho">📤 <span>Phiếu xuất</span></button>
+    <button id="btnPNK" class="btn accent" type="button" title="Tạo phiếu nhập kho">📥 <span>Phiếu nhập</span></button>
     <button id="btnEdit" class="btn" type="button" aria-pressed="false">✏️ <span>Chỉnh sửa</span></button>
     <details class="menu" id="menuExport">
       <summary class="btn">⬇ <span>Xuất / Sao lưu</span></summary>
@@ -101,12 +58,16 @@
 </div>
 
 <input type="file" id="fileIn" accept="application/json,.json" hidden>
+<div id="modalRoot"></div>
+<div id="printRoot"></div>
 <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
 <script src="assets/config.js"></script>
 <script src="assets/data.js"></script>
-<!-- Thư viện xuất Excel (tuỳ chọn) -->
+<!-- Thư viện xuất Excel (tuỳ chọn). Nếu không tải được, web vẫn chạy và tự chuyển sang xuất CSV. -->
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js" defer></script>
+<script src="assets/qr.js" defer></script>
+<script src="assets/slips.js" defer></script>
 <script src="assets/app.js" defer></script>
 </body>
 </html>
