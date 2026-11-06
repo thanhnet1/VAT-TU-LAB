@@ -30,6 +30,21 @@ window.APP_CONFIG = {
   },
 
   // Số dòng tối đa hiển thị khi tìm kiếm toàn bộ
-  maxSearchResults: 400
-};
+  maxSearchResults: 400,
 
+  // ====== PHIẾU XUẤT KHO / NHẬP KHO (theo phiếu mẫu Tổng Công ty Hạ tầng mạng) ======
+  slip: {
+    orgLine1: 'Tổng Công Ty Hạ tầng mạng',                                   // dòng 1 góc trên bên trái phiếu
+    orgLine2: 'Trung Tâm Hạ Tầng Mạng Miền Bắc - CN Tổng công ty Hạ tầng mạng', // dòng 2
+    formNoXuat: 'Mẫu số: 02  VT-DN',                                          // ký hiệu mẫu phiếu xuất
+    formNoNhap: 'Mẫu số 1 VT -DN',                                            // ký hiệu mẫu phiếu nhập
+    kho: 'Kho-X.VT-28-PHAM-HUNG-NTL_HNI',                                     // "Xuất tại / Nhập tại kho" mặc định
+    numSuffix: 'X.VT-28PHG-KH01',   // số phiếu tự sinh: <số thứ tự>/<N hoặc X>/<2 số cuối năm>/<hậu tố>  vd 1067/N/25/X.VT-28PHG-KH01
+    startSeq: 1,                    // số thứ tự bắt đầu mỗi năm (đặt số lớn hơn nếu muốn nối tiếp sổ cũ)
+    unit: 'Cái',                    // đơn vị tính mặc định
+    quality: 'Tốt',                 // chất lượng mặc định
+    lien: '',                       // "Liên" mặc định (vd 1, 2, 3)
+    thuTruong: '', ketToan: '', nguoiLap: '', thuKho: '',                     // họ tên in dưới chữ ký (có thể để trống)
+    qrLink: true                    // thêm đường dẫn mở phiếu vào mã QR (chỉ khi web chạy bằng http/https)
+  }
+};
