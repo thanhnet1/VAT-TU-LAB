@@ -11,6 +11,7 @@
     groupNames: ['Thiết bị theo hệ thống', 'Vật tư rời / đo kiểm'], sheetLabels: {}, colorMeaning: {}, maxSearchResults: 400
   }, window.APP_CONFIG || {});
 
+  const BUILD = '2026.11.06-2';           // phải trùng với slips.js và qr.js (dùng để phát hiện file cũ do bộ nhớ đệm)
   const $ = (s, el = document) => el.querySelector(s);
   const $$ = (s, el = document) => Array.from(el.querySelectorAll(s));
   const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -64,6 +65,22 @@
   const V = { route: { page: 'overview', id: null }, gq: '', edit: false, f: newF(), collapsed: {} };
 
   const clone = o => JSON.parse(JSON.stringify(o));
+  /* Module phiếu kho: nếu thiếu file slips.js thì web vẫn chạy, chỉ báo thiếu thay vì treo toàn bộ */
+  const SL = () => window.Slips || {
+    init() {}, extraSheets: () => [],
+    listHTML: () => '<div class="card"><div class="empty">⚠ Không tải được <b>assets/slips.js</b> nên chưa dùng được phiếu kho. Hãy kiểm tra file đã được tải lên đủ và bấm Ctrl+F5.</div></div>',
+    view: () => toast('⚠ Thiếu file assets/slips.js – chưa mở được phiếu.', 5000), openEditor: () => toast('⚠ Thiếu file assets/slips.js – chưa tạo được phiếu.', 5000)
+  };
+  /** Kiểm tra đủ file & đúng phiên bản; nếu lệch thì hiện thanh cảnh báo màu đỏ nói rõ file nào */
+  function checkModules() {
+    const bad = [];
+    if (!window.Slips) bad.push('<b>assets/slips.js</b> (chưa tải được)'); else if (Slips.ver !== BUILD) bad.push('<b>assets/slips.js</b> là bản cũ (' + esc(Slips.ver || '?') + ')');
+    if (!window.QR) bad.push('<b>assets/qr.js</b> (chưa tải được – phiếu vẫn xem/in được nhưng chưa có mã QR)'); else if (QR.ver !== BUILD) bad.push('<b>assets/qr.js</b> là bản cũ (' + esc(QR.ver || '?') + ')');
+    if (!bad.length) return;
+    const d = document.createElement('div'); d.className = 'mod-banner'; d.id = 'modBanner';
+    d.innerHTML = '⚠ Một số file của web chưa cập nhật đúng: ' + bad.join('; ') + '. Nguyên nhân thường gặp: <b>chưa tải file lên GitHub</b> hoặc <b>trình duyệt đang giữ bản cũ</b>. Cách xử lý: tải đủ các file trong thư mục <code>assets</code> rồi bấm <b>Ctrl + F5</b> (điện thoại: xoá bộ nhớ đệm / mở tab ẩn danh).<button type="button" onclick="this.parentNode.remove()">Đóng</button>';
+    document.body.insertBefore(d, document.body.firstChild);
+  }
   const sheetById = id => ST.sheets.find(s => s.id === id);
   const labelOf = s => CFG.sheetLabels[s.id] || s.name;
   /* Kho: dòng có r.x = đã xuất theo phiếu (ẩn khỏi danh mục) · dòng có r.n = nhập theo phiếu (nhãn "MỚI") */
@@ -295,8 +312,8 @@
     if (V.gq.trim()) m.innerHTML = viewSearch();
     else if (V.route.page === 'sheet') { m.innerHTML = viewSheet(sheetById(V.route.id)); renderBlocks(); }
     else if (V.route.page === 'slips') {
-      m.innerHTML = Slips.listHTML(V.route.id);
-      if (V.route.slip) { const sid = V.route.slip; V.route.slip = null; Slips.view(V.route.id, sid); }
+      try { m.innerHTML = SL().listHTML(V.route.id); } catch (err) { m.innerHTML = '<div class="card"><div class="empty" style="color:#b91c1c">⚠ Không dựng được danh sách phiếu: ' + esc(err.message) + '<br>Hãy tải lại trang (Ctrl+F5).</div></div>'; }
+      if (V.route.slip) { const sid = V.route.slip; V.route.slip = null; SL().view(V.route.id, sid); }
     }
     else m.innerHTML = viewOverview();
     document.title = (V.route.page === 'sheet' && !V.gq ? labelOf(sheetById(V.route.id)) + ' – ' : (V.route.page === 'slips' && !V.gq ? (V.route.id === 'xuat' ? 'Phiếu xuất kho' : 'Phiếu nhập kho') + ' – ' : '')) + CFG.title;
@@ -322,7 +339,7 @@
 
     main.addEventListener('click', e => {
       const t = e.target;
-      const sl = t.closest('[data-slip]'); if (sl) { const k = sl.dataset.slip, i = k.indexOf(':'); Slips.view(k.slice(0, i), k.slice(i + 1)); return; }
+      const sl = t.closest('[data-slip]'); if (sl) { const k = sl.dataset.slip, i = k.indexOf(':'); SL().view(k.slice(0, i), k.slice(i + 1)); return; }
       const q = t.closest('[data-q]'); if (q) { setGlobalSearch(q.dataset.q); return; }
       const g = t.closest('[data-go]'); if (g && !t.closest('a')) { location.hash = g.dataset.go; return; }
       if (t.closest('[data-clear]')) { setGlobalSearch(''); }
@@ -444,7 +461,7 @@
         while (used.has(nm.toLowerCase())) nm = base.slice(0, 28) + ' ' + i++;
         used.add(nm.toLowerCase()); XLSX.utils.book_append_sheet(wb, ws, nm);
       });
-      if (act === 'xlsx-all') Slips.extraSheets().forEach(x => { const ws = XLSX.utils.aoa_to_sheet(x.aoa); ws['!cols'] = x.aoa[0].map((_, i) => ({ wch: [16, 11, 24, 24, 24, 5, 16, 34, 22, 18, 22, 11, 7, 6, 9, 34, 24][i] || 16 })); XLSX.utils.book_append_sheet(wb, ws, x.name); });
+      if (act === 'xlsx-all') SL().extraSheets().forEach(x => { const ws = XLSX.utils.aoa_to_sheet(x.aoa); ws['!cols'] = x.aoa[0].map((_, i) => ({ wch: [16, 11, 24, 24, 24, 5, 16, 34, 22, 18, 22, 11, 7, 6, 9, 34, 24][i] || 16 })); XLSX.utils.book_append_sheet(wb, ws, x.name); });
       XLSX.writeFile(wb, `Tai-san-Vat-tu-LAB_${act === 'xlsx-all' ? 'tat-ca' : list[0].id}_${ymd()}.xlsx`);
     } else if (act === 'csv-cur') {
       if (!cur) { toast('Hãy mở một sheet trước khi xuất CSV.'); return; }
@@ -480,7 +497,7 @@
     $('#boot').remove(); $('#topbar').hidden = false; $('#layout').hidden = false;
     $('#appTitle').textContent = CFG.title; $('#appSub').textContent = CFG.subtitle;
     $('#dirty').hidden = !ST.dirty;
-    Slips.init(window.LabApp);
+    checkModules(); SL().init(window.LabApp);
     parseHash(); bind(); render();
   }
   async function decrypt(enc, pw) {
@@ -499,8 +516,14 @@
       catch (e) { err.textContent = e.message === 'nocrypto' ? 'Trình duyệt cần mở bằng https:// (hoặc localhost) để giải mã.' : 'Sai mật khẩu.'; }
     });
   }
+  let lastErr = '', lastErrT = 0;
+  window.addEventListener('error', e => {
+    const m = (e.message || 'lỗi không rõ') + (e.filename ? ' (' + e.filename.split('/').pop() + ':' + e.lineno + ')' : '');
+    if (m === lastErr && Date.now() - lastErrT < 8000) return; lastErr = m; lastErrT = Date.now();
+    const t = $('#toast'); if (t) toast('⚠ Lỗi: ' + m + ' – thử tải lại trang (Ctrl+F5).', 7000);
+  });
   window.LabApp = {
-    CFG, esc, fold, tokensOf, toast, download, toCSV, ymd, uid, sheetById, labelOf, persist, render, keepScroll, isStock, stockRows,
+    BUILD, CFG, esc, fold, tokensOf, toast, download, toCSV, ymd, uid, sheetById, labelOf, persist, render, keepScroll, isStock, stockRows,
     get ST() { return ST; }, get V() { return V; }, touch: r => hayCache.delete(r)
   };
   function boot() {
