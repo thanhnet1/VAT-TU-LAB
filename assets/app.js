@@ -11,7 +11,7 @@
     groupNames: ['Thiết bị theo hệ thống', 'Vật tư rời / đo kiểm'], sheetLabels: {}, colorMeaning: {}, maxSearchResults: 400
   }, window.APP_CONFIG || {});
 
-  const BUILD = '2026.11.06-2';           // phải trùng với slips.js và qr.js (dùng để phát hiện file cũ do bộ nhớ đệm)
+  const BUILD = '2026.11.07-3';           // phải trùng với slips.js (dùng để phát hiện file cũ do bộ nhớ đệm)
   const $ = (s, el = document) => el.querySelector(s);
   const $$ = (s, el = document) => Array.from(el.querySelectorAll(s));
   const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -75,7 +75,6 @@
   function checkModules() {
     const bad = [];
     if (!window.Slips) bad.push('<b>assets/slips.js</b> (chưa tải được)'); else if (Slips.ver !== BUILD) bad.push('<b>assets/slips.js</b> là bản cũ (' + esc(Slips.ver || '?') + ')');
-    if (!window.QR) bad.push('<b>assets/qr.js</b> (chưa tải được – phiếu vẫn xem/in được nhưng chưa có mã QR)'); else if (QR.ver !== BUILD) bad.push('<b>assets/qr.js</b> là bản cũ (' + esc(QR.ver || '?') + ')');
     if (!bad.length) return;
     const d = document.createElement('div'); d.className = 'mod-banner'; d.id = 'modBanner';
     d.innerHTML = '⚠ Một số file của web chưa cập nhật đúng: ' + bad.join('; ') + '. Nguyên nhân thường gặp: <b>chưa tải file lên GitHub</b> hoặc <b>trình duyệt đang giữ bản cũ</b>. Cách xử lý: tải đủ các file trong thư mục <code>assets</code> rồi bấm <b>Ctrl + F5</b> (điện thoại: xoá bộ nhớ đệm / mở tab ẩn danh).<button type="button" onclick="this.parentNode.remove()">Đóng</button>';
