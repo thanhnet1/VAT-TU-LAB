@@ -27,9 +27,50 @@
     xuat: [['thuTruong', 'Thủ trưởng DV'], ['ketToan', 'Kế toán trưởng'], ['nguoiLap', 'Người lập phiếu'], ['nguoiNhan', 'Người nhận hàng'], ['thuKho', 'Thủ kho']],
     nhap: [['thuTruong', 'Thủ trưởng đơn vị'], ['ketToan', 'Kế toán trưởng'], ['nguoiLap', 'Người lập phiếu'], ['nguoiGiao', 'Người giao hàng'], ['thuKho', 'Thủ kho']]
   };
+  var BUILD = '2026.11.06-2';
+  /* CSS của giấy in (xem trước + in). Đặt trong JS để dùng chung cho cả bản in tách rời (tab mới / tải HTML). */
+  var PAPER_CSS = `/* --- GIẤY IN (dùng chung cho xem trước & in) --- */
+.paper{position:relative;background:#fff;color:#000;font-family:"Times New Roman",Times,"Liberation Serif",serif;font-size:11pt;line-height:1.3;
+  width:210mm;min-height:297mm;padding:10mm;margin:0 auto 14px;box-shadow:0 2px 12px rgba(0,0,0,.3);box-sizing:border-box}
+.paper *{box-sizing:border-box}
+.paper .p-top{display:flex;justify-content:space-between;gap:12px;font-weight:700;font-size:10.5pt}
+.paper .p-org div{line-height:1.35} .paper .p-form{white-space:nowrap;font-size:10pt}
+.paper .p-head{display:grid;grid-template-columns:1fr 28mm;gap:6px;margin:10px 0 4px;align-items:start}
+.paper .p-title{text-align:center;grid-column:1} .paper .p-title h1{margin:0 0 2px;font-size:16pt;letter-spacing:.5px}
+.paper .p-qr{grid-column:2;grid-row:1;width:28mm;height:28mm;justify-self:end} .paper .p-qr svg{width:100%;height:100%;display:block}
+.paper .p-info{margin:6px 0 6px;font-size:11pt}
+.paper .g2{display:grid;grid-template-columns:1fr 38%;gap:8px;margin:1px 0}
+.paper .k{font-weight:400} .paper .bd{font-weight:700}
+.paper .dots{display:inline-block;min-width:34mm;border-bottom:1px dotted #000;height:1em;vertical-align:baseline}
+.paper .p-tbl{width:100%;border-collapse:collapse;font-size:9.5pt;table-layout:fixed}
+.paper .p-tbl th,.paper .p-tbl td{border:1px solid #000;padding:3px 4px;vertical-align:middle;overflow-wrap:anywhere}
+.paper .p-tbl th{font-weight:700;text-align:center;background:#fff}
+.paper .p-tbl th.sm{font-size:8.5pt;padding:2px 1px}
+.paper .p-tbl tr.ltr th{font-weight:700;padding:2px}
+.paper .p-tbl td.c{text-align:center} .paper .p-tbl td.r{text-align:right} .paper .p-tbl td.m{white-space:nowrap;font-size:9pt} .paper .p-tbl td.lot{font-size:8.5pt}
+.paper .p-tbl .sub{font-size:8pt;color:#222;margin-top:1px} .paper .p-tbl .sub.cat{color:#555;font-style:italic}
+.paper .p-tbl tr{height:11mm}
+.paper .p-tbl tr.tot{height:6mm} .paper .p-tbl tr.ltr{height:5mm}
+.paper .p-after{margin-top:8px;font-size:11pt} .paper .p-after .note{margin-top:4px}
+.paper .p-date{text-align:right;font-style:italic;font-size:10pt;margin:10px 4px 6px}
+.paper .p-sign{display:grid;grid-template-columns:repeat(5,1fr);gap:4px;text-align:center;font-size:10.5pt}
+.paper .p-sign .small{font-style:italic;font-size:9pt;font-weight:400} .paper .p-sign .sname{margin-top:34mm;font-weight:700;min-height:1em}
+.paper .p-page{position:absolute;right:10mm;bottom:8mm;font-size:11pt}
+
+
+/* ---- IN PHIẾU (A4 dọc, mỗi trang một khổ giấy) ---- */
+@media print{
+  body.print-slip>*:not(#printRoot){display:none !important}
+  body.print-slip{background:#fff !important;overflow:visible !important}
+  body.print-slip #printRoot{display:block !important}
+  body.print-slip .paper{width:190mm;min-height:274mm;padding:0;margin:0;box-shadow:none;break-after:page;page-break-after:always;zoom:1 !important}
+  body.print-slip .paper:last-child{break-after:auto;page-break-after:auto}
+  body.print-slip .paper *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  body.print-slip .paper .p-page{right:0;bottom:0}
+}`;
   var D = null, PK = null, VIEW = null;           // bản nháp / hộp chọn / phiếu đang xem
   var LQ = { xuat: '', nhap: '' };
-  var qrCache = {};
+  var qrCache = {}, qrWarned = false, printing = false;
 
   function $(s, el) { return (el || document).querySelector(s); }
   function $$(s, el) { return Array.prototype.slice.call((el || document).querySelectorAll(s)); }
@@ -158,7 +199,15 @@
   }
   function qrSVG(slip, border) {
     var key = slip.id + '|' + (slip.updatedAt || '') + '|' + slip.items.length + '|' + border;
-    if (!qrCache[key]) qrCache[key] = QR.svg(qrPayload(slip), { ecl: 'M', border: border == null ? 1 : border });
+    if (qrCache[key] === undefined) {
+      try {
+        if (!window.QR) throw new Error('Thiếu assets/qr.js');
+        qrCache[key] = QR.svg(qrPayload(slip), { ecl: 'M', border: border == null ? 1 : border });
+      } catch (e) {
+        qrCache[key] = '<div class="qr-miss" title="' + esc(e.message) + '">QR<br>lỗi</div>';
+        if (!qrWarned) { qrWarned = true; A.toast('⚠ Không tạo được mã QR (' + e.message + '). Phiếu vẫn xem / in được. Hãy tải lại trang (Ctrl+F5) hoặc kiểm tra file assets/qr.js.', 7000); }
+      }
+    }
     return qrCache[key];
   }
 
@@ -477,13 +526,15 @@
   function openView(type, id, tmp) {
     var slip = tmp || findSlip(type, id); if (!slip) { A.toast('Không tìm thấy phiếu ' + id); return; }
     VIEW = { slip: slip, tmp: !!tmp };
-    var t = TYPES[type];
+    var t = TYPES[type], paper;
+    try { paper = paperHTML(slip); }
+    catch (err) { paper = '<div class="empty" style="background:#fff;color:#b91c1c;padding:24px"><b>Không dựng được phiếu để xem.</b><br>' + esc(err && err.message || err) + '<br><small>Dữ liệu phiếu vẫn được lưu. Hãy tải lại trang (Ctrl+F5) rồi mở lại; nếu vẫn lỗi hãy chụp màn hình này gửi người hỗ trợ.</small></div>'; }
     $('#mdView').innerHTML =
       '<div class="modal-back view-back"><div class="modal modal-view" role="dialog" aria-modal="true" aria-label="' + t.title + '">' +
       '<div class="modal-head"><h2>' + t.icon + ' ' + t.plural + ' <small>' + esc(slip.id) + (tmp ? ' · bản xem trước (chưa lưu)' : '') + '</small></h2><button class="modal-x" data-vclose aria-label="Đóng">✕</button></div>' +
-      '<div class="view-tools"><button class="tbtn primary" data-v="print">🖨 In / Lưu PDF</button>' + (tmp ? '' : '<button class="tbtn" data-v="edit">✏️ Sửa phiếu</button>') +
+      '<div class="view-tools"><button class="tbtn primary" data-v="print">🖨 In / Lưu PDF</button><button class="tbtn" data-v="win" title="Mở bản in trong tab mới – dùng khi nút In không phản hồi">↗ In bằng tab mới</button><button class="tbtn" data-v="html" title="Tải phiếu thành file .html, mở ra và in được ở bất kỳ máy nào">⬇ Tải phiếu (.html)</button>' + (tmp ? '' : '<button class="tbtn" data-v="edit">✏️ Sửa phiếu</button>') +
       '<button class="tbtn" data-v="xlsx">📗 Excel</button><button class="tbtn" data-v="qr">▦ Tải mã QR (PNG)</button>' + (tmp ? '' : '<button class="tbtn danger" data-v="del">🗑 Xoá phiếu</button>') + '</div>' +
-      '<div class="paper-wrap" id="paperWrap"><div id="paperZoom">' + paperHTML(slip) + '</div></div></div></div>';
+      '<div class="paper-wrap" id="paperWrap"><div id="paperZoom">' + paper + '</div></div></div></div>';
     lock(); fitPaper();
   }
   function fitPaper() {
@@ -491,13 +542,40 @@
     var k = Math.min(1, (w.clientWidth - 16) / 794); z.style.zoom = k < 1 ? k : '';
   }
   function closeView() { VIEW = null; $('#mdView').innerHTML = ''; lock(); }
+  function standaloneHTML(slip, auto) {
+    var t = TYPES[slip.type];
+    return '<!DOCTYPE html><html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>' + esc(t.title + ' ' + slip.id) + '</title>' +
+      '<style>@page{size:A4 portrait;margin:10mm}html,body{margin:0;background:#cbd5e1}.bar{position:sticky;top:0;z-index:5;background:#0b3a5b;color:#fff;padding:10px 14px;font:14px system-ui,sans-serif;display:flex;gap:12px;align-items:center;flex-wrap:wrap}' +
+      '.bar button{background:#fbbf24;border:0;border-radius:8px;padding:8px 14px;font-weight:700;cursor:pointer}.wrap{padding:12px;overflow:auto}' +
+      '@media print{html,body{background:#fff}.bar{display:none}.wrap{padding:0;overflow:visible}.paper{width:190mm !important;min-height:274mm !important;padding:0 !important;margin:0 !important;box-shadow:none !important;break-after:page;page-break-after:always;zoom:1 !important}.paper:last-child{break-after:auto;page-break-after:auto}.paper *{-webkit-print-color-adjust:exact;print-color-adjust:exact}.paper .p-page{right:0;bottom:0}}' +
+      PAPER_CSS.replace(/body\.print-slip/g, 'body.__none') + '</style></head><body>' +
+      '<div class="bar"><button onclick="window.print()">🖨 In / Lưu PDF</button><span>Chọn “Lưu dưới dạng PDF” nếu muốn xuất file; nên tắt “Headers and footers”.</span></div>' +
+      '<div class="wrap">' + paperHTML(slip) + '</div>' +
+      (auto ? '<script>window.addEventListener("load",function(){setTimeout(function(){try{window.print()}catch(e){}},500)})<\/script>' : '') + '</body></html>';
+  }
+  function downloadHTML(slip) {
+    A.download('Phieu_' + safeName(slip.id) + '.html', 'text/html;charset=utf-8', standaloneHTML(slip, false));
+  }
+  function printWindow(slip) {
+    var w = null; try { w = window.open('', '_blank'); } catch (e) { w = null; }
+    if (!w) { downloadHTML(slip); A.toast('Trình duyệt chặn tab mới – đã tải file phiếu (.html). Hãy mở file đó rồi bấm In.', 7000); return; }
+    w.document.open(); w.document.write(standaloneHTML(slip, true)); w.document.close();
+  }
   function printSlip(slip) {
-    var root = $('#printRoot'); root.innerHTML = paperHTML(slip);
-    var st = document.createElement('style'); st.id = 'pgStyle'; st.textContent = '@page{size:A4 portrait;margin:10mm}'; document.head.appendChild(st);
-    document.body.classList.add('print-slip');
-    function done() { document.body.classList.remove('print-slip'); st.remove(); root.innerHTML = ''; window.removeEventListener('afterprint', done); }
-    window.addEventListener('afterprint', done);
-    setTimeout(function () { window.print(); }, 80);
+    if (printing) return;
+    if (typeof window.print !== 'function') { printWindow(slip); return; }
+    var root = $('#printRoot'), st = null, finished = false;
+    function done() {
+      if (finished) return; finished = true; printing = false;
+      document.body.classList.remove('print-slip'); if (st) st.remove(); root.innerHTML = ''; window.removeEventListener('afterprint', done);
+    }
+    try {
+      printing = true; root.innerHTML = paperHTML(slip);
+      st = document.createElement('style'); st.id = 'pgStyle'; st.textContent = '@page{size:A4 portrait;margin:10mm}'; document.head.appendChild(st);
+      document.body.classList.add('print-slip'); window.addEventListener('afterprint', done);
+      setTimeout(function () { try { window.print(); } catch (e) { done(); printWindow(slip); } }, 80);
+      setTimeout(done, 120000);                                   // phòng khi trình duyệt không gửi sự kiện afterprint
+    } catch (e) { done(); A.toast('Không in trực tiếp được (' + e.message + ') – mở bản in trong tab mới.', 5000); printWindow(slip); }
   }
   function dlQR(slip) {
     var c = QR.canvas(qrPayload(slip), { ecl: 'M', scale: 10, border: 2 });
@@ -643,7 +721,7 @@
       if ((b = t.closest('[data-v]')) && VIEW) {
         var slip = VIEW.slip;
         switch (b.dataset.v) {
-          case 'print': printSlip(slip); break; case 'xlsx': exportSlip(slip); break; case 'qr': dlQR(slip); break;
+          case 'print': printSlip(slip); break; case 'win': printWindow(slip); break; case 'html': downloadHTML(slip); break; case 'xlsx': exportSlip(slip); break; case 'qr': dlQR(slip); break;
           case 'edit': closeView(); openEditor(slip.type, slip.id); break;
           case 'del': var ty = slip.type, id = slip.id; closeView(); deleteSlip(ty, id); break;
         }
@@ -658,7 +736,8 @@
   }
 
   window.Slips = {
-    init: function (app) { if (A) return; A = app; $('#modalRoot').innerHTML = '<div id="mdEditor"></div><div id="mdPicker"></div><div id="mdView"></div>'; bind(); },
+    ver: BUILD,
+    init: function (app) { if (A) return; A = app; var st = document.createElement('style'); st.id = 'paperCss'; st.textContent = PAPER_CSS; document.head.appendChild(st); $('#modalRoot').innerHTML = '<div id="mdEditor"></div><div id="mdPicker"></div><div id="mdView"></div>'; bind(); },
     listHTML: listHTML, openEditor: openEditor, view: openView, extraSheets: extraSheets, docSo: docSo, _paperHTML: paperHTML, _qrPayload: qrPayload
   };
 })();
