@@ -179,5 +179,5 @@
   }
   function png(text, o) { return canvas(text, o).toDataURL('image/png'); }
 
-  root.QR = { encode: encode, svg: svg, canvas: canvas, png: png, _tables: { ECC_CW: ECC_CW, NUM_BLK: NUM_BLK } };
+  root.QR = { ver: '2026.11.06-2', encode: encode, svg: svg, canvas: canvas, png: png, _tables: { ECC_CW: ECC_CW, NUM_BLK: NUM_BLK } };
 })(typeof window !== 'undefined' ? window : globalThis);
