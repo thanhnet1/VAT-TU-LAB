@@ -319,87 +319,25 @@ table.sl-items{min-width:1500px}
 .mod-banner{position:relative;z-index:1;background:#b91c1c;color:#fff;padding:10px 14px;font-size:13.5px;line-height:1.45}
 .mod-banner b{color:#fde68a} .mod-banner button{margin-left:8px;background:#fff;color:#b91c1c;border:0;border-radius:6px;padding:3px 10px;font-weight:700;cursor:pointer}
 .ver-note{padding:4px 12px;font-size:11px;color:var(--muted);text-align:right;background:var(--surface2);border-top:1px solid var(--line)}
-/* ==========================================================================
-   BỔ SUNG THÊM VÀO CUỐI FILE ASSETS/STYLE.CSS DỰ ÁN GỐC
-   ========================================================================== */
 
-/* MENU DẠNG CÂY THEO MẪU SƠ ĐỒ HÌNH VẼ */
-.tree-menu, .tree-children, .tree-subchildren { list-style: none; padding-left: 14px; }
-.tree-node { margin: 3px 0; }
-.tree-title { padding: 6px 10px; cursor: pointer; border-radius: 4px; font-size: 13px; color: #cbd5e1; display: flex; align-items: center; gap: 5px; user-select: none; }
-.tree-title:hover { background: #334155; color: #38bdf8; }
-.tree-item { padding: 6px 10px 6px 26px; cursor: pointer; font-size: 13px; color: #94a3b8; border-radius: 4px; }
-.tree-item:hover { background: #475569; color: #fff; }
-.menu-tai-san { color: #facc15 !important; font-weight: bold; }
-.arrow { font-size: 10px; color: #64748b; }
-
-.tree-children, .tree-subchildren { display: none; }
-.tree-node.open > .tree-children, .tree-node.open > .tree-subchildren { display: block; }
-.tree-subchildren li { padding: 4px 10px 4px 32px; font-size: 12px; color: #94a3b8; cursor: pointer; }
-.tree-subchildren li:hover { color: #38bdf8; }
-
-/* TRẠNG THÁI DỮ LIỆU CLOUD */
-.cloud-status { font-size: 12.5px; font-weight: bold; color: #16a34a; display: flex; align-items: center; gap: 6px; }
-.status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
-.status-dot.online { background: #22c55e; box-shadow: 0 0 6px #22c55e; }
-
-/* KHỔ GIẤY A4 CHUẨN IN & XUẤT FILE EXCEL */
-.a4-page-view {
-    width: 210mm;
-    min-height: 297mm;
-    padding: 20mm;
-    margin: 0 auto;
-    background: #ffffff;
-    box-shadow: 0 0 10px rgba(0,0,0,0.1);
-    color: #000;
+/* Tài Sản dạng cây – bổ sung, không thay đổi bố cục bảng gốc */
+.asset-tree{margin:8px 10px;border:1px solid var(--line,#d8e2ec);border-radius:10px;background:var(--card,#fff);overflow:hidden}
+.asset-tree>summary,.asset-tree-sub>summary{cursor:pointer;list-style:none;padding:10px 12px;font-weight:700;color:var(--text,#17324d)}
+.asset-tree>summary::-webkit-details-marker,.asset-tree-sub>summary::-webkit-details-marker{display:none}
+.asset-tree-children{padding:0 8px 8px 14px;border-top:1px solid var(--line,#d8e2ec)}
+.asset-tree-link{display:block;padding:7px 10px;margin:3px 0;border-radius:7px;text-decoration:none;color:var(--text,#17324d);font-size:.9em}
+.asset-tree-link:hover{background:var(--soft,#edf5fb)}
+.asset-tree-sub{border-left:2px solid var(--line,#d8e2ec);margin:4px 0 4px 8px}
+.asset-tree-sub>div{padding-left:12px}
+.item-qr{width:54px;min-width:54px;text-align:center;vertical-align:middle}
+.item-qr svg{width:42px;height:42px;display:block;margin:auto}
+@media(max-width:700px){
+ .asset-tree{margin:6px 8px}.asset-tree>summary,.asset-tree-sub>summary{padding:9px;font-size:14px}
+ .item-qr{width:42px;min-width:42px}.item-qr svg{width:34px;height:34px}
+ .paper-wrap{overflow-x:auto}.paper{max-width:100%;}
+ .sl-list{min-width:680px}
 }
-.slip-header { text-align: center; margin-bottom: 15px; border-bottom: 2px solid #000; padding-bottom: 8px; }
-.slip-header h2 { font-size: 18px; text-transform: uppercase; }
-.slip-info { font-size: 13px; margin-bottom: 15px; line-height: 1.5; }
-
-/* BẢNG BIỂU VẬT TƯ & QR CODE */
-.slip-table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
-.slip-table th, .slip-table td { border: 1px solid #000; padding: 6px; font-size: 12px; text-align: center; vertical-align: middle; }
-.slip-table th { background: #f1f5f9; font-weight: bold; }
-.qr-box { display: flex; justify-content: center; align-items: center; }
-
-/* CHỮ KÝ ĐIỆN TỬ */
-.slip-signatures { display: flex; justify-content: space-between; margin-top: 30px; page-break-inside: avoid; }
-.sig-col { width: 45%; text-align: center; font-size: 13px; }
-.sig-sub { font-style: italic; font-size: 11px; color: #64748b; }
-.sig-space { height: 80px; margin-top: 8px; border: 1px dashed #cbd5e1; border-radius: 4px; display: flex; flex-direction: column; justify-content: center; align-items: center; }
-.sig-space.signed { border: 1px solid #16a34a; background: #f0fdf4; color: #16a34a; font-weight: bold; }
-.text-pending { color: #dc2626; font-style: italic; }
-
-/* MODALS & RESPONSIVE MOBILE */
-.modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; overflow-y: auto; padding: 20px; }
-.modal-body { max-width: 880px; margin: 0 auto; }
-.modal-actions { background: #fff; padding: 10px; border-radius: 8px 8px 0 0; display: flex; justify-content: flex-end; gap: 8px; }
-.modal-box-small { background: #fff; width: 400px; margin: 80px auto; padding: 20px; border-radius: 8px; box-shadow: 0 10px 20px rgba(0,0,0,0.2); }
-.role-notice { background: #eff6ff; border-left: 3px solid #3b82f6; padding: 8px; font-size: 11.5px; margin: 10px 0; color: #1e40af; }
-
-.form-group { margin-bottom: 10px; }
-.form-group label { display: block; font-size: 12px; font-weight: bold; margin-bottom: 4px; }
-.form-group input { width: 100%; padding: 6px 8px; border: 1px solid #cbd5e1; border-radius: 4px; }
-
-.btn { padding: 6px 12px; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: bold; }
-.btn-print { background: #0284c7; color: #fff; }
-.btn-excel { background: #16a34a; color: #fff; }
-.btn-close { background: #64748b; color: #fff; }
-.btn-sign { background: #ea580c; color: #fff; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer; font-size: 11px; margin-top: 4px; }
-.modal-box-actions { display: flex; justify-content: flex-end; gap: 6px; margin-top: 12px; }
-
-/* CO GIÃN TỐT TRÊN MOBILE & PC */
-@media screen and (max-width: 768px) {
-    .btn-toggle-sidebar { display: block; }
-    .sidebar { position: fixed; left: -300px; top: 0; bottom: 0; z-index: 999; transition: 0.3s; }
-    .sidebar.active { left: 0; }
-    .a4-page-view { width: 100%; min-height: auto; padding: 10px; margin: 0; }
-    .modal-box-small { width: 92%; }
-}
-
-@media print {
-    .no-print, .sidebar, .topbar { display: none !important; }
-    .a4-page-view { box-shadow: none; width: 100%; padding: 0; margin: 0; }
-    .modal-overlay { position: static; background: none; padding: 0; }
+@media print{
+ .item-qr svg{width:34px;height:34px}
+ .paper{width:190mm!important;max-width:190mm!important;margin:0 auto!important;box-shadow:none!important}
 }
