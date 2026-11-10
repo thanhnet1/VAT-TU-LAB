@@ -1,2 +1,0 @@
-/* Điền URL và anon key lấy từ Supabase > Project Settings > API. Không đưa service_role key vào trình duyệt. */
-window.LAB_SUPABASE_CONFIG={url:'https://YOUR_PROJECT.supabase.co',anonKey:'YOUR_SUPABASE_ANON_KEY'};
