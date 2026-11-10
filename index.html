@@ -1,72 +1,165 @@
 <!DOCTYPE html>
 <html lang="vi">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#0b3a5b">
-<title>Tài sản – Vật tư Truyền dẫn LAB</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E📡%3C/text%3E%3C/svg%3E">
-<link rel="stylesheet" href="assets/style.css?v=2026.11.07-3">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hệ Thống Quản Lý Kho Vật Tư & Tài Sản</title>
+    <link rel="stylesheet" href="style.css">
+    <!-- Thư viện tạo Mã QR client-side -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 </head>
 <body>
+    <div class="app-container">
+        <!-- Sidebar Menu Dạng Cây Theo Đúng Ảnh Mẫu -->
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <h2>🏬 QUẢN LÝ KHO VT-TS</h2>
+            </div>
+            <ul class="tree-menu">
+                <li class="tree-item has-child open">
+                    <div class="tree-title" onclick="toggleTree(this)">
+                        <span class="icon">🏠</span> <strong>Tổng quan (Vật tư - Tài sản)</strong>
+                    </div>
+                    <ul class="tree-submenu">
+                        <li class="tree-item">
+                            <div class="tree-title" onclick="switchTab('kho-vat-tu')">📦 Kho vật tư</div>
+                        </li>
+                        <!-- Menu Truyền Dẫn & Các Hệ Thống con -->
+                        <li class="tree-item has-child">
+                            <div class="tree-title" onclick="toggleTree(this)">📡 Truyền dẫn</div>
+                            <ul class="tree-submenu">
+                                <li class="tree-item has-child">
+                                    <div class="tree-title" onclick="toggleTree(this)">⚙️ Thiết bị theo hệ thống</div>
+                                    <ul class="tree-submenu-deep">
+                                        <li onclick="filterSystem('XTC10 - MTCS')">• XTC10 - MTCS</li>
+                                        <li onclick="filterSystem('Ciena 6530')">• Ciena 6530</li>
+                                        <li onclick="filterSystem('OMD - 14 slot')">• OMD - 14 slot</li>
+                                        <li onclick="filterSystem('Nokia 681')">• Nokia 681</li>
+                                        <li onclick="filterSystem('OTN - 32 slot')">• OTN - 32 slot</li>
+                                        <li onclick="filterSystem('PSS 16 - 64')">• PSS 16 - 64</li>
+                                        <li onclick="filterSystem('HW 3500 - 7500')">• HW 3500 - 7500</li>
+                                        <li onclick="filterSystem('HW 6800 - 8800')">• HW 6800 - 8800</li>
+                                        <li onclick="filterSystem('Alu 1850 - 1830')">• Alu 1850 - 1830</li>
+                                        <li onclick="filterSystem('Alu 1660 - 1682')">• Alu 1660 - 1682</li>
+                                        <li onclick="filterSystem('HW 9500 - Ericson')">• HW 9500 - Ericson</li>
+                                    </ul>
+                                </li>
+                                <li class="tree-item"><div class="tree-title" onclick="switchTab('tb-ip')">🌐 Thiết bị IP</div></li>
+                                <li class="tree-item"><div class="tree-title" onclick="switchTab('tb-vo-tuyen')">📻 Thiết bị vô tuyến</div></li>
+                                <li class="tree-item"><div class="tree-title" onclick="switchTab('tb-vsat')">🛰️ Thiết bị VSAT</div></li>
+                            </ul>
+                        </li>
+                        <li class="tree-item"><div class="tree-title" onclick="switchTab('vt-do-kiem')">🔬 Vật tư đo kiểm</div></li>
+                        <li class="tree-item"><div class="tree-title" onclick="switchTab('vt-khong-nguon-goc')">❓ Vật tư không rõ nguồn gốc</div></li>
+                        <li class="tree-item"><div class="tree-title highlight-item" onclick="switchTab('tai-san')">🏢 Tài Sản</div></li>
+                    </ul>
+                </li>
+                <li class="tree-item"><div class="tree-title" onclick="switchTab('phieu-xuat-list')">📋 Danh Sách Phiếu Xuất Kho</div></li>
+                <li class="tree-item"><div class="tree-title" onclick="switchTab('phieu-nhap-list')">📥 Danh Sách Phiếu Nhập Kho</div></li>
+            </ul>
+        </aside>
 
-<div id="boot" class="boot"><div class="spinner"></div><p>Đang tải dữ liệu…</p></div>
+        <!-- Main Content Area -->
+        <main class="main-content">
+            <header class="topbar">
+                <button class="btn-menu-toggle" onclick="toggleMobileSidebar()">☰ Menu</button>
+                <div class="cloud-status"><span class="dot online"></span> Cloud Sync: Active (Online)</div>
+            </header>
 
-<header class="topbar" id="topbar" hidden>
-  <button id="btnMenu" class="icon-btn only-mobile" aria-label="Mở menu">☰</button>
-  <a class="brand" href="#/" title="Về trang Tổng quan">
-    <span class="logo">📡</span>
-    <span class="brand-text"><b id="appTitle"></b><small id="appSub"></small></span>
-  </a>
-  <label class="search">
-    <span aria-hidden="true">🔍</span>
-    <input id="gq" type="search" title="Phím tắt: /" placeholder="Tìm serial, part number, tên vật tư…" autocomplete="off" spellcheck="false">
-    <button id="gqClear" type="button" class="search-clear" hidden aria-label="Xoá tìm kiếm">✕</button>
-  </label>
-  <div class="actions">
-    <span id="dirty" class="dirty" hidden title="Bạn đã chỉnh sửa dữ liệu – chỉ lưu trên trình duyệt này">● Đã chỉnh sửa</span>
-    <button id="btnPXK" class="btn accent" type="button" title="Tạo phiếu xuất kho">📤 <span>Phiếu xuất</span></button>
-    <button id="btnPNK" class="btn accent" type="button" title="Tạo phiếu nhập kho">📥 <span>Phiếu nhập</span></button>
-    <button id="btnEdit" class="btn" type="button" aria-pressed="false">✏️ <span>Chỉnh sửa</span></button>
-    <details class="menu" id="menuExport">
-      <summary class="btn">⬇ <span>Xuất / Sao lưu</span></summary>
-      <div class="menu-pop">
-        <button type="button" data-act="xlsx-all">📗 Excel – toàn bộ các sheet</button>
-        <button type="button" data-act="xlsx-cur">📗 Excel – sheet đang xem</button>
-        <button type="button" data-act="csv-cur">📄 CSV – sheet đang xem</button>
-        <hr>
-        <button type="button" data-act="json-out">💾 Sao lưu JSON (kèm chỉnh sửa)</button>
-        <button type="button" data-act="json-in">📂 Nhập sao lưu JSON…</button>
-        <hr>
-        <button type="button" data-act="reset" class="danger">↩ Khôi phục dữ liệu gốc</button>
-      </div>
-    </details>
-    <button id="btnPrint" class="btn ghost" type="button" title="In trang đang xem (A4 ngang)">🖨</button>
-    <button id="btnTheme" class="btn ghost" type="button" title="Đổi giao diện sáng / tối">🌓</button>
-  </div>
-</header>
+            <div class="content-body" id="content-body">
+                <!-- Nội dung các trang sẽ được render linh hoạt vào đây -->
+            </div>
+        </main>
+    </div>
 
-<div id="editbar" class="editbar" hidden>
-  ✏️ <b>Đang ở chế độ chỉnh sửa.</b> Bấm vào ô để sửa, tích ô <b>Đã kiểm</b>, thêm/xoá dòng.
-  Thay đổi <u>chỉ lưu trên trình duyệt này</u> – dùng <b>Xuất / Sao lưu</b> để giữ hoặc chia sẻ.
-</div>
+    <!-- MODAL XEM PHIẾU XUẤT KHO KHỔ A4 -->
+    <div id="modal-phieu-xuat" class="modal-overlay">
+        <div class="modal-container">
+            <div class="modal-header no-print">
+                <h3>Phiếu Xuất Kho Chi Tiết</h3>
+                <div class="action-buttons">
+                    <button class="btn btn-print" onclick="window.print()">🖨️ In / Xuất PDF (A4)</button>
+                    <button class="btn btn-excel" onclick="exportToExcelA4()">📊 Xuất File Excel (Chuẩn A4)</button>
+                    <button class="btn btn-close" onclick="closeSlipModal()">❌ Đóng</button>
+                </div>
+            </div>
 
-<div class="layout" id="layout" hidden>
-  <aside id="sidebar" class="sidebar" aria-label="Danh sách sheet"></aside>
-  <div id="overlay" class="overlay"></div>
-  <main id="main" class="main"></main>
-</div>
+            <!-- Khổ Giấy A4 Chuẩn Định Dạng -->
+            <div class="a4-page" id="printable-slip">
+                <div class="slip-header">
+                    <h2>PHIẾU XUẤT KHO VẬT TƯ / TÀI SẢN</h2>
+                    <p>Mã số phiếu: <strong id="slip-id">PXK-2026-001</strong></p>
+                    <p>Ngày xuất kho: <span id="slip-date">10/11/2026</span></p>
+                </div>
 
-<input type="file" id="fileIn" accept="application/json,.json" hidden>
-<div id="modalRoot"></div>
-<div id="printRoot"></div>
-<div id="toast" class="toast" role="status" aria-live="polite"></div>
+                <div class="slip-info">
+                    <p><strong>Đơn vị xuất:</strong> Trung tâm Mạng lưới VNPT-Net 1</p>
+                    <p><strong>Người / Đơn vị nhận:</strong> <span id="slip-receiver-name">Đội Quản lý Vận hành</span></p>
+                    <p><strong>Lý do xuất:</strong> Thay thế và bảo trì sự cố hệ thống</p>
+                </div>
 
-<script src="assets/config.js?v=2026.11.07-3"></script>
-<script src="assets/data.js"></script>
-<!-- Thư viện xuất Excel (tuỳ chọn). Nếu không tải được, web vẫn chạy và tự chuyển sang xuất CSV. -->
-<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js" defer></script>
-<script src="assets/slips.js?v=2026.11.07-3" defer></script>
-<script src="assets/app.js?v=2026.11.07-3" defer></script>
+                <!-- Bảng danh mục vật tư có Mã QR riêng cho từng dòng -->
+                <table class="slip-table" id="slip-items-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 5%">STT</th>
+                            <th style="width: 30%">Tên Vật Tư / Thiết Bị</th>
+                            <th style="width: 15%">Mã QR Danh Mục</th>
+                            <th style="width: 10%">ĐVT</th>
+                            <th style="width: 10%">Số Lượng</th>
+                            <th style="width: 15%">Đơn Giá (VNĐ)</th>
+                            <th style="width: 15%">Thành Tiền (VNĐ)</th>
+                        </tr>
+                    </thead>
+                    <tbody id="slip-table-body">
+                        <!-- Dữ liệu render tự động từ JS -->
+                    </tbody>
+                </table>
+
+                <!-- Khu vực chữ ký điện tử -->
+                <div class="slip-signatures">
+                    <div class="sig-box">
+                        <p><strong>NGƯỜI LẬP PHIẾU</strong></p>
+                        <span class="sig-note">(Ký & ghi rõ họ tên)</span>
+                        <div class="sig-space">Đã xác nhận hệ thống</div>
+                    </div>
+                    <div class="sig-box">
+                        <p><strong>NGƯỜI NHẬN HÀNG</strong></p>
+                        <span class="sig-note">(Chữ ký điện tử người nhận)</span>
+                        <div class="sig-space" id="receiver-sig-box">
+                            <span class="status-pending">Chưa xác nhận ký nhận</span>
+                            <br>
+                            <button class="btn-sign no-print" onclick="openSignatureModal()">✍️ Ký Nhận Ngay</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL PHÂN QUYỀN KÝ ĐIỆN TỬ DÀNH CHỈ CHO NGƯỜI NHẬN -->
+    <div id="modal-ky-nhan" class="modal-overlay no-print">
+        <div class="modal-content-small">
+            <h3>Xác Nhận Chữ Ký Điện Tử Người Nhận</h3>
+            <p class="notice-text">⚠️ <strong>Phân quyền:</strong> Người nhận chỉ có quyền ký nhận hàng, không được thay đổi bất kỳ nội dung vật tư nào trên phiếu.</p>
+            
+            <div class="form-group">
+                <label>Họ và tên người nhận:</label>
+                <input type="text" id="signer-fullname" placeholder="Nhập họ và tên người nhận...">
+            </div>
+            <div class="form-group">
+                <label>Mã PIN / OTP Xác thực người nhận:</label>
+                <input type="password" id="signer-pin" placeholder="••••">
+            </div>
+
+            <div class="modal-actions-right">
+                <button class="btn btn-close" onclick="closeSignatureModal()">Hủy</button>
+                <button class="btn btn-excel" onclick="confirmReceiverSignature()">✅ Xác Nhận Ký & Lưu Cloud</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="slips.js"></script>
+    <script src="app.js"></script>
 </body>
 </html>
