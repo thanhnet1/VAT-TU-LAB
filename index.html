@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Quản lý Tài sản - Vật tư Truyền dẫn LAB</title>
     <link rel="stylesheet" href="assets/style.css">
-    <!-- Thư viện hỗ trợ đọc trực tiếp file nguồn trên trình duyệt -->
+    <!-- Thư viện hỗ trợ đọc file nguồn trực tiếp trên trình duyệt -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdfjs-dist/3.11.174/pdf.min.js"></script>
@@ -17,11 +17,11 @@
             <h1>Quản lý Tài sản - Vật tư Truyền dẫn LAB</h1>
         </div>
         <div class="header-right">
-            <!-- Nút Cập nhật nguồn (Giữ phong cách tối giản, đồng bộ với các nút btn-ghost sẵn có) -->
-            <label for="importFileInput" class="btn-ghost" title="Cập nhật dữ liệu từ file Excel, Word, PDF" style="cursor: pointer; display: inline-flex; align-items: center; gap: 4px;">
+            <!-- Đặt nút Cập nhật nguồn nằm chung trong nhóm header-right với các nút chức năng -->
+            <label for="importFileInput" class="btn-ghost" title="Cập nhật nguồn dữ liệu trực tiếp từ Excel, Word, PDF" style="cursor: pointer; display: inline-flex; align-items: center; gap: 4px;">
                 📁 Cập nhật nguồn
             </label>
-            <input type="file" id="importFileInput" accept=".xlsx, .xls, .docx, .pdf" style="display: none;" onchange="handleWebFileImport(event)" />
+            <input type="file" id="importFileInput" accept=".xlsx, .xls, .docx, .pdf" style="display: none;" />
 
             <button id="btnSearch" class="btn-ghost" title="Tìm kiếm (Ctrl+F)">🔍 Tìm kiếm</button>
             <button id="btnEdit" class="btn-ghost" title="Chỉnh sửa dữ liệu">✏️ Chỉnh sửa</button>
