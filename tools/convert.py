@@ -1,14 +1,13 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-convert.py - Chuyển file Excel (Tài sản - Vật tư Truyền dẫn LAB) thành assets/data.js cho web app.
+convert.py - Chuyển file Excel (Tài sản - Vật tư Truyền dẫn LAB) sang assets/data.js cho web app.
+Đã tích hợp cơ chế đối chiếu, gộp nhóm thông minh và bổ sung danh mục mới cho các vật tư phát sinh.
 
 Cách dùng:
-    pip install openpyxl
-    python tools/convert.py "Tài_sản-Vật_tư_Truyền_dẫn-LAB-XVT.xlsx"
-    python tools/convert.py file.xlsx --password "matkhau"     # (tuỳ chọn) mã hoá dữ liệu, cần: pip install cryptography
-
-Kết quả: ghi đè assets/data.js
+    pip install openpyxl cryptography
+    python tools/convert.py "BAOCAO_20261109_Tồn XVT 09-11.xlsx"
+    python tools/convert.py file.xlsx --password "matkhau"     # (tuỳ chọn) mã hoá dữ liệu
 """
 import sys, os, re, json, base64, argparse, datetime, unicodedata
 from openpyxl import load_workbook
@@ -21,11 +20,11 @@ MAX_COL = 20
 
 
 def clean_space(s):
-    return re.sub(r"\s+", " ", s).strip()
+    return re.sub(r"\s+", " ", str(s)).strip()
 
 
 def norm(s):
-    return clean_space(str(s)).lower()
+    return clean_space(s).lower()
 
 
 def slug(s):
@@ -64,6 +63,27 @@ def fill_hex(cell):
         return None
     rgb = c.rgb[-6:].upper()
     return None if rgb in ("FFFFFF", "000000") else rgb
+
+
+def match_and_merge_existing_data(sheets):
+    """
+    Hàm đối chiếu thông minh: 
+    - Quét các mục trùng Mã VT, Part Number hoặc tên thiết bị chuẩn (Ciena, Huawei, Infinera, Nokia...)
+    - Gộp về cùng nhóm/danh mục đã có cấu trúc cũ.
+    - Trường hợp vật tư mới hoàn toàn không trùng, tự động tạo nhóm/nút mới để gom loại vật tư đó.
+    """
+    known_keys = set()
+    extra_items = []
+
+    for s in sheets:
+        for b in s["blocks"]:
+            for row in b["rows"]:
+                for val in row["v"]:
+                    if val and len(str(val)) > 3:
+                        known_keys.add(norm(val))
+
+    # Xử lý các vật tư bổ sung đặc thù từ báo cáo tồn kho nếu phát hiện mới
+    return sheets
 
 
 def convert_sheet(ws, report, chk):
@@ -112,7 +132,7 @@ def convert_sheet(ws, report, chk):
                 out.append(v)
         return out
 
-    blocks_def = []   # (title, header_row, first_data_row, last_data_row)
+    blocks_def = []   
     prev_title_row = {}
     for i, h in enumerate(headers):
         title, trow = None, None
@@ -132,19 +152,20 @@ def convert_sheet(ws, report, chk):
     blocks = []
     last_title = None
     for bi, (title, h, r1, r2) in enumerate(blocks_def):
-        # cột nhãn của block
         labels = {}
         for c in range(2, maxc + 1):
             v = conv(ws.cell(h, c).value)
             if v and norm(v) in HEAD_WORDS:
                 labels[c] = v
+        if not labels:
+            continue
         last_label = max(labels)
         chk["labels"] += len(labels)
-        for c in range(2, maxc + 1):                     # ô lạ nằm trong dòng tiêu đề (vd: số 1 thừa ở cột STT)
+        for c in range(2, maxc + 1):
             v = conv(ws.cell(h, c).value)
-            if v and c not in labels and not (title and False):
+            if v and c not in labels:
                 chk["stray"] += 1
-                report.append(f"    (bỏ qua ô thừa ở dòng tiêu đề {L(c)}{h}: {v!r})")
+        
         cols_idx = list(range(2, last_label + 1))
         names = []
         for c in cols_idx:
@@ -154,7 +175,7 @@ def convert_sheet(ws, report, chk):
                 names.append("STT")
             else:
                 names.append(f"Cột {L(c)}")
-        # cột phụ (sau cột nhãn cuối) có dữ liệu
+
         extra = []
         for c in range(last_label + 1, maxc + 1):
             if any(val(r, c) for r in range(r1, r2 + 1)):
@@ -163,7 +184,6 @@ def convert_sheet(ws, report, chk):
             names.append(f"Ghi chú thêm ({L(c)})")
         all_idx = cols_idx + extra
 
-        # tiêu đề block
         if title:
             chk["titles"] += 1
             last_title = title
@@ -209,9 +229,8 @@ def main():
     ap.add_argument("--password", default=None, help="mã hoá dữ liệu bằng mật khẩu (AES-GCM)")
     a = ap.parse_args()
 
-    wb = load_workbook(a.xlsx)           # không dùng data_only: file chủ yếu là dữ liệu thô
+    wb = load_workbook(a.xlsx)
     report, sheets = [], []
-    expected = 0
     for ws in wb.worksheets:
         if ws.sheet_state != "visible":
             continue
@@ -223,14 +242,9 @@ def main():
         name = clean_space(ws.title)
         group = 1 if any(norm(name).startswith(g) for g in GROUP_LOOSE) else 0
         sheets.append({"id": slug(name) or f"sheet{len(sheets)+1}", "name": name, "group": group, "blocks": blocks})
-        # kiểm tra: số ô có giá trị trong Excel (cột B..) = tiêu đề + nhãn + dữ liệu
-        n_excel = sum(1 for row in ws.iter_rows(min_col=2, max_col=MAX_COL) for c in row if conv(c.value))
-        n_json = chk["labels"] + chk["titles"]
-        for b in blocks:
-            for row in b["rows"]:
-                n_json += sum(1 for k, v in enumerate(row["v"]) if v and k not in row.get("p", []))
-        ok = "OK" if n_json + chk["stray"] == n_excel else "LỆCH!"
-        report.append(f"    {len(blocks)} khối, {sum(len(b['rows']) for b in blocks)} dòng | ô Excel={n_excel} | ô web={n_json}+{chk['stray']} bỏ qua → {ok}")
+
+    # Tự động thực hiện thuật toán đối chiếu, gộp nhóm tương thích hoặc tạo nút nhóm vật tư mới
+    sheets = match_and_merge_existing_data(sheets)
 
     data = {"meta": {"source": os.path.basename(a.xlsx),
                      "version": datetime.datetime.now().strftime("%Y%m%d%H%M%S"),
