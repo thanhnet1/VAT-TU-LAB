@@ -427,14 +427,13 @@
       var rows = pg.map(function (it) {
         seq++; var sub = [it.serial ? 'S/N: ' + esc(it.serial) : '', it.part ? 'P/N: ' + esc(it.part) : ''].filter(Boolean).join(' &nbsp; ');
         var cat = xuat ? '' : catLabel(it.sid, it.bi);
-        var itemQR = QRLIB.svg('LABXVT|'+slip.id+'|'+(seq)+'|'+(it.rid||it.code||it.serial||it.name), {ecl:'M',border:1});
         return '<tr><td class="c">' + seq + '</td><td class="c">' + esc(it.code) + '</td><td>' + esc(it.name) + (sub ? '<div class="sub">' + sub + '</div>' : '') + (cat ? '<div class="sub cat">→ ' + esc(cat) + '</div>' : '') +
           (it.note ? '<div class="sub">' + esc(it.note) + '</div>' : '') + '</td><td class="c lot">' + esc(it.lot) + '</td><td class="c">' + esc(it.quality) + '</td><td class="c">' + esc(it.unit) +
-          '</td><td class="c">' + (it.qtyReq !== '' && it.qtyReq != null ? fmt1(num(it.qtyReq)) : '') + '</td><td class="c">' + fmt1(num(it.qty)) + '</td><td class="r m">' + fmt1(num(it.price)) + '</td><td class="r m">' + fmt1(num(it.qty) * num(it.price)) + '</td><td class="item-qr">' + itemQR + '</td></tr>';
+          '</td><td class="c">' + (it.qtyReq !== '' && it.qtyReq != null ? fmt1(num(it.qtyReq)) : '') + '</td><td class="c">' + fmt1(num(it.qty)) + '</td><td class="r m">' + fmt1(num(it.price)) + '</td><td class="r m">' + fmt1(num(it.qty) * num(it.price)) + '</td></tr>';
       }).join('');
       var foot = '';
       if (last) foot = xuat
-        ? '<tr class="tot"><td colspan="10" class="r"><b>Tổng Cộng:</b></td><td class="r m"><b>' + fmt1(money) + '</b></td></tr>'
+        ? '<tr class="tot"><td colspan="9" class="r"><b>Tổng Cộng:</b></td><td class="r m"><b>' + fmt1(money) + '</b></td></tr>'
         : '<tr class="tot"><td colspan="9" class="r"><b>Tổng:</b></td><td class="r m"><b>' + fmt1(money) + '</b></td></tr><tr class="tot"><td colspan="9" class="r"><b>Tổng thuế:</b></td><td class="r m"><b>' + fmt1(tax) + '</b></td></tr>' +
           '<tr class="tot"><td colspan="9" class="r"><b>Tổng thanh toán:</b></td><td class="r m"><b>' + fmt1(pays) + '</b></td></tr>';
       return '<div class="paper">' +
@@ -788,7 +787,6 @@
     if (window.XLSX) {
       var wb = XLSX.utils.book_new(), ws = XLSX.utils.aoa_to_sheet(aoa);
       ws['!cols'] = [6, 16, 38, 22, 18, 24, 11, 7, 11, 11, 10, 12, 30, 24].map(function (w) { return { wch: w }; });
-      ws['!pageSetup'] = { paperSize: 9, orientation: 'portrait', fitToWidth: 1, fitToHeight: 0 }; ws['!fitToPage'] = true; ws['!margins'] = {left:0.25,right:0.25,top:0.45,bottom:0.45,header:0.2,footer:0.2};
       XLSX.utils.book_append_sheet(wb, ws, TYPES[slip.type].plural.slice(0, 31)); XLSX.writeFile(wb, name + '.xlsx');
     } else { A.toast('Chưa tải được thư viện Excel (cần Internet) – xuất CSV thay thế.', 4000); A.download(name + '.csv', 'text/csv;charset=utf-8', A.toCSV(aoa)); }
   }
