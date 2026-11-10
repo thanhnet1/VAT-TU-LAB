@@ -1,165 +1,102 @@
-<!DOCTYPE html>
-<html lang="vi">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Hệ Thống Quản Lý Kho Vật Tư & Tài Sản</title>
-    <link rel="stylesheet" href="style.css">
-    <!-- Thư viện tạo Mã QR client-side -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-</head>
-<body>
-    <div class="app-container">
-        <!-- Sidebar Menu Dạng Cây Theo Đúng Ảnh Mẫu -->
-        <aside class="sidebar" id="sidebar">
-            <div class="sidebar-header">
-                <h2>🏬 QUẢN LÝ KHO VT-TS</h2>
-            </div>
-            <ul class="tree-menu">
-                <li class="tree-item has-child open">
-                    <div class="tree-title" onclick="toggleTree(this)">
-                        <span class="icon">🏠</span> <strong>Tổng quan (Vật tư - Tài sản)</strong>
-                    </div>
-                    <ul class="tree-submenu">
-                        <li class="tree-item">
-                            <div class="tree-title" onclick="switchTab('kho-vat-tu')">📦 Kho vật tư</div>
-                        </li>
-                        <!-- Menu Truyền Dẫn & Các Hệ Thống con -->
-                        <li class="tree-item has-child">
-                            <div class="tree-title" onclick="toggleTree(this)">📡 Truyền dẫn</div>
-                            <ul class="tree-submenu">
-                                <li class="tree-item has-child">
-                                    <div class="tree-title" onclick="toggleTree(this)">⚙️ Thiết bị theo hệ thống</div>
-                                    <ul class="tree-submenu-deep">
-                                        <li onclick="filterSystem('XTC10 - MTCS')">• XTC10 - MTCS</li>
-                                        <li onclick="filterSystem('Ciena 6530')">• Ciena 6530</li>
-                                        <li onclick="filterSystem('OMD - 14 slot')">• OMD - 14 slot</li>
-                                        <li onclick="filterSystem('Nokia 681')">• Nokia 681</li>
-                                        <li onclick="filterSystem('OTN - 32 slot')">• OTN - 32 slot</li>
-                                        <li onclick="filterSystem('PSS 16 - 64')">• PSS 16 - 64</li>
-                                        <li onclick="filterSystem('HW 3500 - 7500')">• HW 3500 - 7500</li>
-                                        <li onclick="filterSystem('HW 6800 - 8800')">• HW 6800 - 8800</li>
-                                        <li onclick="filterSystem('Alu 1850 - 1830')">• Alu 1850 - 1830</li>
-                                        <li onclick="filterSystem('Alu 1660 - 1682')">• Alu 1660 - 1682</li>
-                                        <li onclick="filterSystem('HW 9500 - Ericson')">• HW 9500 - Ericson</li>
-                                    </ul>
-                                </li>
-                                <li class="tree-item"><div class="tree-title" onclick="switchTab('tb-ip')">🌐 Thiết bị IP</div></li>
-                                <li class="tree-item"><div class="tree-title" onclick="switchTab('tb-vo-tuyen')">📻 Thiết bị vô tuyến</div></li>
-                                <li class="tree-item"><div class="tree-title" onclick="switchTab('tb-vsat')">🛰️ Thiết bị VSAT</div></li>
-                            </ul>
-                        </li>
-                        <li class="tree-item"><div class="tree-title" onclick="switchTab('vt-do-kiem')">🔬 Vật tư đo kiểm</div></li>
-                        <li class="tree-item"><div class="tree-title" onclick="switchTab('vt-khong-nguon-goc')">❓ Vật tư không rõ nguồn gốc</div></li>
-                        <li class="tree-item"><div class="tree-title highlight-item" onclick="switchTab('tai-san')">🏢 Tài Sản</div></li>
-                    </ul>
-                </li>
-                <li class="tree-item"><div class="tree-title" onclick="switchTab('phieu-xuat-list')">📋 Danh Sách Phiếu Xuất Kho</div></li>
-                <li class="tree-item"><div class="tree-title" onclick="switchTab('phieu-nhap-list')">📥 Danh Sách Phiếu Nhập Kho</div></li>
-            </ul>
-        </aside>
+/* --- RESET KỸ THUẬT & RESPONSIVE CSS --- */
+* { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; }
+body { background: #f1f5f9; color: #1e293b; }
 
-        <!-- Main Content Area -->
-        <main class="main-content">
-            <header class="topbar">
-                <button class="btn-menu-toggle" onclick="toggleMobileSidebar()">☰ Menu</button>
-                <div class="cloud-status"><span class="dot online"></span> Cloud Sync: Active (Online)</div>
-            </header>
+.app-layout { display: flex; height: 100vh; overflow: hidden; }
 
-            <div class="content-body" id="content-body">
-                <!-- Nội dung các trang sẽ được render linh hoạt vào đây -->
-            </div>
-        </main>
-    </div>
+/* SIDEBAR TREE MENU (THEO MẪU SƠ ĐỒ) */
+.sidebar { width: 310px; background: #0f172a; color: #f8fafc; overflow-y: auto; flex-shrink: 0; transition: all 0.3s; }
+.sidebar-brand { padding: 16px 20px; background: #0284c7; border-bottom: 1px solid #0369a1; }
+.sidebar-brand h2 { font-size: 15px; color: #fff; text-transform: uppercase; }
 
-    <!-- MODAL XEM PHIẾU XUẤT KHO KHỔ A4 -->
-    <div id="modal-phieu-xuat" class="modal-overlay">
-        <div class="modal-container">
-            <div class="modal-header no-print">
-                <h3>Phiếu Xuất Kho Chi Tiết</h3>
-                <div class="action-buttons">
-                    <button class="btn btn-print" onclick="window.print()">🖨️ In / Xuất PDF (A4)</button>
-                    <button class="btn btn-excel" onclick="exportToExcelA4()">📊 Xuất File Excel (Chuẩn A4)</button>
-                    <button class="btn btn-close" onclick="closeSlipModal()">❌ Đóng</button>
-                </div>
-            </div>
+.tree-nav { padding: 10px; }
+.tree-root, .tree-children, .tree-subchildren { list-style: none; padding-left: 12px; }
+.tree-node { margin: 4px 0; }
+.node-label { padding: 7px 10px; cursor: pointer; border-radius: 4px; font-size: 13px; color: #cbd5e1; display: flex; align-items: center; gap: 6px; user-select: none; }
+.node-label:hover { background: #1e293b; color: #38bdf8; }
+.tree-leaf { padding: 7px 10px 7px 28px; cursor: pointer; border-radius: 4px; font-size: 13px; color: #94a3b8; user-select: none; }
+.tree-leaf:hover { background: #334155; color: #fff; }
+.highlight-tai-san { color: #facc15 !important; font-weight: bold; }
 
-            <!-- Khổ Giấy A4 Chuẩn Định Dạng -->
-            <div class="a4-page" id="printable-slip">
-                <div class="slip-header">
-                    <h2>PHIẾU XUẤT KHO VẬT TƯ / TÀI SẢN</h2>
-                    <p>Mã số phiếu: <strong id="slip-id">PXK-2026-001</strong></p>
-                    <p>Ngày xuất kho: <span id="slip-date">10/11/2026</span></p>
-                </div>
+.tree-node > .tree-children, .tree-node > .tree-subchildren { display: none; }
+.tree-node.open > .tree-children, .tree-node.open > .tree-subchildren { display: block; }
+.arrow { font-size: 10px; color: #64748b; }
 
-                <div class="slip-info">
-                    <p><strong>Đơn vị xuất:</strong> Trung tâm Mạng lưới VNPT-Net 1</p>
-                    <p><strong>Người / Đơn vị nhận:</strong> <span id="slip-receiver-name">Đội Quản lý Vận hành</span></p>
-                    <p><strong>Lý do xuất:</strong> Thay thế và bảo trì sự cố hệ thống</p>
-                </div>
+.tree-subchildren li { padding: 5px 10px 5px 36px; font-size: 12.5px; color: #94a3b8; cursor: pointer; }
+.tree-subchildren li:hover { color: #38bdf8; }
 
-                <!-- Bảng danh mục vật tư có Mã QR riêng cho từng dòng -->
-                <table class="slip-table" id="slip-items-table">
-                    <thead>
-                        <tr>
-                            <th style="width: 5%">STT</th>
-                            <th style="width: 30%">Tên Vật Tư / Thiết Bị</th>
-                            <th style="width: 15%">Mã QR Danh Mục</th>
-                            <th style="width: 10%">ĐVT</th>
-                            <th style="width: 10%">Số Lượng</th>
-                            <th style="width: 15%">Đơn Giá (VNĐ)</th>
-                            <th style="width: 15%">Thành Tiền (VNĐ)</th>
-                        </tr>
-                    </thead>
-                    <tbody id="slip-table-body">
-                        <!-- Dữ liệu render tự động từ JS -->
-                    </tbody>
-                </table>
+/* MAIN WRAPPER & TOPBAR */
+.main-wrapper { flex: 1; display: flex; flex-direction: column; overflow-y: auto; }
+.top-bar { background: #fff; padding: 12px 20px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #e2e8f0; }
+.btn-toggle-menu { display: none; padding: 6px 12px; background: #0284c7; color: #fff; border: none; border-radius: 4px; cursor: pointer; }
 
-                <!-- Khu vực chữ ký điện tử -->
-                <div class="slip-signatures">
-                    <div class="sig-box">
-                        <p><strong>NGƯỜI LẬP PHIẾU</strong></p>
-                        <span class="sig-note">(Ký & ghi rõ họ tên)</span>
-                        <div class="sig-space">Đã xác nhận hệ thống</div>
-                    </div>
-                    <div class="sig-box">
-                        <p><strong>NGƯỜI NHẬN HÀNG</strong></p>
-                        <span class="sig-note">(Chữ ký điện tử người nhận)</span>
-                        <div class="sig-space" id="receiver-sig-box">
-                            <span class="status-pending">Chưa xác nhận ký nhận</span>
-                            <br>
-                            <button class="btn-sign no-print" onclick="openSignatureModal()">✍️ Ký Nhận Ngay</button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
+.cloud-sync-badge { font-size: 12.5px; font-weight: bold; color: #16a34a; display: flex; align-items: center; gap: 6px; }
+.pulse-icon { width: 8px; height: 8px; background: #22c55e; border-radius: 50%; display: inline-block; box-shadow: 0 0 8px #22c55e; }
 
-    <!-- MODAL PHÂN QUYỀN KÝ ĐIỆN TỬ DÀNH CHỈ CHO NGƯỜI NHẬN -->
-    <div id="modal-ky-nhan" class="modal-overlay no-print">
-        <div class="modal-content-small">
-            <h3>Xác Nhận Chữ Ký Điện Tử Người Nhận</h3>
-            <p class="notice-text">⚠️ <strong>Phân quyền:</strong> Người nhận chỉ có quyền ký nhận hàng, không được thay đổi bất kỳ nội dung vật tư nào trên phiếu.</p>
-            
-            <div class="form-group">
-                <label>Họ và tên người nhận:</label>
-                <input type="text" id="signer-fullname" placeholder="Nhập họ và tên người nhận...">
-            </div>
-            <div class="form-group">
-                <label>Mã PIN / OTP Xác thực người nhận:</label>
-                <input type="password" id="signer-pin" placeholder="••••">
-            </div>
+.content-area { padding: 20px; flex: 1; overflow-y: auto; }
 
-            <div class="modal-actions-right">
-                <button class="btn btn-close" onclick="closeSignatureModal()">Hủy</button>
-                <button class="btn btn-excel" onclick="confirmReceiverSignature()">✅ Xác Nhận Ký & Lưu Cloud</button>
-            </div>
-        </div>
-    </div>
+/* DỊCH VỤ ĐỊNH DẠNG KHỔ GIẤY A4 */
+.a4-container {
+    width: 210mm;
+    min-height: 297mm;
+    padding: 20mm;
+    margin: 0 auto;
+    background: #fff;
+    box-shadow: 0 0 15px rgba(0,0,0,0.1);
+}
 
-    <script src="slips.js"></script>
-    <script src="app.js"></script>
-</body>
-</html>
+.slip-header-block { text-align: center; margin-bottom: 20px; border-bottom: 2px solid #000; padding-bottom: 10px; }
+.slip-header-block h2 { font-size: 18px; text-transform: uppercase; }
+.slip-meta-info { margin-bottom: 15px; font-size: 13px; line-height: 1.6; }
+
+/* BẢNG BIỂU VẬT TƯ & QR CODE */
+.slip-data-table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+.slip-data-table th, .slip-data-table td { border: 1px solid #000; padding: 6px; font-size: 12px; text-align: center; vertical-align: middle; }
+.slip-data-table th { background: #f8fafc; font-weight: bold; }
+.qr-code-box { display: flex; justify-content: center; align-items: center; }
+
+/* CHỮ KÝ ĐIỆN TỬ */
+.slip-signatures-container { display: flex; justify-content: space-between; margin-top: 30px; page-break-inside: avoid; }
+.sig-box { width: 45%; text-align: center; font-size: 13px; }
+.sub-text { font-style: italic; font-size: 11px; color: #64748b; }
+.sig-box-inner { height: 85px; margin-top: 8px; border: 1px dashed #cbd5e1; border-radius: 6px; display: flex; flex-direction: column; justify-content: center; align-items: center; }
+.sig-box-inner.signed { border: 1px solid #16a34a; background: #f0fdf4; color: #16a34a; font-weight: bold; }
+.text-warning { color: #dc2626; font-style: italic; }
+
+/* MODALS */
+.modal-backdrop { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; overflow-y: auto; padding: 20px; }
+.modal-window { max-width: 900px; margin: 0 auto; }
+.modal-toolbar { background: #fff; padding: 10px 20px; border-radius: 8px 8px 0 0; display: flex; gap: 10px; justify-content: flex-end; }
+
+.modal-card { background: #fff; width: 420px; margin: 80px auto; padding: 24px; border-radius: 8px; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1); }
+.alert-box { background: #eff6ff; border-left: 4px solid #3b82f6; padding: 10px; font-size: 12px; margin: 12px 0; color: #1e40af; }
+
+.input-group { margin-bottom: 12px; }
+.input-group label { display: block; font-size: 12.5px; font-weight: bold; margin-bottom: 4px; }
+.input-group input { width: 100%; padding: 8px; border: 1px solid #cbd5e1; border-radius: 4px; }
+
+/* BUTTONS */
+.btn { padding: 6px 14px; border: none; border-radius: 4px; cursor: pointer; font-size: 12.5px; font-weight: bold; }
+.btn-primary { background: #0284c7; color: #fff; }
+.btn-success { background: #16a34a; color: #fff; }
+.btn-danger { background: #ef4444; color: #fff; }
+.btn-secondary { background: #64748b; color: #fff; }
+.btn-sign-action { background: #ea580c; color: #fff; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer; font-size: 11px; margin-top: 4px; }
+.modal-card-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+
+/* MOBILE RESPONSIVE ADAPTATION */
+@media screen and (max-width: 768px) {
+    .btn-toggle-menu { display: block; }
+    .sidebar { position: fixed; left: -310px; top: 0; bottom: 0; z-index: 999; }
+    .sidebar.active { left: 0; }
+    .a4-container { width: 100%; min-height: auto; padding: 10px; margin: 0; }
+    .slip-data-table th, .slip-data-table td { font-size: 10px; padding: 4px; }
+    .modal-card { width: 95%; }
+}
+
+@media print {
+    .no-print, .sidebar, .top-bar { display: none !important; }
+    .app-layout, .main-wrapper { height: auto; overflow: visible; }
+    .a4-container { box-shadow: none; width: 100%; padding: 0; margin: 0; }
+    .modal-backdrop { position: static; background: none; padding: 0; }
+}
