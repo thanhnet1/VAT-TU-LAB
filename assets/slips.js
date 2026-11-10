@@ -427,13 +427,14 @@
       var rows = pg.map(function (it) {
         seq++; var sub = [it.serial ? 'S/N: ' + esc(it.serial) : '', it.part ? 'P/N: ' + esc(it.part) : ''].filter(Boolean).join(' &nbsp; ');
         var cat = xuat ? '' : catLabel(it.sid, it.bi);
+        var itemQR = QRLIB.svg('LABXVT|'+slip.id+'|'+(seq)+'|'+(it.rid||it.code||it.serial||it.name), {ecl:'M',border:1});
         return '<tr><td class="c">' + seq + '</td><td class="c">' + esc(it.code) + '</td><td>' + esc(it.name) + (sub ? '<div class="sub">' + sub + '</div>' : '') + (cat ? '<div class="sub cat">→ ' + esc(cat) + '</div>' : '') +
           (it.note ? '<div class="sub">' + esc(it.note) + '</div>' : '') + '</td><td class="c lot">' + esc(it.lot) + '</td><td class="c">' + esc(it.quality) + '</td><td class="c">' + esc(it.unit) +
-          '</td><td class="c">' + (it.qtyReq !== '' && it.qtyReq != null ? fmt1(num(it.qtyReq)) : '') + '</td><td class="c">' + fmt1(num(it.qty)) + '</td><td class="r m">' + fmt1(num(it.price)) + '</td><td class="r m">' + fmt1(num(it.qty) * num(it.price)) + '</td></tr>';
+          '</td><td class="c">' + (it.qtyReq !== '' && it.qtyReq != null ? fmt1(num(it.qtyReq)) : '') + '</td><td class="c">' + fmt1(num(it.qty)) + '</td><td class="r m">' + fmt1(num(it.price)) + '</td><td class="r m">' + fmt1(num(it.qty) * num(it.price)) + '</td><td class="item-qr">' + itemQR + '</td></tr>';
       }).join('');
       var foot = '';
       if (last) foot = xuat
-        ? '<tr class="tot"><td colspan="9" class="r"><b>Tổng Cộng:</b></td><td class="r m"><b>' + fmt1(money) + '</b></td></tr>'
+        ? '<tr class="tot"><td colspan="10" class="r"><b>Tổng Cộng:</b></td><td class="r m"><b>' + fmt1(money) + '</b></td></tr>'
         : '<tr class="tot"><td colspan="9" class="r"><b>Tổng:</b></td><td class="r m"><b>' + fmt1(money) + '</b></td></tr><tr class="tot"><td colspan="9" class="r"><b>Tổng thuế:</b></td><td class="r m"><b>' + fmt1(tax) + '</b></td></tr>' +
           '<tr class="tot"><td colspan="9" class="r"><b>Tổng thanh toán:</b></td><td class="r m"><b>' + fmt1(pays) + '</b></td></tr>';
       return '<div class="paper">' +
@@ -787,6 +788,7 @@
     if (window.XLSX) {
       var wb = XLSX.utils.book_new(), ws = XLSX.utils.aoa_to_sheet(aoa);
       ws['!cols'] = [6, 16, 38, 22, 18, 24, 11, 7, 11, 11, 10, 12, 30, 24].map(function (w) { return { wch: w }; });
+      ws['!pageSetup'] = { paperSize: 9, orientation: 'portrait', fitToWidth: 1, fitToHeight: 0 }; ws['!fitToPage'] = true; ws['!margins'] = {left:0.25,right:0.25,top:0.45,bottom:0.45,header:0.2,footer:0.2};
       XLSX.utils.book_append_sheet(wb, ws, TYPES[slip.type].plural.slice(0, 31)); XLSX.writeFile(wb, name + '.xlsx');
     } else { A.toast('Chưa tải được thư viện Excel (cần Internet) – xuất CSV thay thế.', 4000); A.download(name + '.csv', 'text/csv;charset=utf-8', A.toCSV(aoa)); }
   }
@@ -922,139 +924,3 @@
     listHTML: listHTML, openEditor: openEditor, view: openView, extraSheets: extraSheets, docSo: docSo, _paperHTML: paperHTML, _qrPayload: qrPayload
   };
 })();
-// ==========================================================================
-// BỔ SUNG CÁC HÀM XỬ LÝ QR CODE & CHỮ KÝ SỐ VÀO FILE ASSETS/SLIPS.JS GỐC
-// ==========================================================================
-
-// Biến lưu trạng thái phiếu xuất mẫu từ data gốc
-let currentExportSlip = {
-    code: "PXK-2026-001",
-    date: "10/11/2026",
-    receiver: "Nguyễn Văn A - VNPT Net 1",
-    isSigned: false,
-    signerName: "",
-    signedAt: "",
-    items: [
-        { id: "VT001", name: "Card quang XTC10 - MTCS", unit: "Cái", qty: 2, price: 15000000, total: 30000000 },
-        { id: "VT002", name: "Modul Ciena 6530", unit: "Bộ", qty: 1, price: 12500000, total: 12500000 },
-        { id: "VT003", name: "Khung Rack OMD 14-slot", unit: "Chiếc", qty: 3, price: 3000000, total: 9000000 }
-    ]
-};
-
-// 1. Render dữ liệu phiếu xuất kho và sinh Mã QR riêng từng dòng
-function loadSlipToA4View(slipData) {
-    const slip = slipData || currentExportSlip;
-    document.getElementById('slipCode').innerText = slip.code;
-    document.getElementById('slipDate').innerText = slip.date;
-    document.getElementById('slipReceiver').innerText = slip.receiver;
-
-    const tbody = document.getElementById('slipItemsBody');
-    tbody.innerHTML = '';
-
-    slip.items.forEach((item, index) => {
-        const tr = document.createElement('tr');
-        const qrId = `qr-cell-${index}`;
-
-        tr.innerHTML = `
-            <td>${index + 1}</td>
-            <td style="text-align: left;"><strong>${item.name}</strong><br><small>Mã: ${item.id}</small></td>
-            <td><div id="${qrId}" class="qr-box"></div></td>
-            <td>${item.unit}</td>
-            <td>${item.qty}</td>
-            <td>${item.price.toLocaleString('vi-VN')}</td>
-            <td>${item.total.toLocaleString('vi-VN')}</td>
-        `;
-        tbody.appendChild(tr);
-
-        // Sinh mã QR riêng biệt cho dòng vật tư này
-        setTimeout(() => {
-            const container = document.getElementById(qrId);
-            if (container) {
-                container.innerHTML = '';
-                new QRCode(container, {
-                    text: `ITEM-ID:${item.id}|NAME:${item.name}|QTY:${item.qty}`,
-                    width: 45,
-                    height: 45
-                });
-            }
-        }, 50);
-    });
-
-    renderReceiverSigUI(slip);
-}
-
-// 2. Hiển thị chữ ký điện tử & Phân quyền bảo mật cho người nhận
-function renderReceiverSigUI(slip) {
-    const sigArea = document.getElementById('receiverSigArea');
-    if (slip.isSigned) {
-        sigArea.className = "sig-space signed";
-        sigArea.innerHTML = `
-            ✅ ĐÃ XÁC NHẬN KÝ NHẬN<br>
-            <strong>${slip.signerName}</strong><br>
-            <small style="font-size: 10px">${slip.signedAt}</small>
-        `;
-    } else {
-        sigArea.className = "sig-space";
-        sigArea.innerHTML = `
-            <span class="text-pending">Chưa xác nhận ký nhận</span><br>
-            <button class="btn-sign no-print" onclick="openSignatureModal()">✍️ Ký Nhận Hàng</button>
-        `;
-    }
-}
-
-function openSignatureModal() {
-    if (currentExportSlip.isSigned) {
-        alert("Phiếu xuất kho này đã được hoàn tất ký nhận trước đó!");
-        return;
-    }
-    document.getElementById('modalKyNhan').style.display = 'block';
-}
-
-function closeSignatureModal() {
-    document.getElementById('modalKyNhan').style.display = 'none';
-}
-
-function saveReceiverSignature() {
-    const name = document.getElementById('signerName').value.trim();
-    const pin = document.getElementById('signerPin').value.trim();
-
-    if (!name || !pin) {
-        alert("Vui lòng nhập Tên người nhận và Mã PIN chữ ký số!");
-        return;
-    }
-
-    // Ghi nhận chữ ký & Khóa quyền chỉnh sửa vật tư
-    currentExportSlip.isSigned = true;
-    currentExportSlip.signerName = name;
-    currentExportSlip.signedAt = new Date().toLocaleString('vi-VN');
-
-    renderReceiverSigUI(currentExportSlip);
-    closeSignatureModal();
-    alert("Ký xác nhận hàng thành công! Dữ liệu đã lưu trên Cloud.");
-}
-
-// 3. Xuất File Excel giữ nguyên cấu trúc khổ A4
-function exportSlipToExcelA4() {
-    const htmlContent = document.getElementById('slipA4View').innerHTML;
-    const blobHtml = `
-        <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
-        <head>
-            <meta charset="utf-8">
-            <style>
-                @page { size: A4 portrait; }
-                table { border-collapse: collapse; width: 100%; }
-                th, td { border: 0.5pt solid #000; text-align: center; vertical-align: middle; }
-                .slip-header { text-align: center; font-size: 16pt; font-weight: bold; }
-                .no-print { display: none; }
-            </style>
-        </head>
-        <body>${htmlContent}</body>
-        </html>
-    `;
-
-    const blob = new Blob([blobHtml], { type: 'application/vnd.ms-excel;charset=utf-8' });
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = `Phieu_Xuat_Kho_${currentExportSlip.code}.xls`;
-    link.click();
-}
