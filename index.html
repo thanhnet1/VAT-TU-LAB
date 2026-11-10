@@ -1,201 +1,73 @@
 <!DOCTYPE html>
 <html lang="vi">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Quản Lý Kho Vật Tư & Tài Sản</title>
-    <link rel="stylesheet" href="assets/style.css">
-    <!-- Thư viện QRCode để tạo mã QR động cho từng dòng vật tư -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b3a5b">
+<title>Tài sản – Vật tư Truyền dẫn LAB</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E📡%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="assets/style.css?v=2026.11.07-3">
 </head>
 <body>
-    <div class="app-layout">
-        <!-- Sidebar Menu Dạng Cây Theo Đúng Ảnh Mẫu -->
-        <aside class="sidebar" id="app-sidebar">
-            <div class="sidebar-brand">
-                <h2>🏬 KHO VẬT TƯ - TÀI SẢN</h2>
-            </div>
-            <nav class="tree-nav">
-                <ul class="tree-root">
-                    <li class="tree-node open">
-                        <div class="node-label" onclick="toggleTreeNode(this)">
-                            <span class="arrow">▼</span> 🏠 <strong>Tổng quan (Vật tư - Tài sản)</strong>
-                        </div>
-                        <ul class="tree-children">
-                            <!-- 1. Kho vật tư -->
-                            <li class="tree-node open">
-                                <div class="node-label" onclick="toggleTreeNode(this)">
-                                    <span class="arrow">▼</span> 📦 Kho vật tư
-                                </div>
-                                <ul class="tree-children">
-                                    <li class="tree-leaf" onclick="navTo('phieu-xuat')">📄 Phiếu xuất</li>
-                                    <li class="tree-leaf" onclick="navTo('phieu-nhap')">📥 Phiếu nhập</li>
-                                    
-                                    <!-- Truyền dẫn & các phân hệ -->
-                                    <li class="tree-node">
-                                        <div class="node-label" onclick="toggleTreeNode(this)">
-                                            <span class="arrow">▶</span> 📡 Truyền dẫn
-                                        </div>
-                                        <ul class="tree-children">
-                                            <li class="tree-node">
-                                                <div class="node-label" onclick="toggleTreeNode(this)">
-                                                    <span class="arrow">▶</span> ⚙️ Thiết bị theo hệ thống
-                                                </div>
-                                                <ul class="tree-subchildren">
-                                                    <li onclick="filterDeviceSys('XTC10 - MTCS')">- XTC10 - MTCS</li>
-                                                    <li onclick="filterDeviceSys('Ciena 6530')">- Ciena 6530</li>
-                                                    <li onclick="filterDeviceSys('OMD - 14 slot')">- OMD - 14 slot</li>
-                                                    <li onclick="filterDeviceSys('Nokia 681')">- Nokia 681</li>
-                                                    <li onclick="filterDeviceSys('OTN - 32 slot')">- OTN - 32 slot</li>
-                                                    <li onclick="filterDeviceSys('PSS 16 - 64')">- PSS 16 - 64</li>
-                                                    <li onclick="filterDeviceSys('HW 3500 - 7500')">- HW 3500 - 7500</li>
-                                                    <li onclick="filterDeviceSys('HW 6800 - 8800')">- HW 6800 - 8800</li>
-                                                    <li onclick="filterDeviceSys('Alu 1850 - 1830')">- Alu 1850 - 1830</li>
-                                                    <li onclick="filterDeviceSys('Alu 1660 - 1682')">- Alu 1660 - 1682</li>
-                                                    <li onclick="filterDeviceSys('HW 9500 - Ericson')">- HW 9500 - Ericson</li>
-                                                </ul>
-                                            </li>
-                                        </ul>
-                                    </li>
 
-                                    <!-- Thiết bị IP -->
-                                    <li class="tree-node">
-                                        <div class="node-label" onclick="toggleTreeNode(this)">
-                                            <span class="arrow">▶</span> 🌐 Thiết bị IP
-                                        </div>
-                                        <ul class="tree-children">
-                                            <li class="tree-leaf" onclick="navTo('tb-ip-he-thong')">- Thiết bị theo hệ thống</li>
-                                        </ul>
-                                    </li>
+<div id="boot" class="boot"><div class="spinner"></div><p>Đang tải dữ liệu…</p></div>
 
-                                    <!-- Thiết bị vô tuyến -->
-                                    <li class="tree-node">
-                                        <div class="node-label" onclick="toggleTreeNode(this)">
-                                            <span class="arrow">▶</span> 📻 Thiết bị vô tuyến
-                                        </div>
-                                        <ul class="tree-children">
-                                            <li class="tree-leaf" onclick="navTo('tb-vo-tuyen-he-thong')">- Thiết bị theo hệ thống</li>
-                                        </ul>
-                                    </li>
+<header class="topbar" id="topbar" hidden>
+  <button id="btnMenu" class="icon-btn only-mobile" aria-label="Mở menu">☰</button>
+  <a class="brand" href="#/" title="Về trang Tổng quan">
+    <span class="logo">📡</span>
+    <span class="brand-text"><b id="appTitle"></b><small id="appSub"></small></span>
+  </a>
+  <label class="search">
+    <span aria-hidden="true">🔍</span>
+    <input id="gq" type="search" title="Phím tắt: /" placeholder="Tìm serial, part number, tên vật tư…" autocomplete="off" spellcheck="false">
+    <button id="gqClear" type="button" class="search-clear" hidden aria-label="Xoá tìm kiếm">✕</button>
+  </label>
+  <div class="actions">
+    <span id="dirty" class="dirty" hidden title="Bạn đã chỉnh sửa dữ liệu – chỉ lưu trên trình duyệt này">● Đã chỉnh sửa</span>
+    <button id="btnPXK" class="btn accent" type="button" title="Tạo phiếu xuất kho">📤 <span>Phiếu xuất</span></button>
+    <button id="btnPNK" class="btn accent" type="button" title="Tạo phiếu nhập kho">📥 <span>Phiếu nhập</span></button>
+    <button id="btnEdit" class="btn" type="button" aria-pressed="false">✏️ <span>Chỉnh sửa</span></button>
+    <details class="menu" id="menuExport">
+      <summary class="btn">⬇ <span>Xuất / Sao lưu</span></summary>
+      <div class="menu-pop">
+        <button type="button" data-act="xlsx-all">📗 Excel – toàn bộ các sheet</button>
+        <button type="button" data-act="xlsx-cur">📗 Excel – sheet đang xem</button>
+        <button type="button" data-act="csv-cur">📄 CSV – sheet đang xem</button>
+        <hr>
+        <button type="button" data-act="json-out">💾 Sao lưu JSON (kèm chỉnh sửa)</button>
+        <button type="button" data-act="json-in">📂 Nhập sao lưu JSON…</button>
+        <hr>
+        <button type="button" data-act="reset" class="danger">↩ Khôi phục dữ liệu gốc</button>
+      </div>
+    </details>
+    <button id="btnPrint" class="btn ghost" type="button" title="In trang đang xem (A4 ngang)">🖨</button>
+    <button id="btnTheme" class="btn ghost" type="button" title="Đổi giao diện sáng / tối">🌓</button>
+  </div>
+</header>
 
-                                    <!-- Thiết bị VSAT -->
-                                    <li class="tree-leaf" onclick="navTo('tb-vsat')">🛰️ Thiết bị VSAT</li>
-                                </ul>
-                            </li>
+<div id="editbar" class="editbar" hidden>
+  ✏️ <b>Đang ở chế độ chỉnh sửa.</b> Bấm vào ô để sửa, tích ô <b>Đã kiểm</b>, thêm/xoá dòng.
+  Thay đổi <u>chỉ lưu trên trình duyệt này</u> – dùng <b>Xuất / Sao lưu</b> để giữ hoặc chia sẻ.
+</div>
 
-                            <!-- Các mục đồng cấp -->
-                            <li class="tree-leaf" onclick="navTo('vt-do-kiem')">🔬 Vật tư đo kiểm</li>
-                            <li class="tree-leaf" onclick="navTo('vt-khong-nguon-goc')">❓ Vật tư không rõ nguồn gốc</li>
-                            
-                            <!-- Bổ sung Mục Tài Sản -->
-                            <li class="tree-leaf highlight-tai-san" onclick="navTo('tai-san')">🏢 Tài Sản</li>
-                        </ul>
-                    </li>
-                </ul>
-            </nav>
-        </aside>
+<div class="layout" id="layout" hidden>
+  <aside id="sidebar" class="sidebar" aria-label="Danh sách sheet"></aside>
+  <div id="overlay" class="overlay"></div>
+  <main id="main" class="main"></main>
+</div>
 
-        <!-- Container chính hiển thị dữ liệu -->
-        <main class="main-wrapper">
-            <header class="top-bar">
-                <button class="btn-toggle-menu" onclick="toggleMobileMenu()">☰ Menu</button>
-                <div class="cloud-sync-badge" id="cloudStatus">
-                    <span class="pulse-icon"></span> Cloud Connected (Online)
-                </div>
-            </header>
+<input type="file" id="fileIn" accept="application/json,.json" hidden>
+<div id="modalRoot"></div>
+<div id="printRoot"></div>
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
 
-            <div class="content-area" id="mainContent">
-                <!-- Nơi load dữ liệu và các giao diện -->
-            </div>
-        </main>
-    </div>
-
-    <!-- MODAL XEM & IN PHIẾU XUẤT KHO (KHỔ GIẤY A4 CHUẨN) -->
-    <div id="slipModal" class="modal-backdrop">
-        <div class="modal-window">
-            <div class="modal-toolbar no-print">
-                <button class="btn btn-primary" onclick="window.print()">🖨️ In / Xuất PDF (A4)</button>
-                <button class="btn btn-success" onclick="exportExcelA4Format()">📊 Xuất File Excel (Giữ chuẩn A4)</button>
-                <button class="btn btn-danger" onclick="closeSlipModal()">✕ Đóng</button>
-            </div>
-
-            <!-- Khổ Giấy A4 -->
-            <div class="a4-container" id="slipA4Content">
-                <div class="slip-header-block">
-                    <h2>PHIẾU XUẤT KHO VẬT TƯ & TÀI SẢN</h2>
-                    <p>Mã phiếu: <strong id="lblSlipCode">PXK-2026-889</strong> | Ngày tạo: <span id="lblSlipDate">10/11/2026</span></p>
-                </div>
-
-                <div class="slip-meta-info">
-                    <p><strong>Đơn vị xuất kho:</strong> Trung tâm Mạng lưới VNPT-Net 1</p>
-                    <p><strong>Người / Đơn vị nhận:</strong> <span id="lblReceiverName">Đội Vận hành Bảo dưỡng</span></p>
-                    <p><strong>Lý do xuất:</strong> Xuất vật tư thay thế thiết bị định kỳ</p>
-                </div>
-
-                <!-- Bảng danh mục vật tư có QR riêng từng dòng -->
-                <table class="slip-data-table" id="tbSlipItems">
-                    <thead>
-                        <tr>
-                            <th style="width: 6%;">STT</th>
-                            <th style="width: 32%;">Tên Vật Tư / Thiết Bị</th>
-                            <th style="width: 16%;">Mã QR Danh Mục</th>
-                            <th style="width: 8%;">ĐVT</th>
-                            <th style="width: 8%;">SL</th>
-                            <th style="width: 15%;">Đơn Giá (VNĐ)</th>
-                            <th style="width: 15%;">Thành Tiền (VNĐ)</th>
-                        </tr>
-                    </thead>
-                    <tbody id="slipTableRows">
-                        <!-- Nội dung Render từ JS -->
-                    </tbody>
-                </table>
-
-                <!-- Khu vực Chữ Ký Điện Tử -->
-                <div class="slip-signatures-container">
-                    <div class="sig-box">
-                        <p><strong>NGƯỜI LẬP PHIẾU</strong></p>
-                        <span class="sub-text">(Ký & ghi rõ họ tên)</span>
-                        <div class="sig-box-inner signed">Đã xác nhận hệ thống</div>
-                    </div>
-                    <div class="sig-box">
-                        <p><strong>NGƯỜI NHẬN HÀNG</strong></p>
-                        <span class="sub-text">(Chữ ký điện tử người nhận)</span>
-                        <div class="sig-box-inner" id="receiverSigBox">
-                            <span class="text-warning">Chưa xác nhận ký nhận</span>
-                            <br>
-                            <button class="btn-sign-action no-print" onclick="openReceiverSignatureModal()">✍️ Ký Nhận Hàng</button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- MODAL CHỮ KÝ ĐIỆN TỬ CHO NGƯỜI NHẬN (PHÂN QUYỀN CHỈ KÝ NHẬN, KHÔNG ĐƯỢC SỬA PHIẾU) -->
-    <div id="signModal" class="modal-backdrop no-print">
-        <div class="modal-card">
-            <h3>Xác Nhận Chữ Ký Số Người Nhận</h3>
-            <div class="alert-box">
-                🔒 <strong>Phân quyền bảo mật:</strong> Quyền tài khoản người nhận chỉ được thực hiện xác nhận ký nhận bàn giao hàng, không được phép chỉnh sửa danh mục vật tư.
-            </div>
-            <div class="input-group">
-                <label>Họ tên người nhận:</label>
-                <input type="text" id="signerNameInput" placeholder="Nhập họ và tên...">
-            </div>
-            <div class="input-group">
-                <label>Mã PIN / OTP Chữ ký số:</label>
-                <input type="password" id="signerPinInput" placeholder="••••">
-            </div>
-            <div class="modal-card-actions">
-                <button class="btn btn-secondary" onclick="closeReceiverSignatureModal()">Hủy</button>
-                <button class="btn btn-success" onclick="processReceiverSign()">✅ Ký Xác Nhận & Lưu Cloud</button>
-            </div>
-        </div>
-    </div>
-
-    <script src="assets/config.js"></script>
-    <script src="assets/data.js"></script>
-    <script src="assets/slips.js"></script>
-    <script src="assets/app.js"></script>
+<script src="assets/config.js?v=2026.11.07-3"></script>
+<script src="assets/supabase-config.js"></script>
+<script src="assets/data.js"></script>
+<!-- Thư viện xuất Excel (tuỳ chọn). Nếu không tải được, web vẫn chạy và tự chuyển sang xuất CSV. -->
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js" defer></script>
+<script src="assets/slips.js?v=2026.11.07-3" defer></script>
+<script src="assets/app.js?v=2026.11.07-3" defer></script>
 </body>
 </html>
