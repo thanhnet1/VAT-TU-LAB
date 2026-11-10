@@ -6,7 +6,7 @@
 <meta name="theme-color" content="#0b3a5b">
 <title>Tài sản – Vật tư Truyền dẫn LAB</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E📡%3C/text%3E%3C/svg%3E">
-<link rel="stylesheet" href="assets/style.css?v=2026.11.07-3">
+<link rel="stylesheet" href="assets/style.css">
 </head>
 <body>
 
@@ -24,9 +24,9 @@
     <button id="gqClear" type="button" class="search-clear" hidden aria-label="Xoá tìm kiếm">✕</button>
   </label>
   <div class="actions">
+    <button id="btnNewOut" class="btn kho-btn" type="button" title="Tạo phiếu xuất kho (cần đăng nhập admin)">📤 <span>Phiếu xuất</span></button>
+    <button id="btnNewIn" class="btn kho-btn" type="button" title="Tạo phiếu nhập kho (cần đăng nhập admin)">📥 <span>Phiếu nhập</span></button>
     <span id="dirty" class="dirty" hidden title="Bạn đã chỉnh sửa dữ liệu – chỉ lưu trên trình duyệt này">● Đã chỉnh sửa</span>
-    <button id="btnPXK" class="btn accent" type="button" title="Tạo phiếu xuất kho">📤 <span>Phiếu xuất</span></button>
-    <button id="btnPNK" class="btn accent" type="button" title="Tạo phiếu nhập kho">📥 <span>Phiếu nhập</span></button>
     <button id="btnEdit" class="btn" type="button" aria-pressed="false">✏️ <span>Chỉnh sửa</span></button>
     <details class="menu" id="menuExport">
       <summary class="btn">⬇ <span>Xuất / Sao lưu</span></summary>
@@ -41,6 +41,7 @@
         <button type="button" data-act="reset" class="danger">↩ Khôi phục dữ liệu gốc</button>
       </div>
     </details>
+    <button id="btnLogin" class="btn" type="button" title="Đăng nhập admin">🔐 <span>Đăng nhập</span></button>
     <button id="btnPrint" class="btn ghost" type="button" title="In trang đang xem (A4 ngang)">🖨</button>
     <button id="btnTheme" class="btn ghost" type="button" title="Đổi giao diện sáng / tối">🌓</button>
   </div>
@@ -58,16 +59,14 @@
 </div>
 
 <input type="file" id="fileIn" accept="application/json,.json" hidden>
-<div id="modalRoot"></div>
-<div id="printRoot"></div>
 <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
-<script src="assets/config.js?v=2026.11.07-3"></script>
-<script src="assets/supabase-config.js"></script>
+<script src="assets/config.js"></script>
 <script src="assets/data.js"></script>
 <!-- Thư viện xuất Excel (tuỳ chọn). Nếu không tải được, web vẫn chạy và tự chuyển sang xuất CSV. -->
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js" defer></script>
-<script src="assets/slips.js?v=2026.11.07-3" defer></script>
-<script src="assets/app.js?v=2026.11.07-3" defer></script>
+<script src="assets/qr.js" defer></script>      <!-- tạo mã QR (offline) -->
+<script src="assets/kho.js" defer></script>     <!-- phiếu xuất / nhập kho, đăng nhập admin -->
+<script src="assets/app.js" defer></script>
 </body>
 </html>
