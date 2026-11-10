@@ -1,56 +1,65 @@
-// Đóng/Mở các cấp Menu Cây
-function toggleTree(element) {
-    const parentLi = element.parentElement;
-    parentLi.classList.toggle('open');
+// Đóng/Mở các node trong menu dạng cây
+function toggleTreeNode(element) {
+    const parentNode = element.parentElement;
+    parentNode.classList.toggle('open');
+    
+    const arrow = element.querySelector('.arrow');
+    if (arrow) {
+        arrow.innerText = parentNode.classList.contains('open') ? '▼' : '▶';
+    }
 }
 
-// Chuyển Tab danh mục
-function switchTab(tabKey) {
-    const body = document.getElementById('content-body');
+// Điều hướng xem danh mục
+function navTo(targetKey) {
+    const container = document.getElementById('mainContent');
     
-    if (tabKey === 'phieu-xuat-list') {
-        body.innerHTML = `
-            <h2>📋 Danh Sách Phiếu Xuất Kho</h2>
-            <p>Bấm bên dưới để xem phiếu chi tiết & thực hiện ký nhận:</p>
+    if (targetKey === 'phieu-xuat') {
+        container.innerHTML = `
+            <h2>📄 Danh Sách Phiếu Xuất Kho</h2>
+            <p>Bấm vào nút bên dưới để mở giao diện phiếu chuẩn A4 và thực hiện ký nhận:</p>
             <br>
-            <button class="btn btn-print" onclick="openSlipModal()">👁️ Xem Phiếu PXK-2026-001</button>
+            <button class="btn btn-primary" onclick="openSlipModal()">👁️ Xem Phiếu Xuất PXK-2026-889</button>
+        `;
+    } else if (targetKey === 'tai-san') {
+        container.innerHTML = `
+            <h2>🏢 Quản Lý Danh Mục Tài Sản</h2>
+            <p>Dữ liệu danh mục Tài sản được lưu trữ và đồng bộ trên Cloud Server.</p>
         `;
     } else {
-        body.innerHTML = `
-            <h2>Danh mục: ${tabKey.toUpperCase()}</h2>
-            <p>Dữ liệu được tải trực tiếp từ Cloud Storage.</p>
+        container.innerHTML = `
+            <h2>Danh mục: ${targetKey.toUpperCase()}</h2>
+            <p>Dữ liệu đang được kết nối với Cloud Database...</p>
         `;
     }
 }
 
-// Lọc thiết bị truyền dẫn theo hệ thống
-function filterSystem(systemName) {
-    const body = document.getElementById('content-body');
-    body.innerHTML = `
-        <h2>📡 Hệ Thống Truyền Dẫn: ${systemName}</h2>
-        <p>Danh sách các thiết bị, card quang và vật tư thuộc hệ thống <strong>${systemName}</strong>.</p>
+// Lọc thiết bị theo hệ thống (XTC10, Ciena, OMD, Nokia, OTN, PSS, HW, Alu...)
+function filterDeviceSys(sysName) {
+    const container = document.getElementById('mainContent');
+    container.innerHTML = `
+        <h2>📡 Phân Hệ Truyền Dẫn: ${sysName}</h2>
+        <p>Danh sách vật tư và thiết bị thuộc hệ thống <strong>${sysName}</strong>.</p>
     `;
 }
 
-// Ẩn / Hiện Sidebar trên Mobile
-function toggleMobileSidebar() {
-    const sidebar = document.getElementById('sidebar');
-    sidebar.classList.toggle('active');
+// Bật/Tắt Menu Sidebar trên thiết bị di động
+function toggleMobileMenu() {
+    document.getElementById('app-sidebar').classList.toggle('active');
 }
 
-// Mở & Đóng Modal Phiếu Xuất Kho
+// Mở/Đóng Modal Phiếu Xuất
 function openSlipModal() {
-    document.getElementById('modal-phieu-xuat').style.display = 'block';
-    if (typeof renderSlipContent === 'function') {
-        renderSlipContent(sampleSlipData);
+    document.getElementById('slipModal').style.display = 'block';
+    if (typeof renderSlipTable === 'function') {
+        renderSlipTable(currentSlipData);
     }
 }
 
 function closeSlipModal() {
-    document.getElementById('modal-phieu-xuat').style.display = 'none';
+    document.getElementById('slipModal').style.display = 'none';
 }
 
-// Tải ứng dụng
+// Khởi tạo ứng dụng
 window.addEventListener('DOMContentLoaded', () => {
-    switchTab('phieu-xuat-list');
+    navTo('phieu-xuat');
 });
