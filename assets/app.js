@@ -11,6 +11,7 @@
     groupNames: ['Thiết bị theo hệ thống', 'Vật tư rời / đo kiểm'], sheetLabels: {}, colorMeaning: {}, maxSearchResults: 400
   }, window.APP_CONFIG || {});
 
+  const BUILD = '2026.11.07-3';           // phải trùng với slips.js (dùng để phát hiện file cũ do bộ nhớ đệm)
   const $ = (s, el = document) => el.querySelector(s);
   const $$ = (s, el = document) => Array.from(el.querySelectorAll(s));
   const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -60,54 +61,74 @@
   /* ---------- Trạng thái ---------- */
   let DATA = null;                 // dữ liệu gốc (từ data.js)
   let ST = null;                   // dữ liệu đang dùng (gốc + chỉnh sửa cục bộ): { sheets }
-  const V = { route: { page: 'overview', id: null }, gq: '', edit: false, f: { q: '', chk: 'all', color: 'all' }, collapsed: {} };
+  const newF = () => ({ q: '', chk: 'all', color: 'all', showX: false });
+  const V = { route: { page: 'overview', id: null }, gq: '', edit: false, f: newF(), collapsed: {} };
 
   const clone = o => JSON.parse(JSON.stringify(o));
+  /* Module phiếu kho: nếu thiếu file slips.js thì web vẫn chạy, chỉ báo thiếu thay vì treo toàn bộ */
+  const SL = () => window.Slips || {
+    init() {}, extraSheets: () => [],
+    listHTML: () => '<div class="card"><div class="empty">⚠ Không tải được <b>assets/slips.js</b> nên chưa dùng được phiếu kho. Hãy kiểm tra file đã được tải lên đủ và bấm Ctrl+F5.</div></div>',
+    view: () => toast('⚠ Thiếu file assets/slips.js – chưa mở được phiếu.', 5000), openEditor: () => toast('⚠ Thiếu file assets/slips.js – chưa tạo được phiếu.', 5000)
+  };
+  /** Kiểm tra đủ file & đúng phiên bản; nếu lệch thì hiện thanh cảnh báo màu đỏ nói rõ file nào */
+  function checkModules() {
+    const bad = [];
+    if (!window.Slips) bad.push('<b>assets/slips.js</b> (chưa tải được)'); else if (Slips.ver !== BUILD) bad.push('<b>assets/slips.js</b> là bản cũ (' + esc(Slips.ver || '?') + ')');
+    if (!bad.length) return;
+    const d = document.createElement('div'); d.className = 'mod-banner'; d.id = 'modBanner';
+    d.innerHTML = '⚠ Một số file của web chưa cập nhật đúng: ' + bad.join('; ') + '. Nguyên nhân thường gặp: <b>chưa tải file lên GitHub</b> hoặc <b>trình duyệt đang giữ bản cũ</b>. Cách xử lý: tải đủ các file trong thư mục <code>assets</code> rồi bấm <b>Ctrl + F5</b> (điện thoại: xoá bộ nhớ đệm / mở tab ẩn danh).<button type="button" onclick="this.parentNode.remove()">Đóng</button>';
+    document.body.insertBefore(d, document.body.firstChild);
+  }
   const sheetById = id => ST.sheets.find(s => s.id === id);
   const labelOf = s => CFG.sheetLabels[s.id] || s.name;
-  const liveRows = b => b.rows.filter(r => !r.x);           // dòng còn trong kho (r.x = đã nằm trong phiếu xuất)
-  const countRows = s => s.blocks.reduce((n, b) => n + liveRows(b).length, 0);
-  const countChecked = s => s.blocks.reduce((n, b) => n + b.rows.filter(r => !r.x && r.c === true).length, 0);
-  const newUid = () => 'n' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
-  /** Mỗi dòng vật tư có mã định danh ổn định (u) để phiếu kho tham chiếu */
-  function ensureUids() {
-    const seen = new Set();
-    ST.sheets.forEach(s => s.blocks.forEach((b, bi) => b.rows.forEach(r => {
-      let u = r.u;
-      if (!u || seen.has(u)) { u = r.r > 0 ? `${s.id}.${bi}.${r.r}` : newUid(); if (seen.has(u)) u = newUid(); r.u = u; }
-      seen.add(u);
-    })));
+  /* Kho: dòng có r.x = đã xuất theo phiếu (ẩn khỏi danh mục) · dòng có r.n = nhập theo phiếu (nhãn "MỚI") */
+  const isStock = r => !r.x;
+  const stockRows = b => b.rows.filter(isStock);
+  const countRows = s => s.blocks.reduce((n, b) => n + stockRows(b).length, 0);
+  const countChecked = s => s.blocks.reduce((n, b) => n + stockRows(b).filter(r => r.c === true).length, 0);
+  const countExported = () => ST.sheets.reduce((n, s) => n + s.blocks.reduce((m, b) => m + b.rows.filter(r => r.x).length, 0), 0);
+  let uidN = 0;
+  const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6) + (uidN++).toString(36);
+  /** Mỗi dòng có mã riêng r.i (cố định) để phiếu liên kết đúng vật tư dù thứ tự dòng thay đổi */
+  function ensureIds(sheets) {
+    sheets.forEach(s => s.blocks.forEach((b, bi) => b.rows.forEach(r => { if (!r.i) r.i = r.r ? `${s.id}:${bi}:${r.r}` : 'u' + uid(); })));
   }
-  const mkVouchers = v => (v && Array.isArray(v.out) && Array.isArray(v['in'])) ? v : { out: [], 'in': [], seqOut: 0, seqIn: 0 };
+  const emptySlips = () => ({ xuat: [], nhap: [] });
 
   function loadState() {
+    let st = null;
     try {
       const saved = JSON.parse(localStorage.getItem(LS('state')) || 'null');
       if (saved && Array.isArray(saved.sheets)) {
-        if (saved.ver === DATA.meta.version) return { sheets: saved.sheets, vouchers: mkVouchers(saved.vouchers), dirty: true };
-        const useNew = confirm('Dữ liệu gốc trên website vừa được cập nhật.\n\nOK  = dùng dữ liệu MỚI (xoá chỉnh sửa & phiếu kho cũ trên máy này – hãy Sao lưu JSON trước nếu cần)\nHủy = giữ chỉnh sửa và phiếu kho cũ của tôi');
-        if (useNew) localStorage.removeItem(LS('state'));
-        else return { sheets: saved.sheets, vouchers: mkVouchers(saved.vouchers), dirty: true };
+        if (saved.ver === DATA.meta.version) st = { sheets: saved.sheets, slips: saved.slips || emptySlips(), dirty: true };
+        else {
+          const useNew = confirm('Dữ liệu gốc trên website vừa được cập nhật.\n\nOK  = dùng dữ liệu MỚI (xoá chỉnh sửa & phiếu cũ trên máy này)\nHủy = giữ chỉnh sửa và phiếu cũ của tôi');
+          if (useNew) localStorage.removeItem(LS('state'));
+          else st = { sheets: saved.sheets, slips: saved.slips || emptySlips(), dirty: true };
+        }
       }
     } catch (e) { /* bỏ qua */ }
-    return { sheets: clone(DATA.sheets), vouchers: mkVouchers(), dirty: false };
+    if (!st) st = { sheets: clone(DATA.sheets), slips: emptySlips(), dirty: false };
+    ensureIds(st.sheets); return st;
   }
   let saveT;
   function persist() {
     ST.dirty = true; $('#dirty').hidden = false;
     clearTimeout(saveT);
     saveT = setTimeout(() => {
-      try { localStorage.setItem(LS('state'), JSON.stringify({ ver: DATA.meta.version, sheets: ST.sheets, vouchers: ST.vouchers })); }
+      try { localStorage.setItem(LS('state'), JSON.stringify({ ver: DATA.meta.version, sheets: ST.sheets, slips: ST.slips })); }
       catch (e) { toast('⚠ Không lưu được vào trình duyệt (bộ nhớ đầy hoặc bị chặn). Hãy dùng Sao lưu JSON.', 5000); }
     }, 250);
   }
 
   /* ---------- Định tuyến (hash) ---------- */
   function parseHash() {
-    const m = location.hash.match(/^#\/s\/([\w-]+)/);
-    if (location.hash === '#/xuat') V.route = { page: 'out', id: null };
-    else if (location.hash === '#/nhap') V.route = { page: 'in', id: null };
-    else V.route = m && sheetById(m[1]) ? { page: 'sheet', id: m[1] } : { page: 'overview', id: null };
+    let m = location.hash.match(/^#\/s\/([\w-]+)/);
+    if (m && sheetById(m[1])) { V.route = { page: 'sheet', id: m[1] }; return; }
+    m = location.hash.match(/^#\/(xuat|nhap)(?:\/(.+))?$/);
+    if (m) { let sl = null; try { sl = m[2] ? decodeURIComponent(m[2]) : null; } catch (e) { sl = m[2]; } V.route = { page: 'slips', id: m[1], slip: sl }; return; }
+    V.route = { page: 'overview', id: null };
   }
   function go(hash) { if (location.hash === hash) { render(); } else location.hash = hash; }
 
@@ -116,7 +137,8 @@
     const groups = [[], []];
     ST.sheets.forEach(s => groups[s.group === 1 ? 1 : 0].push(s));
     let h = `<a class="nav-item ${V.route.page === 'overview' && !V.gq ? 'active' : ''}" href="#/"><span class="nm">🏠 Tổng quan</span></a>`;
-    if (window.KHO) h += KHO.sidebarHTML(V.gq ? '' : V.route.page);
+    h += `<div class="nav-group">Kho vật tư</div>` + [['xuat', '📤 Phiếu xuất kho'], ['nhap', '📥 Phiếu nhập kho']].map(([k, l]) =>
+      `<a class="nav-item ${V.route.page === 'slips' && V.route.id === k && !V.gq ? 'active' : ''}" href="#/${k}"><span class="nm">${l}</span><span class="ct">${(ST.slips[k] || []).length}</span></a>`).join('');
     groups.forEach((g, i) => {
       if (!g.length) return;
       h += `<div class="nav-group">${esc(CFG.groupNames[i] || '')}</div>`;
@@ -134,8 +156,7 @@
     ST.sheets.forEach(s => s.blocks.forEach(b => {
       const k = b.cols.findIndex(x => fold(x).trim() === 'tinh trang');
       if (k < 0) return;
-      b.rows.forEach(r => {
-        if (r.x) return;
+      stockRows(b).forEach(r => {
         const v = fold(r.v[k] || '').trim(); if (!v) return;
         if (v.startsWith('hong')) c['hỏng']++; else if (v.startsWith('tot')) c['tốt']++; else if (v.startsWith('loi')) c['lỗi']++; else c['khác']++;
       });
@@ -144,26 +165,29 @@
   }
   function colorCounts() {
     const m = {};
-    ST.sheets.forEach(s => s.blocks.forEach(b => b.rows.forEach(r => {
-      if (r.f && !r.x) new Set(Object.values(r.f)).forEach(h => { m[h] = (m[h] || 0) + 1; });
+    ST.sheets.forEach(s => s.blocks.forEach(b => stockRows(b).forEach(r => {
+      if (r.f) new Set(Object.values(r.f)).forEach(h => { m[h] = (m[h] || 0) + 1; });
     })));
     return Object.entries(m).sort((a, b) => b[1] - a[1]);
   }
 
   function viewOverview() {
     let blocks = 0, rows = 0, chk = 0, q2 = 0;
-    ST.sheets.forEach(s => s.blocks.forEach(b => { blocks++; b.rows.forEach(r => { if (r.x) return; rows++; if (r.c === true) chk++; if (hay(r).includes('??')) q2++; }); }));
+    ST.sheets.forEach(s => s.blocks.forEach(b => { blocks++; const sr = stockRows(b); rows += sr.length; sr.forEach(r => { if (r.c === true) chk++; if (hay(r).includes('??')) q2++; }); }));
+    const expo = countExported(), nX = (ST.slips.xuat || []).length, nN = (ST.slips.nhap || []).length;
     const st = statusCounts(), cc = colorCounts();
     const pct = rows ? Math.round(chk * 100 / rows) : 0;
-    let h = `<div class="page-title"><h1>Tổng quan</h1><span class="sub">Nguồn: ${esc(DATA.meta.source)} · cập nhật ${esc(DATA.meta.generated)}</span></div>
+    let h = `<div class="page-title"><h1>Tổng quan</h1><span class="sub">Nguồn: ${esc(DATA.meta.source)} · cập nhật ${esc(DATA.meta.generated)}</span>
+      <span class="ov-actions"><button class="tbtn primary" data-sl-new="xuat">📤 Tạo phiếu xuất kho</button><button class="tbtn primary" data-sl-new="nhap">📥 Tạo phiếu nhập kho</button></span></div>
     <div class="kpis">
       <div class="kpi"><div class="n">${ST.sheets.length}</div><div class="l">Sheet / hệ thống</div></div>
       <div class="kpi"><div class="n">${blocks}</div><div class="l">Khối thiết bị</div></div>
-      <div class="kpi"><div class="n">${rows.toLocaleString('vi-VN')}</div><div class="l">Dòng vật tư</div></div>
+      <div class="kpi"><div class="n">${rows.toLocaleString('vi-VN')}</div><div class="l">Vật tư trong danh mục (tồn)</div></div>
       <div class="kpi ok"><div class="n">${chk.toLocaleString('vi-VN')}</div><div class="l">${esc(CFG.checkLabel)} (${pct}%)</div></div>
       <div class="kpi warn"><div class="n">${(rows - chk).toLocaleString('vi-VN')}</div><div class="l">Chưa tích “${esc(CFG.checkLabel)}”</div></div>
       <button class="kpi bad" data-q="??" title="Bấm để xem danh sách"><div class="n">${q2}</div><div class="l">Dòng ghi “??” (cần xác minh)</div></button>
-      ${window.KHO ? KHO.kpiHTML() : ''}
+      <a class="kpi" href="#/xuat" style="text-decoration:none;color:inherit"><div class="n">${expo}</div><div class="l">Đã xuất kho · ${nX} phiếu xuất</div></a>
+      <a class="kpi" href="#/nhap" style="text-decoration:none;color:inherit"><div class="n">${nN}</div><div class="l">Phiếu nhập kho</div></a>
     </div>
     <div class="grid2">
     <div class="card"><h3>Tình trạng vật tư <span class="src">(cột “Tình trạng”)</span></h3><div class="body"><div class="chips">
@@ -188,7 +212,7 @@
 
   /* ---------- Bảng dữ liệu ---------- */
   function passRow(row, tokens, f) {
-    if (row.x) return false;
+    if (row.x && !f.showX) return false;
     if (f.chk === 'yes' && row.c !== true) return false;
     if (f.chk === 'no' && row.c === true) return false;
     if (f.color !== 'all' && !(row.f && Object.values(row.f).includes(f.color))) return false;
@@ -198,8 +222,10 @@
   const colClass = label => { const f = fold(label); return /^stt$/.test(f.trim()) ? 'c-stt' : (/serial|s\/n|part|pasnumber|ma card|^ma$|ma vt|ma vat tu/.test(f) ? 'c-mono' : ''); };
 
   function rowHTML(s, bi, b, ri, row, tokens) {
-    let h = `<tr data-s="${s.id}" data-b="${bi}" data-r="${ri}" class="${row.c === true ? 'is-checked' : ''}" ${row.r ? `title="Dòng ${row.r} trong file Excel gốc"` : ''}>
-      <td class="c-chk"><input type="checkbox" class="chk" ${row.c === true ? 'checked' : ''} ${V.edit ? '' : 'disabled'} aria-label="${esc(CFG.checkLabel)}"></td>`;
+    const tag = row.x ? `<button class="tag tag-x" data-slip="xuat:${esc(row.x)}" title="Đã xuất theo phiếu ${esc(row.x)} – bấm để xem">ĐÃ XUẤT</button>`
+      : (row.n ? `<button class="tag tag-n" data-slip="nhap:${esc(row.n)}" title="Nhập theo phiếu ${esc(row.n)} – bấm để xem">MỚI</button>` : '');
+    let h = `<tr data-s="${s.id}" data-b="${bi}" data-r="${ri}" class="${row.c === true ? 'is-checked' : ''}${row.x ? ' is-exported' : ''}" ${row.r ? `title="Dòng ${row.r} trong file Excel gốc"` : ''}>
+      <td class="c-chk"><input type="checkbox" class="chk" ${row.c === true ? 'checked' : ''} ${V.edit ? '' : 'disabled'} aria-label="${esc(CFG.checkLabel)}">${tag}</td>`;
     const ce = V.edit ? ' contenteditable="true" spellcheck="false"' : '';
     for (let k = 0; k < b.cols.length; k++) {
       const span = row.s && row.s[k] ? row.s[k] : 1;
@@ -213,7 +239,7 @@
   }
 
   function blockHTML(s, bi, tokens, f, budget) {
-    const b = s.blocks[bi], key = s.id + ':' + bi;
+    const b = s.blocks[bi], key = s.id + ':' + bi, base = f.showX ? b.rows : stockRows(b);
     let rows = '', shown = 0, chk = 0;
     b.rows.forEach((row, ri) => {
       if (!passRow(row, tokens, f)) return;
@@ -227,33 +253,35 @@
     const head = b.cols.map((c, k) => `<th>${esc(c)}</th>`).join('');
     return `<section class="block ${V.collapsed[key] ? 'collapsed' : ''}" id="blk-${s.id}-${bi}" data-key="${key}" data-s="${s.id}" data-b="${bi}">
       <div class="block-head" data-toggle><span class="tg">▾</span><h3>${esc(b.title)}</h3>
-        <span class="badge" data-badge>${filtered ? shown + ' / ' : ''}${liveRows(b).length} dòng · ✓ ${filtered ? chk : liveRows(b).filter(r => r.c === true).length}</span>
+        <span class="badge" data-badge>${filtered ? shown + ' / ' : ''}${base.length} dòng · ✓ ${filtered ? chk : base.filter(r => r.c === true).length}</span>
         <span class="sp"></span>${V.edit ? '<button class="add-row" data-add>＋ Thêm dòng</button>' : ''}</div>
       ${rows ? `<div class="tbl-wrap"><table class="data"><thead><tr><th class="c-chk">${esc(CFG.checkLabel)}</th>${head}${V.edit ? '<th></th>' : ''}</tr></thead><tbody>${rows}</tbody></table></div>`
-             : '<div class="empty">Không có dòng nào khớp bộ lọc.</div>'}
+             : `<div class="empty">${!base.length && b.rows.length ? 'Tất cả vật tư của khối này đã được xuất kho.' : 'Không có dòng nào khớp bộ lọc.'}</div>`}
     </section>`;
   }
 
   function viewSheet(s) {
     const colors = new Set();
     s.blocks.forEach(b => b.rows.forEach(r => r.f && Object.values(r.f).forEach(x => colors.add(x))));
+    const nExp = s.blocks.reduce((n, b) => n + b.rows.filter(r => r.x).length, 0);
     let h = `<div class="page-title"><h2>${esc(labelOf(s))}</h2>
-      <span class="sub">${s.blocks.length} khối · ${countRows(s)} dòng · ✓ ${countChecked(s)} ${esc(CFG.checkLabel.toLowerCase())}</span></div>
+      <span class="sub">${s.blocks.length} khối · ${countRows(s)} dòng · ✓ ${countChecked(s)} ${esc(CFG.checkLabel.toLowerCase())}${nExp ? ` · ${nExp} đã xuất kho` : ''}</span></div>
     <div class="toolbar no-print">
       <input type="search" id="fq" placeholder="Lọc trong sheet này…" value="${esc(V.f.q)}" autocomplete="off">
       <select id="fchk" title="Lọc theo ô tích">
         <option value="all">Tất cả dòng</option><option value="yes" ${V.f.chk === 'yes' ? 'selected' : ''}>Chỉ dòng đã tích ✓</option>
         <option value="no" ${V.f.chk === 'no' ? 'selected' : ''}>Chỉ dòng chưa tích</option></select>
       ${colors.size ? `<select id="fcolor" title="Lọc theo màu tô trong Excel"><option value="all">Mọi màu</option>${[...colors].map(c => `<option value="${c}" ${V.f.color === c ? 'selected' : ''}>● ${esc(colorLabel(c))}</option>`).join('')}</select>` : ''}
+      ${nExp ? `<label class="chk-inline"><input type="checkbox" id="fshowx" ${V.f.showX ? 'checked' : ''}> Hiện cả vật tư đã xuất (${nExp})</label>` : ''}
       <button class="tbtn" data-all="collapse">Thu gọn tất cả</button><button class="tbtn" data-all="expand">Mở rộng tất cả</button>
       <span class="count" id="fcount"></span></div>`;
-    if (s.blocks.length > 1) h += '<div class="jump no-print">' + s.blocks.map((b, i) => `<button class="chip" data-jump="blk-${s.id}-${i}">${esc(b.title)} <span class="src">${liveRows(b).length}</span></button>`).join('') + '</div>';
+    if (s.blocks.length > 1) h += '<div class="jump no-print">' + s.blocks.map((b, i) => `<button class="chip" data-jump="blk-${s.id}-${i}">${esc(b.title)} <span class="src">${stockRows(b).length}</span></button>`).join('') + '</div>';
     return h + '<div id="blocks"></div>';
   }
   function renderBlocks() {
     const s = sheetById(V.route.id), tokens = tokensOf(V.f.q);
     let html = '', shown = 0, total = 0;
-    s.blocks.forEach((b, i) => { total += liveRows(b).length; shown += b.rows.filter(r => passRow(r, tokens, V.f)).length; html += blockHTML(s, i, tokens, V.f, null); });
+    s.blocks.forEach((b, i) => { const base = V.f.showX ? b.rows : stockRows(b); total += base.length; shown += base.filter(r => passRow(r, tokens, V.f)).length; html += blockHTML(s, i, tokens, V.f, null); });
     $('#blocks').innerHTML = html || '<div class="card"><div class="empty">Không có dòng nào khớp bộ lọc.</div></div>';
     $('#fcount').textContent = shown === total ? `${total} dòng` : `Hiển thị ${shown} / ${total} dòng`;
   }
@@ -262,7 +290,7 @@
   function viewSearch() {
     const tokens = tokensOf(V.gq), budget = { left: CFG.maxSearchResults };
     let found = 0, html = '', sheetsHit = 0;
-    const f = { q: '', chk: 'all', color: 'all' };
+    const f = { q: '', chk: 'all', color: 'all', showX: true };
     ST.sheets.forEach(s => {
       let part = '', hit = 0;
       s.blocks.forEach((b, bi) => {
@@ -273,8 +301,7 @@
     });
     const cut = found > CFG.maxSearchResults ? ` (chỉ hiện ${CFG.maxSearchResults} dòng đầu – hãy gõ cụ thể hơn)` : '';
     return `<div class="page-title"><h1>Kết quả tìm “${esc(V.gq)}”</h1><span class="sub">${found} dòng · ${sheetsHit} sheet${cut}</span></div>` +
-      (found ? html : '<div class="card"><div class="empty">Không tìm thấy trong danh mục. Thử từ khoá ngắn hơn (không cần gõ dấu).</div></div>') +
-      (window.KHO ? KHO.searchHTML(tokens) : '');
+      (found ? html : '<div class="card"><div class="empty">Không tìm thấy. Thử từ khoá ngắn hơn (không cần gõ dấu).</div></div>');
   }
 
   /* ---------- Vẽ trang ---------- */
@@ -283,9 +310,12 @@
     const m = $('#main');
     if (V.gq.trim()) m.innerHTML = viewSearch();
     else if (V.route.page === 'sheet') { m.innerHTML = viewSheet(sheetById(V.route.id)); renderBlocks(); }
-    else if ((V.route.page === 'out' || V.route.page === 'in') && window.KHO) m.innerHTML = KHO.viewList(V.route.page);
+    else if (V.route.page === 'slips') {
+      try { m.innerHTML = SL().listHTML(V.route.id); } catch (err) { m.innerHTML = '<div class="card"><div class="empty" style="color:#b91c1c">⚠ Không dựng được danh sách phiếu: ' + esc(err.message) + '<br>Hãy tải lại trang (Ctrl+F5).</div></div>'; }
+      if (V.route.slip) { const sid = V.route.slip; V.route.slip = null; SL().view(V.route.id, sid); }
+    }
     else m.innerHTML = viewOverview();
-    document.title = (V.route.page === 'out' && !V.gq ? 'Phiếu xuất kho – ' : V.route.page === 'in' && !V.gq ? 'Phiếu nhập kho – ' : '') + (V.route.page === 'sheet' && !V.gq ? labelOf(sheetById(V.route.id)) + ' – ' : '') + CFG.title;
+    document.title = (V.route.page === 'sheet' && !V.gq ? labelOf(sheetById(V.route.id)) + ' – ' : (V.route.page === 'slips' && !V.gq ? (V.route.id === 'xuat' ? 'Phiếu xuất kho' : 'Phiếu nhập kho') + ' – ' : '')) + CFG.title;
   }
   const keepScroll = fn => { const y = window.scrollY; fn(); window.scrollTo(0, y); };
 
@@ -298,7 +328,8 @@
   function refreshBadges() {
     $$('.block').forEach(el => {
       const s = sheetById(el.dataset.s), b = s.blocks[+el.dataset.b], bd = $('[data-badge]', el);
-      if (bd && !bd.textContent.includes('/')) bd.textContent = `${liveRows(b).length} dòng · ✓ ${liveRows(b).filter(r => r.c === true).length}`;
+      const base = V.f.showX || V.gq ? b.rows : stockRows(b);
+      if (bd && !bd.textContent.includes('/')) bd.textContent = `${base.length} dòng · ✓ ${base.filter(r => r.c === true).length}`;
     });
   }
 
@@ -307,6 +338,7 @@
 
     main.addEventListener('click', e => {
       const t = e.target;
+      const sl = t.closest('[data-slip]'); if (sl) { const k = sl.dataset.slip, i = k.indexOf(':'); SL().view(k.slice(0, i), k.slice(i + 1)); return; }
       const q = t.closest('[data-q]'); if (q) { setGlobalSearch(q.dataset.q); return; }
       const g = t.closest('[data-go]'); if (g && !t.closest('a')) { location.hash = g.dataset.go; return; }
       if (t.closest('[data-clear]')) { setGlobalSearch(''); }
@@ -316,8 +348,8 @@
       if (add) {
         e.stopPropagation();
         const sec = add.closest('.block'), s = sheetById(sec.dataset.s), b = s.blocks[+sec.dataset.b];
-        b.rows.push({ r: 0, c: false, u: newUid(), v: b.cols.map(() => '') }); persist();
-        if (!V.gq && (V.f.q || V.f.chk !== 'all' || V.f.color !== 'all')) { V.f = { q: '', chk: 'all', color: 'all' }; render(); } else keepScroll(() => (V.gq ? render() : renderBlocks()));
+        b.rows.push({ r: 0, i: 'u' + uid(), c: false, v: b.cols.map(() => '') }); persist();
+        if (!V.gq && (V.f.q || V.f.chk !== 'all' || V.f.color !== 'all')) { V.f = newF(); render(); } else keepScroll(() => (V.gq ? render() : renderBlocks()));
         const nr = $(`tr[data-s="${s.id}"][data-b="${sec.dataset.b}"][data-r="${b.rows.length - 1}"] td[contenteditable]`);
         if (nr) { nr.scrollIntoView({ block: 'center' }); nr.focus(); }
         return;
@@ -338,6 +370,7 @@
         L.row.c = e.target.checked; L.tr.classList.toggle('is-checked', L.row.c); persist(); refreshBadges();
       } else if (e.target.id === 'fchk') { V.f.chk = e.target.value; renderBlocks(); }
       else if (e.target.id === 'fcolor') { V.f.color = e.target.value; renderBlocks(); }
+      else if (e.target.id === 'fshowx') { V.f.showX = e.target.checked; renderBlocks(); }
     });
     let ft; main.addEventListener('input', e => {
       if (e.target.id === 'fq') { clearTimeout(ft); ft = setTimeout(() => { V.f.q = e.target.value; renderBlocks(); }, 150); }
@@ -376,13 +409,13 @@
     $('#btnMenu').addEventListener('click', () => toggleSidebar());
     $('#overlay').addEventListener('click', () => toggleSidebar(false));
     $('#sidebar').addEventListener('click', e => { if (e.target.closest('a')) { if (V.gq) setGlobalSearch(''); toggleSidebar(false); } });
-    $('#btnEdit').addEventListener('click', () => { if (V.edit || !window.KHO) setEdit(!V.edit); else KHO.requireAdmin(() => setEdit(true), true); });
+    $('#btnEdit').addEventListener('click', () => setEdit(!V.edit));
     $('#btnPrint').addEventListener('click', () => window.print());
     $('#btnTheme').addEventListener('click', () => { const t = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark'; document.documentElement.dataset.theme = t; localStorage.setItem(LS('theme'), t); });
     $('#menuExport').addEventListener('click', e => { const b = e.target.closest('button[data-act]'); if (b) { $('#menuExport').open = false; doAction(b.dataset.act); } });
     document.addEventListener('click', e => { const m = $('#menuExport'); if (m.open && !m.contains(e.target)) m.open = false; });
     $('#fileIn').addEventListener('change', importJSON);
-    window.addEventListener('hashchange', () => { parseHash(); V.f = { q: '', chk: 'all', color: 'all' }; if (V.gq) setGlobalSearch(''); else render(); window.scrollTo(0, 0); });
+    window.addEventListener('hashchange', () => { parseHash(); V.f = newF(); if (V.gq) setGlobalSearch(''); else render(); window.scrollTo(0, 0); });
   }
 
   function toggleSidebar(force) {
@@ -409,7 +442,7 @@
   }
   function sheetAOA(s) {
     const aoa = [];
-    s.blocks.forEach((b, i) => { if (i) aoa.push([]); aoa.push([b.title]); aoa.push([CFG.checkLabel, ...b.cols]); b.rows.filter(r => !r.x).forEach(r => aoa.push([r.c === true ? '✓' : '', ...r.v])); });
+    s.blocks.forEach((b, i) => { if (i) aoa.push([]); aoa.push([b.title]); aoa.push([CFG.checkLabel, ...b.cols]); stockRows(b).forEach(r => aoa.push([r.c === true ? '✓' : '', ...r.v])); });
     return aoa;
   }
   const toCSV = aoa => '\ufeffsep=,\r\n' + aoa.map(r => r.map(c => { c = String(c == null ? '' : c); return /[",\r\n]/.test(c) ? '"' + c.replace(/"/g, '""') + '"' : c; }).join(',')).join('\r\n');
@@ -427,16 +460,17 @@
         while (used.has(nm.toLowerCase())) nm = base.slice(0, 28) + ' ' + i++;
         used.add(nm.toLowerCase()); XLSX.utils.book_append_sheet(wb, ws, nm);
       });
+      if (act === 'xlsx-all') SL().extraSheets().forEach(x => { const ws = XLSX.utils.aoa_to_sheet(x.aoa); ws['!cols'] = x.aoa[0].map((_, i) => ({ wch: [16, 11, 24, 24, 24, 5, 16, 34, 22, 18, 22, 11, 7, 6, 9, 34, 24][i] || 16 })); XLSX.utils.book_append_sheet(wb, ws, x.name); });
       XLSX.writeFile(wb, `Tai-san-Vat-tu-LAB_${act === 'xlsx-all' ? 'tat-ca' : list[0].id}_${ymd()}.xlsx`);
     } else if (act === 'csv-cur') {
       if (!cur) { toast('Hãy mở một sheet trước khi xuất CSV.'); return; }
       download(`${cur.id}_${ymd()}.csv`, 'text/csv;charset=utf-8', toCSV(sheetAOA(cur)));
     } else if (act === 'json-out') {
-      download(`sao-luu-lab_${ymd()}.json`, 'application/json', JSON.stringify({ ver: DATA.meta.version, source: DATA.meta.source, sheets: ST.sheets, vouchers: ST.vouchers }));
+      download(`sao-luu-lab_${ymd()}.json`, 'application/json', JSON.stringify({ ver: DATA.meta.version, source: DATA.meta.source, sheets: ST.sheets, slips: ST.slips }));
     } else if (act === 'json-in') { $('#fileIn').click(); }
     else if (act === 'reset') {
-      if (confirm('Xoá toàn bộ chỉnh sửa VÀ các phiếu xuất/nhập kho trên máy này, quay về dữ liệu gốc của website?')) {
-        localStorage.removeItem(LS('state')); ST = { sheets: clone(DATA.sheets), vouchers: mkVouchers(), dirty: false }; ensureUids(); $('#dirty').hidden = true; render(); toast('Đã khôi phục dữ liệu gốc');
+      if (confirm('Xoá toàn bộ chỉnh sửa, PHIẾU XUẤT/NHẬP KHO trên máy này và quay về dữ liệu gốc của website?')) {
+        localStorage.removeItem(LS('state')); ST = { sheets: clone(DATA.sheets), slips: emptySlips(), dirty: false }; ensureIds(ST.sheets); $('#dirty').hidden = true; parseHash(); render(); toast('Đã khôi phục dữ liệu gốc');
       }
     }
   }
@@ -447,9 +481,10 @@
       try {
         const j = JSON.parse(rd.result);
         if (!j || !Array.isArray(j.sheets) || !j.sheets.every(s => s.id && Array.isArray(s.blocks))) throw new Error('sai định dạng');
-        const nv = mkVouchers(j.vouchers);
-        if (!confirm(`Nạp bản sao lưu (${j.sheets.length} sheet, ${nv.out.length} phiếu xuất, ${nv['in'].length} phiếu nhập)? Dữ liệu & phiếu hiện tại trên máy này sẽ bị thay thế.`)) return;
-        ST = { sheets: j.sheets, vouchers: mkVouchers(j.vouchers), dirty: true }; ensureUids(); persist(); parseHash(); render(); toast('Đã nạp bản sao lưu');
+        if (j.slips && !(Array.isArray(j.slips.xuat || []) && Array.isArray(j.slips.nhap || []))) throw new Error('phiếu kho sai định dạng');
+        const np = j.slips ? (j.slips.xuat || []).length + (j.slips.nhap || []).length : 0;
+        if (!confirm(`Nạp bản sao lưu (${j.sheets.length} sheet, ${np} phiếu kho)? Dữ liệu chỉnh sửa và phiếu hiện tại trên máy này sẽ bị thay thế.`)) return;
+        ST = { sheets: j.sheets, slips: { xuat: (j.slips && j.slips.xuat) || [], nhap: (j.slips && j.slips.nhap) || [] }, dirty: true }; ensureIds(ST.sheets); persist(); parseHash(); render(); toast('Đã nạp bản sao lưu');
       } catch (err) { toast('File không hợp lệ: ' + err.message, 4500); }
     };
     rd.readAsText(f, 'utf-8');
@@ -457,14 +492,11 @@
 
   /* ---------- Khởi động (có hỗ trợ dữ liệu mã hoá bằng mật khẩu) ---------- */
   function start(data) {
-    DATA = data; ST = loadState(); ensureUids();
+    DATA = data; ST = loadState();
     $('#boot').remove(); $('#topbar').hidden = false; $('#layout').hidden = false;
     $('#appTitle').textContent = CFG.title; $('#appSub').textContent = CFG.subtitle;
     $('#dirty').hidden = !ST.dirty;
-    if (window.KHO) KHO.init({
-      CFG, getST: () => ST, persist, render, toast, fold, tokensOf, hay, sheetById, labelOf, esc, download, toCSV,
-      isEditing: () => V.edit, setEdit
-    });
+    checkModules(); SL().init(window.LabApp);
     parseHash(); bind(); render();
   }
   async function decrypt(enc, pw) {
@@ -483,6 +515,16 @@
       catch (e) { err.textContent = e.message === 'nocrypto' ? 'Trình duyệt cần mở bằng https:// (hoặc localhost) để giải mã.' : 'Sai mật khẩu.'; }
     });
   }
+  let lastErr = '', lastErrT = 0;
+  window.addEventListener('error', e => {
+    const m = (e.message || 'lỗi không rõ') + (e.filename ? ' (' + e.filename.split('/').pop() + ':' + e.lineno + ')' : '');
+    if (m === lastErr && Date.now() - lastErrT < 8000) return; lastErr = m; lastErrT = Date.now();
+    const t = $('#toast'); if (t) toast('⚠ Lỗi: ' + m + ' – thử tải lại trang (Ctrl+F5).', 7000);
+  });
+  window.LabApp = {
+    BUILD, CFG, esc, fold, tokensOf, toast, download, toCSV, ymd, uid, sheetById, labelOf, persist, render, keepScroll, isStock, stockRows,
+    get ST() { return ST; }, get V() { return V; }, touch: r => hayCache.delete(r)
+  };
   function boot() {
     const t = localStorage.getItem(LS('theme')) || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
     document.documentElement.dataset.theme = t;
