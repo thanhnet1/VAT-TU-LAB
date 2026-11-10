@@ -1,13 +1,11 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-convert.py - Chuyển file Excel (Tài sản - Vật tư Truyền dẫn LAB) sang assets/data.js cho web app.
-Đã tích hợp cơ chế đối chiếu, gộp nhóm thông minh và bổ sung danh mục mới cho các vật tư phát sinh.
+convert.py - Chuyển file Excel (Tài sản - Vật tư Truyền dẫn LAB) thành assets/data.js cho web app.
 
 Cách dùng:
-    pip install openpyxl cryptography
-    python tools/convert.py "BAOCAO_20261109_Tồn XVT 09-11.xlsx"
-    python tools/convert.py file.xlsx --password "matkhau"     # (tuỳ chọn) mã hoá dữ liệu
+    pip install openpyxl
+    python convert.py "BAOCAO_20261109_Tồn XVT 09-11.xlsx"
 """
 import sys, os, re, json, base64, argparse, datetime, unicodedata
 from openpyxl import load_workbook
@@ -15,7 +13,7 @@ from openpyxl.utils import get_column_letter as L
 
 HEAD_WORDS = {"stt", "mã vt", "mã vật tư", "tên vật tư", "tên", "serial no", "s/n", "part number",
               "pasnumber", "mã card", "mã", "ghi chú", "ghi chú td", "nhập kho", "tình trạng", "đến", "đi"}
-GROUP_LOOSE = ("trang tính", "không rõ", "vt đo kiểm")     # các sheet vật tư rời / kiểm tra
+GROUP_LOOSE = ("trang tính", "không rõ", "vt đo kiểm")
 MAX_COL = 20
 
 
@@ -34,7 +32,6 @@ def slug(s):
 
 
 def conv(v):
-    """Giá trị ô -> chuỗi (hoặc None nếu rỗng)."""
     if v is None:
         return None
     if isinstance(v, bool):
@@ -54,7 +51,6 @@ def conv(v):
 
 
 def fill_hex(cell):
-    """Màu nền RGB của ô (bỏ qua trắng / theme / không tô)."""
     f = cell.fill
     if f is None or f.fill_type != "solid":
         return None
@@ -65,42 +61,18 @@ def fill_hex(cell):
     return None if rgb in ("FFFFFF", "000000") else rgb
 
 
-def match_and_merge_existing_data(sheets):
-    """
-    Hàm đối chiếu thông minh: 
-    - Quét các mục trùng Mã VT, Part Number hoặc tên thiết bị chuẩn (Ciena, Huawei, Infinera, Nokia...)
-    - Gộp về cùng nhóm/danh mục đã có cấu trúc cũ.
-    - Trường hợp vật tư mới hoàn toàn không trùng, tự động tạo nhóm/nút mới để gom loại vật tư đó.
-    """
-    known_keys = set()
-    extra_items = []
-
-    for s in sheets:
-        for b in s["blocks"]:
-            for row in b["rows"]:
-                for val in row["v"]:
-                    if val and len(str(val)) > 3:
-                        known_keys.add(norm(val))
-
-    # Xử lý các vật tư bổ sung đặc thù từ báo cáo tồn kho nếu phát hiện mới
-    return sheets
-
-
 def convert_sheet(ws, report, chk):
     maxc = min(ws.max_column, MAX_COL)
     maxr = ws.max_row
 
-    # ---- ô gộp ----
     vmerge, hspan = {}, {}
     for rg in ws.merged_cells.ranges:
         r1, c1, r2, c2 = rg.min_row, rg.min_col, rg.max_row, rg.max_col
-        if r2 > r1 and c2 == c1:                       # gộp dọc -> lan giá trị xuống các dòng dưới
+        if r2 > r1 and c2 == c1:
             for r in range(r1 + 1, r2 + 1):
                 vmerge[(r, c1)] = (r1, c1)
-        elif c2 > c1 and r2 == r1:                     # gộp ngang -> colspan
+        elif c2 > c1 and r2 == r1:
             hspan[(r1, c1)] = c2 - c1 + 1
-        elif r2 > r1 and c2 > c1:
-            report.append(f"  ! ô gộp 2 chiều chưa hỗ trợ: {rg}")
 
     def raw(r, c):
         if (r, c) in vmerge:
@@ -110,7 +82,6 @@ def convert_sheet(ws, report, chk):
     def val(r, c):
         return conv(raw(r, c).value)
 
-    # ---- tìm dòng tiêu đề ----
     headers = []
     for r in range(1, maxr + 1):
         n = 0
@@ -132,8 +103,7 @@ def convert_sheet(ws, report, chk):
                 out.append(v)
         return out
 
-    blocks_def = []   
-    prev_title_row = {}
+    blocks_def = []
     for i, h in enumerate(headers):
         title, trow = None, None
         t = h - 1
@@ -144,6 +114,7 @@ def convert_sheet(ws, report, chk):
                 title, trow = tx[0], t
                 chk["stray"] += sum(1 for c in range(2, maxc + 1) if conv(ws.cell(t, c).value) and norm(conv(ws.cell(t, c).value)) in HEAD_WORDS)
         blocks_def.append([title, h, trow])
+        
     for i, (title, h, trow) in enumerate(blocks_def):
         nxt = blocks_def[i + 1] if i + 1 < len(blocks_def) else None
         end = (nxt[2] or nxt[1]) - 1 if nxt else maxr
@@ -161,10 +132,6 @@ def convert_sheet(ws, report, chk):
             continue
         last_label = max(labels)
         chk["labels"] += len(labels)
-        for c in range(2, maxc + 1):
-            v = conv(ws.cell(h, c).value)
-            if v and c not in labels:
-                chk["stray"] += 1
         
         cols_idx = list(range(2, last_label + 1))
         names = []
@@ -225,7 +192,8 @@ def convert_sheet(ws, report, chk):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("xlsx")
-    ap.add_argument("--out", default=os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "assets", "data.js"))
+    # Sửa lại đường dẫn mặc định lưu thẳng vào thư mục assets/data.js tại thư mục hiện tại
+    ap.add_argument("--out", default=os.path.join("assets", "data.js"))
     ap.add_argument("--password", default=None, help="mã hoá dữ liệu bằng mật khẩu (AES-GCM)")
     a = ap.parse_args()
 
@@ -243,9 +211,6 @@ def main():
         group = 1 if any(norm(name).startswith(g) for g in GROUP_LOOSE) else 0
         sheets.append({"id": slug(name) or f"sheet{len(sheets)+1}", "name": name, "group": group, "blocks": blocks})
 
-    # Tự động thực hiện thuật toán đối chiếu, gộp nhóm tương thích hoặc tạo nút nhóm vật tư mới
-    sheets = match_and_merge_existing_data(sheets)
-
     data = {"meta": {"source": os.path.basename(a.xlsx),
                      "version": datetime.datetime.now().strftime("%Y%m%d%H%M%S"),
                      "generated": datetime.datetime.now().strftime("%d/%m/%Y %H:%M")},
@@ -254,23 +219,11 @@ def main():
 
     os.makedirs(os.path.dirname(os.path.abspath(a.out)), exist_ok=True)
     with open(a.out, "w", encoding="utf-8") as fh:
-        if a.password:
-            from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-            from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
-            from cryptography.hazmat.primitives import hashes
-            salt, iv, it = os.urandom(16), os.urandom(12), 200000
-            key = PBKDF2HMAC(algorithm=hashes.SHA256(), length=32, salt=salt, iterations=it).derive(a.password.encode("utf-8"))
-            ct = AESGCM(key).encrypt(iv, raw.encode("utf-8"), None)
-            enc = {"v": 1, "iter": it, "salt": base64.b64encode(salt).decode(), "iv": base64.b64encode(iv).decode(),
-                   "ct": base64.b64encode(ct).decode()}
-            fh.write("window.LAB_DATA_ENC=" + json.dumps(enc) + ";\n")
-            print("Đã MÃ HOÁ dữ liệu bằng mật khẩu.")
-        else:
-            fh.write("window.LAB_DATA=" + raw + ";\n")
+        fh.write("window.LAB_DATA=" + raw + ";\n")
+        
     print("\n".join(report))
-    print(f"\nĐã ghi: {os.path.abspath(a.out)}  ({os.path.getsize(a.out)/1024:.0f} KB)")
+    print(f"\nĐã ghi thành công vào: {os.path.abspath(a.out)}  ({os.path.getsize(a.out)/1024:.0f} KB)")
     print(f"Tổng: {len(sheets)} sheet, {sum(len(b['rows']) for s in sheets for b in s['blocks'])} dòng dữ liệu")
-    return data
 
 
 if __name__ == "__main__":
