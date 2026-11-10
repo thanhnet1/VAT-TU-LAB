@@ -633,3 +633,169 @@
   }
   boot();
 })();
+/* =====================================================================
+   BỔ SUNG: TÍNH NĂNG CẬP NHẬT NGUỒN TRỰC TIẾP TRÊN GIAO DIỆN (EXCEL, WORD, PDF)
+   ===================================================================== */
+
+// 1. Gắn sự kiện lắng nghe cho nút Cập nhật nguồn khi trang tải xong
+document.addEventListener("DOMContentLoaded", () => {
+    // Đảm bảo nút input file được lắng nghe nếu có trên giao diện
+    const fileInput = document.getElementById("importFileInput");
+    if (fileInput) {
+        fileInput.addEventListener("change", handleWebFileImport);
+    }
+});
+
+async function handleWebFileImport(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    const fileName = file.name.toLowerCase();
+    showToast(`Đang phân tích tệp: ${file.name}...`);
+
+    try {
+        if (fileName.endsWith('.xlsx') || fileName.endsWith('.xls')) {
+            await processWebExcel(file);
+        } else if (fileName.endsWith('.docx')) {
+            await processWebWord(file);
+        } else if (fileName.endsWith('.pdf')) {
+            await processWebPdf(file);
+        } else {
+            alert("Định dạng tệp không được hỗ trợ! Vui lòng chọn tệp .xlsx, .docx hoặc .pdf");
+        }
+    } catch (error) {
+        console.error("Lỗi xử lý file:", error);
+        alert("Có lỗi xảy ra khi phân tích tệp: " + error.message);
+    }
+    event.target.value = ''; // Reset input
+}
+
+// Xử lý file Excel qua SheetJS (đã được nhúng ở index.html)
+async function processWebExcel(file) {
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        const data = new Uint8Array(e.target.result);
+        const workbook = XLSX.read(data, { type: 'array' });
+        
+        let newSheets = [];
+        workbook.SheetNames.forEach((sheetName, index) => {
+            const worksheet = workbook.Sheets[sheetName];
+            const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+            
+            let rows = jsonData.map((rowArr, rIdx) => ({
+                r: rIdx + 1,
+                c: false,
+                v: rowArr.map(cell => (cell !== undefined && cell !== null ? String(cell) : ""))
+            })).filter(row => row.v.some(val => val !== ""));
+
+            if (rows.length > 0) {
+                newSheets.push({
+                    id: `sheet-${index}`,
+                    name: sheetName,
+                    group: 0,
+                    blocks: [{
+                        title: sheetName,
+                        hr: 1,
+                        cols: rows[0] ? rows[0].v : ["STT", "Nội dung"],
+                        rows: rows.slice(1)
+                    }]
+                });
+            }
+        });
+
+        window.LAB_DATA = {
+            meta: { source: file.name, version: new Date().toISOString(), generated: new Date().toLocaleString() },
+            sheets: newSheets
+        };
+
+        // Gọi lại hàm khởi tạo giao diện gốc của ứng dụng (ví dụ: render lại app)
+        if (typeof renderAll === 'function') {
+            renderAll();
+        } else if (typeof init === 'function') {
+            init();
+        } else {
+            location.reload(); // Tải lại trang nếu không tìm thấy hàm render trực tiếp
+        }
+        alert(`Đã cập nhật dữ liệu thành công từ tệp Excel: ${file.name}`);
+    };
+    reader.readAsArrayBuffer(file);
+}
+
+// Xử lý file Word (.docx) qua Mammoth.js
+async function processWebWord(file) {
+    const reader = new FileReader();
+    reader.onload = async function(e) {
+        const arrayBuffer = e.target.result;
+        const result = await mammoth.extractRawText({ arrayBuffer: arrayBuffer });
+        const textLines = result.value.split('\n').map(l => l.trim()).filter(l => l);
+
+        let rows = textLines.map((line, idx) => ({
+            r: idx + 1,
+            c: false,
+            v: [String(idx + 1), line, "", "", ""]
+        }));
+
+        window.LAB_DATA = {
+            meta: { source: file.name, version: new Date().toISOString(), generated: new Date().toLocaleString() },
+            sheets: [{
+                id: "word-import",
+                name: "Dữ liệu Word",
+                group: 1,
+                blocks: [{
+                    title: file.name,
+                    hr: 1,
+                    cols: ["STT", "Nội dung trích xuất từ Word", "S/N", "Mã VT", "Ghi chú"],
+                    rows: rows
+                }]
+            }]
+        };
+
+        location.reload();
+        alert(`Đã trích xuất và cập nhật dữ liệu thành công từ tệp Word: ${file.name}`);
+    };
+    reader.readAsArrayBuffer(file);
+}
+
+// Xử lý file PDF qua PDF.js
+async function processWebPdf(file) {
+    const reader = new FileReader();
+    reader.onload = async function(e) {
+        const typedarray = new Uint8Array(e.target.result);
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdfjs-dist/3.11.174/pdf.worker.min.js';
+        
+        const pdf = await pdfjsLib.getDocument(typedarray).promise;
+        let allLines = [];
+
+        for (let i = 1; i <= pdf.numPages; i++) {
+            const page = await pdf.getPage(i);
+            const textContent = await page.getTextContent();
+            const pageLines = textContent.items.map(item => item.str);
+            allLines.push(...pageLines.filter(l => l.trim() !== ""));
+        }
+
+        let rows = allLines.map((line, idx) => ({
+            r: idx + 1,
+            c: false,
+            v: [String(idx + 1), line, "", "", ""]
+        }));
+
+        window.LAB_DATA = {
+            meta: { source: file.name, version: new Date().toISOString(), generated: new Date().toLocaleString() },
+            sheets: [{
+                id: "pdf-import",
+                name: "Dữ liệu PDF",
+                group: 1,
+                blocks: [{
+                    title: file.name,
+                    hr: 1,
+                    cols: ["STT", "Nội dung trích xuất từ PDF", "S/N", "Mã VT", "Ghi chú"],
+                    rows: rows
+                }]
+            }]
+        };
+
+        location.reload();
+        alert(`Đã trích xuất và cập nhật dữ liệu thành công từ tệp PDF: ${file.name}`);
+    };
+    reader.readAsArrayBuffer(file);
+}
