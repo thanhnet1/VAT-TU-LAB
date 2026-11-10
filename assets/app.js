@@ -137,6 +137,10 @@
     const groups = [[], []];
     ST.sheets.forEach(s => groups[s.group === 1 ? 1 : 0].push(s));
     let h = `<a class="nav-item ${V.route.page === 'overview' && !V.gq ? 'active' : ''}" href="#/"><span class="nm">🏠 Tổng quan</span></a>`;
+    h += `<details class="asset-tree"><summary>📁 Tài Sản</summary><div class="asset-tree-children">`;
+    h += `<a href="#/" class="asset-tree-link">Tổng quan vật tư</a><a href="#/xuat" class="asset-tree-link">Phiếu xuất kho</a><a href="#/nhap" class="asset-tree-link">Phiếu nhập kho</a>`;
+    ST.sheets.forEach(s => { h += `<details class="asset-tree-sub"><summary>${esc(labelOf(s))}</summary><div>`; s.blocks.forEach((b,bi)=>{ h += `<a class="asset-tree-link" href="#/s/${encodeURIComponent(s.id)}">${esc(b.title || ('Nhóm '+(bi+1)))}</a>`; }); h += `</div></details>`; });
+    h += `</div></details>`;
     h += `<div class="nav-group">Kho vật tư</div>` + [['xuat', '📤 Phiếu xuất kho'], ['nhap', '📥 Phiếu nhập kho']].map(([k, l]) =>
       `<a class="nav-item ${V.route.page === 'slips' && V.route.id === k && !V.gq ? 'active' : ''}" href="#/${k}"><span class="nm">${l}</span><span class="ct">${(ST.slips[k] || []).length}</span></a>`).join('');
     groups.forEach((g, i) => {
@@ -534,71 +538,3 @@
   }
   boot();
 })();
-// ==========================================================================
-// BỔ SUNG ĐIỀU HƯỚNG MENU CÂY VÀ KHỞI TẠO VÀO FILE ASSETS/APP.JS GỐC
-// ==========================================================================
-
-// Đóng/Mở các cấp của Menu Cây
-function toggleTreeNode(element) {
-    const node = element.parentElement;
-    node.classList.toggle('open');
-    const arrow = element.querySelector('.arrow');
-    if (arrow) {
-        arrow.innerText = node.classList.contains('open') ? '▼' : '▶';
-    }
-}
-
-// Điều chuyển View khi click Menu
-function switchView(viewKey) {
-    const mainContainer = document.getElementById('mainContainer');
-    
-    if (viewKey === 'phieu-xuat') {
-        mainContainer.innerHTML = `
-            <h2>📄 Danh Sách Phiếu Xuất Kho</h2>
-            <p>Chọn phiếu xuất bên dưới để xem khổ giấy A4 và ký xác nhận:</p>
-            <br>
-            <button class="btn btn-print" onclick="openSlipModal()">👁️ Xem Phiếu PXK-2026-001</button>
-        `;
-    } else if (viewKey === 'tai-san') {
-        mainContainer.innerHTML = `
-            <h2>🏢 Quản Lý Danh Mục Tài Sản</h2>
-            <p>Dữ liệu danh mục Tài sản được quản lý và lưu trữ trên Cloud Server.</p>
-        `;
-    } else {
-        mainContainer.innerHTML = `
-            <h2>Phân Phân Hệ: ${viewKey.toUpperCase()}</h2>
-            <p>Dữ liệu đang được kết nối và đồng bộ với Cloud Database...</p>
-        `;
-    }
-}
-
-// Lọc thiết bị theo hệ thống truyền dẫn
-function filterSystemDevice(systemName) {
-    const mainContainer = document.getElementById('mainContainer');
-    mainContainer.innerHTML = `
-        <h2>📡 Hệ Thống Truyền Dẫn: ${systemName}</h2>
-        <p>Danh sách các thiết bị và card quang thuộc hệ thống <strong>${systemName}</strong>.</p>
-    `;
-}
-
-// Bật/Tắt Menu Sidebar trên điện thoại
-function toggleSidebarMobile() {
-    document.getElementById('appSidebar').classList.toggle('active');
-}
-
-// Mở & Đóng Modal Phiếu Xuất Kho
-function openSlipModal() {
-    document.getElementById('modalPhieuXuat').style.display = 'block';
-    if (typeof loadSlipToA4View === 'function') {
-        loadSlipToA4View(currentExportSlip);
-    }
-}
-
-function closeSlipModal() {
-    document.getElementById('modalPhieuXuat').style.display = 'none';
-}
-
-// Tự động khởi chạy khi trang tải xong
-window.addEventListener('DOMContentLoaded', () => {
-    switchView('phieu-xuat');
-});
