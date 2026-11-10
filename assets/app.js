@@ -1,5 +1,5 @@
 /* =====================================================================
-   WEB APP: Tài sản – Vật tư Truyền dẫn LAB   (JavaScript thuần, không cần build)
+   WEB APP: Tài sản – Vật tư Truyền dẫn LAB (JavaScript thuần)
    Dữ liệu: assets/data.js  ·  Cấu hình: assets/config.js  ·  Giao diện: assets/style.css
    ===================================================================== */
 (function () {
@@ -11,24 +11,24 @@
     groupNames: ['Thiết bị theo hệ thống', 'Vật tư rời / đo kiểm'], sheetLabels: {}, colorMeaning: {}, maxSearchResults: 400
   }, window.APP_CONFIG || {});
 
-  const BUILD = '2026.11.07-3';           // phải trùng với slips.js (dùng để phát hiện file cũ do bộ nhớ đệm)
+  const BUILD = '2026.11.07-3';           // trùng với slips.js
   const $ = (s, el = document) => el.querySelector(s);
   const $$ = (s, el = document) => Array.from(el.querySelectorAll(s));
-  const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const esc = s => String(s || '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const LS = k => CFG.storageKey + ':' + k;
   const COLOR_NAMES = { FFFF00: 'Vàng', FF0000: 'Đỏ', '92D050': 'Xanh lá nhạt', '00B050': 'Xanh lá', '00B0F0': 'Xanh dương',
     FFC000: 'Cam', F79646: 'Cam nhạt', FFF2CC: 'Vàng kem', '0F243E': 'Xanh đen' };
 
-  /** Bỏ dấu tiếng Việt + chữ thường, GIỮ NGUYÊN độ dài chuỗi (để tô sáng đúng vị trí). */
+  /** Bỏ dấu tiếng Việt + chữ thường, GIỮ NGUYÊN độ dài chuỗi */
   function fold(s) {
-    return String(s).replace(/[^\u0000-\u007f]/g, ch => {
+    return String(s || '').replace(/[^\u0000-\u007f]/g, ch => {
       let n = ch.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
       if (n === 'đ') n = 'd'; else if (n === 'Đ') n = 'D';
       return n.length === 1 ? n : ch;
     }).toLowerCase();
   }
   const tokensOf = q => fold(q).trim().split(/\s+/).filter(Boolean);
-  const disp = t => String(t).replace(/\\n/g, '\n');           // chữ "\n" gõ nhầm trong Excel -> xuống dòng khi hiển thị
+  const disp = t => String(t || '').replace(/\\n/g, '\n');           
   const bgOf = hex => { const n = parseInt(hex, 16); return `rgba(${n >> 16 & 255},${n >> 8 & 255},${n & 255},.40)`; };
   const colorLabel = hex => CFG.colorMeaning[hex] || COLOR_NAMES[hex] || ('#' + hex);
 
@@ -50,11 +50,12 @@
   }
 
   const hayCache = new WeakMap();
-  const hay = row => { let h = hayCache.get(row); if (h === undefined) { h = fold(row.v.join(' \u00a6 ')); hayCache.set(row, h); } return h; };
+  const hay = row => { let h = hayCache.get(row); if (h === undefined) { h = fold((row.v || []).join(' \u00a6 ')); hayCache.set(row, h); } return h; };
 
   let toastT;
   function toast(msg, ms = 2600) {
-    const el = $('#toast'); el.textContent = msg; el.classList.add('show');
+    const el = $('#toast'); if (!el) return;
+    el.textContent = msg; el.classList.add('show');
     clearTimeout(toastT); toastT = setTimeout(() => el.classList.remove('show'), ms);
   }
 
@@ -65,24 +66,23 @@
   const V = { route: { page: 'overview', id: null }, gq: '', edit: false, f: newF(), collapsed: {} };
 
   const clone = o => JSON.parse(JSON.stringify(o));
-  /* Module phiếu kho: nếu thiếu file slips.js thì web vẫn chạy, chỉ báo thiếu thay vì treo toàn bộ */
   const SL = () => window.Slips || {
     init() {}, extraSheets: () => [],
     listHTML: () => '<div class="card"><div class="empty">⚠ Không tải được <b>assets/slips.js</b> nên chưa dùng được phiếu kho. Hãy kiểm tra file đã được tải lên đủ và bấm Ctrl+F5.</div></div>',
     view: () => toast('⚠ Thiếu file assets/slips.js – chưa mở được phiếu.', 5000), openEditor: () => toast('⚠ Thiếu file assets/slips.js – chưa tạo được phiếu.', 5000)
   };
-  /** Kiểm tra đủ file & đúng phiên bản; nếu lệch thì hiện thanh cảnh báo màu đỏ nói rõ file nào */
+
   function checkModules() {
     const bad = [];
     if (!window.Slips) bad.push('<b>assets/slips.js</b> (chưa tải được)'); else if (Slips.ver !== BUILD) bad.push('<b>assets/slips.js</b> là bản cũ (' + esc(Slips.ver || '?') + ')');
     if (!bad.length) return;
     const d = document.createElement('div'); d.className = 'mod-banner'; d.id = 'modBanner';
-    d.innerHTML = '⚠ Một số file của web chưa cập nhật đúng: ' + bad.join('; ') + '. Nguyên nhân thường gặp: <b>chưa tải file lên GitHub</b> hoặc <b>trình duyệt đang giữ bản cũ</b>. Cách xử lý: tải đủ các file trong thư mục <code>assets</code> rồi bấm <b>Ctrl + F5</b> (điện thoại: xoá bộ nhớ đệm / mở tab ẩn danh).<button type="button" onclick="this.parentNode.remove()">Đóng</button>';
+    d.innerHTML = '⚠ Một số file của web chưa cập nhật đúng: ' + bad.join('; ') + '. Hãy tải đủ các file trong thư mục <code>assets</code> rồi bấm <b>Ctrl + F5</b>.<button type="button" onclick="this.parentNode.remove()">Đóng</button>';
     document.body.insertBefore(d, document.body.firstChild);
   }
+
   const sheetById = id => ST.sheets.find(s => s.id === id);
   const labelOf = s => CFG.sheetLabels[s.id] || s.name;
-  /* Kho: dòng có r.x = đã xuất theo phiếu (ẩn khỏi danh mục) · dòng có r.n = nhập theo phiếu (nhãn "MỚI") */
   const isStock = r => !r.x;
   const stockRows = b => b.rows.filter(isStock);
   const countRows = s => s.blocks.reduce((n, b) => n + stockRows(b).length, 0);
@@ -90,39 +90,123 @@
   const countExported = () => ST.sheets.reduce((n, s) => n + s.blocks.reduce((m, b) => m + b.rows.filter(r => r.x).length, 0), 0);
   let uidN = 0;
   const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6) + (uidN++).toString(36);
-  /** Mỗi dòng có mã riêng r.i (cố định) để phiếu liên kết đúng vật tư dù thứ tự dòng thay đổi */
+
   function ensureIds(sheets) {
     sheets.forEach(s => s.blocks.forEach((b, bi) => b.rows.forEach(r => { if (!r.i) r.i = r.r ? `${s.id}:${bi}:${r.r}` : 'u' + uid(); })));
   }
   const emptySlips = () => ({ xuat: [], nhap: [] });
 
+  /* ---------- Tích hợp dữ liệu danh mục & gom nhóm tự động từ Excel/APP_DATA ---------- */
+  function mergeSourceData(baseSheets, appData) {
+    if (!appData || !Array.isArray(appData.items) || appData.items.length === 0) return baseSheets;
+    
+    const sheets = clone(baseSheets);
+    let newCatSheet = sheets.find(s => s.id === 'cat-new-excel');
+    
+    if (!newCatSheet) {
+      newCatSheet = {
+        id: 'cat-new-excel',
+        name: 'Vật tư Nhập từ Excel',
+        group: 1,
+        blocks: []
+      };
+      sheets.push(newCatSheet);
+    }
+
+    const existingMap = new Map();
+    sheets.forEach(s => s.blocks.forEach(b => b.rows.forEach(r => {
+      const text = (r.v || []).join(' ').toLowerCase();
+      existingMap.set(text, r);
+    })));
+
+    appData.items.forEach(item => {
+      const itemKey = `${item.code || ''} ${item.name || ''}`.trim().toLowerCase();
+      if (existingMap.has(itemKey)) {
+        // Gom nhóm và cộng dồn số lượng nếu trùng mã/tên
+        const matchedRow = existingMap.get(itemKey);
+        if (item.quantity && !isNaN(item.quantity)) {
+          const qtyIdx = matchedRow.v.findIndex(val => !isNaN(val) && val !== '');
+          if (qtyIdx !== -1) {
+            matchedRow.v[qtyIdx] = (parseFloat(matchedRow.v[qtyIdx]) || 0) + parseFloat(item.quantity);
+          }
+        }
+      } else {
+        // Phân loại tạo khối danh mục mới
+        const blockTitle = item.category || 'Vật tư phát sinh mới';
+        let block = newCatSheet.blocks.find(b => b.title === blockTitle);
+        if (!block) {
+          block = {
+            title: blockTitle,
+            cols: ['STT', 'Mã VT', 'Tên vật tư', 'Đơn vị', 'Số lượng', 'Ghi chú'],
+            rows: []
+          };
+          newCatSheet.blocks.push(block);
+        }
+
+        const newRow = {
+          r: block.rows.length + 1,
+          i: 'u' + uid(),
+          c: false,
+          v: [
+            String(block.rows.length + 1),
+            item.code || '',
+            item.name || '',
+            item.unit || 'Cái',
+            String(item.quantity || 0),
+            'Nhập từ Excel'
+          ]
+        };
+        block.rows.push(newRow);
+        existingMap.set(itemKey, newRow);
+      }
+    });
+
+    return sheets;
+  }
+
   function loadState() {
     let st = null;
+    const sysVersion = (DATA && DATA.meta) ? DATA.meta.version : '1.0';
     try {
       const saved = JSON.parse(localStorage.getItem(LS('state')) || 'null');
       if (saved && Array.isArray(saved.sheets)) {
-        if (saved.ver === DATA.meta.version) st = { sheets: saved.sheets, slips: saved.slips || emptySlips(), dirty: true };
-        else {
-          const useNew = confirm('Dữ liệu gốc trên website vừa được cập nhật.\n\nOK  = dùng dữ liệu MỚI (xoá chỉnh sửa & phiếu cũ trên máy này)\nHủy = giữ chỉnh sửa và phiếu cũ của tôi');
+        if (saved.ver === sysVersion) {
+          st = { sheets: saved.sheets, slips: saved.slips || emptySlips(), dirty: true };
+        } else {
+          const useNew = confirm('Dữ liệu gốc trên website vừa được cập nhật.\n\nOK  = dùng dữ liệu MỚI\nHủy = giữ chỉnh sửa cũ của tôi');
           if (useNew) localStorage.removeItem(LS('state'));
           else st = { sheets: saved.sheets, slips: saved.slips || emptySlips(), dirty: true };
         }
       }
     } catch (e) { /* bỏ qua */ }
-    if (!st) st = { sheets: clone(DATA.sheets), slips: emptySlips(), dirty: false };
-    ensureIds(st.sheets); return st;
+
+    if (!st) {
+      const mergedSheets = mergeSourceData(DATA ? DATA.sheets || [] : [], window.APP_DATA);
+      st = { sheets: clone(mergedSheets), slips: emptySlips(), dirty: false };
+    }
+    ensureIds(st.sheets);
+    return st;
   }
+
   let saveT;
   function persist() {
-    ST.dirty = true; $('#dirty').hidden = false;
+    ST.dirty = true;
+    const dirtyEl = $('#dirty'); if (dirtyEl) dirtyEl.hidden = false;
     clearTimeout(saveT);
     saveT = setTimeout(() => {
-      try { localStorage.setItem(LS('state'), JSON.stringify({ ver: DATA.meta.version, sheets: ST.sheets, slips: ST.slips })); }
-      catch (e) { toast('⚠ Không lưu được vào trình duyệt (bộ nhớ đầy hoặc bị chặn). Hãy dùng Sao lưu JSON.', 5000); }
+      try {
+        localStorage.setItem(LS('state'), JSON.stringify({
+          ver: DATA.meta ? DATA.meta.version : '1.0',
+          sheets: ST.sheets,
+          slips: ST.slips
+        }));
+      } catch (e) {
+        toast('⚠ Bộ nhớ trình duyệt đầy. Hãy dùng Sao lưu JSON.', 5000);
+      }
     }, 250);
   }
 
-  /* ---------- Định tuyến (hash) ---------- */
+  /* ---------- Định tuyến (Hash Router) ---------- */
   function parseHash() {
     let m = location.hash.match(/^#\/s\/([\w-]+)/);
     if (m && sheetById(m[1])) { V.route = { page: 'sheet', id: m[1] }; return; }
@@ -132,22 +216,23 @@
   }
   function go(hash) { if (location.hash === hash) { render(); } else location.hash = hash; }
 
-  /* ---------- Thanh bên ---------- */
+  /* ---------- Thanh bên (Sidebar Navigation) ---------- */
   function renderSidebar() {
     const groups = [[], []];
     ST.sheets.forEach(s => groups[s.group === 1 ? 1 : 0].push(s));
     let h = `<a class="nav-item ${V.route.page === 'overview' && !V.gq ? 'active' : ''}" href="#/"><span class="nm">🏠 Tổng quan</span></a>`;
     h += `<div class="nav-group">Kho vật tư</div>` + [['xuat', '📤 Phiếu xuất kho'], ['nhap', '📥 Phiếu nhập kho']].map(([k, l]) =>
       `<a class="nav-item ${V.route.page === 'slips' && V.route.id === k && !V.gq ? 'active' : ''}" href="#/${k}"><span class="nm">${l}</span><span class="ct">${(ST.slips[k] || []).length}</span></a>`).join('');
+    
     groups.forEach((g, i) => {
       if (!g.length) return;
-      h += `<div class="nav-group">${esc(CFG.groupNames[i] || '')}</div>`;
+      h += `<div class="nav-group">${esc(CFG.groupNames[i] || 'Danh mục khác')}</div>`;
       g.forEach(s => {
         h += `<a class="nav-item ${V.route.id === s.id && !V.gq ? 'active' : ''}" href="#/s/${s.id}" title="${esc(labelOf(s))}">
                 <span class="nm">${esc(labelOf(s))}</span><span class="ct">${countRows(s)}</span></a>`;
       });
     });
-    $('#sidebar').innerHTML = h;
+    const sb = $('#sidebar'); if (sb) sb.innerHTML = h;
   }
 
   /* ---------- Trang Tổng quan ---------- */
@@ -163,6 +248,7 @@
     }));
     return c;
   }
+
   function colorCounts() {
     const m = {};
     ST.sheets.forEach(s => s.blocks.forEach(b => stockRows(b).forEach(r => {
@@ -177,15 +263,16 @@
     const expo = countExported(), nX = (ST.slips.xuat || []).length, nN = (ST.slips.nhap || []).length;
     const st = statusCounts(), cc = colorCounts();
     const pct = rows ? Math.round(chk * 100 / rows) : 0;
-    let h = `<div class="page-title"><h1>Tổng quan</h1><span class="sub">Nguồn: ${esc(DATA.meta.source)} · cập nhật ${esc(DATA.meta.generated)}</span>
+    
+    let h = `<div class="page-title"><h1>Tổng quan</h1><span class="sub">Nguồn: ${esc(DATA.meta ? DATA.meta.source : 'Hệ thống')} · Cập nhật: ${esc(DATA.meta ? DATA.meta.generated : 'Mới nhất')}</span>
       <span class="ov-actions"><button class="tbtn primary" data-sl-new="xuat">📤 Tạo phiếu xuất kho</button><button class="tbtn primary" data-sl-new="nhap">📥 Tạo phiếu nhập kho</button></span></div>
     <div class="kpis">
-      <div class="kpi"><div class="n">${ST.sheets.length}</div><div class="l">Sheet / hệ thống</div></div>
+      <div class="kpi"><div class="n">${ST.sheets.length}</div><div class="l">Sheet / Danh mục</div></div>
       <div class="kpi"><div class="n">${blocks}</div><div class="l">Khối thiết bị</div></div>
-      <div class="kpi"><div class="n">${rows.toLocaleString('vi-VN')}</div><div class="l">Vật tư trong danh mục (tồn)</div></div>
+      <div class="kpi"><div class="n">${rows.toLocaleString('vi-VN')}</div><div class="l">Vật tư tồn kho</div></div>
       <div class="kpi ok"><div class="n">${chk.toLocaleString('vi-VN')}</div><div class="l">${esc(CFG.checkLabel)} (${pct}%)</div></div>
       <div class="kpi warn"><div class="n">${(rows - chk).toLocaleString('vi-VN')}</div><div class="l">Chưa tích “${esc(CFG.checkLabel)}”</div></div>
-      <button class="kpi bad" data-q="??" title="Bấm để xem danh sách"><div class="n">${q2}</div><div class="l">Dòng ghi “??” (cần xác minh)</div></button>
+      <button class="kpi bad" data-q="??" title="Xem dòng nghi vấn"><div class="n">${q2}</div><div class="l">Dòng ghi “??”</div></button>
       <a class="kpi" href="#/xuat" style="text-decoration:none;color:inherit"><div class="n">${expo}</div><div class="l">Đã xuất kho · ${nX} phiếu xuất</div></a>
       <a class="kpi" href="#/nhap" style="text-decoration:none;color:inherit"><div class="n">${nN}</div><div class="l">Phiếu nhập kho</div></a>
     </div>
@@ -196,12 +283,13 @@
       <button class="chip" data-q="lỗi">🟠 Lỗi <b>${st['lỗi']}</b></button>
       <span class="chip">⚪ Khác <b>${st['khác']}</b></span></div>
       <p class="src" style="margin:10px 0 0">Bấm vào từng mục để lọc nhanh bằng ô tìm kiếm.</p></div></div>
-    <div class="card"><h3>Màu đánh dấu trong file Excel gốc</h3><div class="body">
-      ${cc.length ? cc.map(([hx, n]) => `<div class="legend-row"><span class="sw" style="background:#${hx}"></span><span><b>${esc(colorLabel(hx))}</b></span><span class="src">· ${n} dòng</span></div>`).join('') : '<span class="src">Không có.</span>'}
+    <div class="card"><h3>Phân loại đánh dấu màu trong Excel</h3><div class="body">
+      ${cc.length ? cc.map(([hx, n]) => `<div class="legend-row"><span class="sw" style="background:#${hx}"></span><span><b>${esc(colorLabel(hx))}</b></span><span class="src">· ${n} dòng</span></div>`).join('') : '<span class="src">Không có đánh dấu màu.</span>'}
       <p class="src" style="margin:8px 0 0">Ghi ý nghĩa từng màu trong <code>assets/config.js</code> (mục <code>colorMeaning</code>).</p></div></div>
     </div>
-    <div class="card" style="margin-top:16px"><h3>Danh sách sheet</h3>
-    <div style="overflow:auto"><table class="plain"><thead><tr><th>Sheet</th><th class="num">Khối</th><th class="num">Dòng</th><th class="num">${esc(CFG.checkLabel)}</th><th>Tiến độ</th></tr></thead><tbody>`;
+    <div class="card" style="margin-top:16px"><h3>Danh sách sheet & danh mục vật tư</h3>
+    <div style="overflow:auto"><table class="plain"><thead><tr><th>Sheet / Danh mục</th><th class="num">Khối</th><th class="num">Số dòng</th><th class="num">${esc(CFG.checkLabel)}</th><th>Tiến độ kiểm tra</th></tr></thead><tbody>`;
+    
     ST.sheets.forEach(s => {
       const n = countRows(s), c = countChecked(s), p = n ? Math.round(c * 100 / n) : 0;
       h += `<tr class="link" data-go="#/s/${s.id}"><td><a href="#/s/${s.id}"><b>${esc(labelOf(s))}</b></a></td><td class="num">${s.blocks.length}</td>
@@ -219,6 +307,7 @@
     if (tokens.length) { const h = hay(row); for (const t of tokens) if (!h.includes(t)) return false; }
     return true;
   }
+
   const colClass = label => { const f = fold(label); return /^stt$/.test(f.trim()) ? 'c-stt' : (/serial|s\/n|part|pasnumber|ma card|^ma$|ma vt|ma vat tu/.test(f) ? 'c-mono' : ''); };
 
   function rowHTML(s, bi, b, ri, row, tokens) {
@@ -250,7 +339,7 @@
     });
     const filtered = tokens.length || f.chk !== 'all' || f.color !== 'all';
     if (filtered && !shown && !V.edit) return '';
-    const head = b.cols.map((c, k) => `<th>${esc(c)}</th>`).join('');
+    const head = b.cols.map(c => `<th>${esc(c)}</th>`).join('');
     return `<section class="block ${V.collapsed[key] ? 'collapsed' : ''}" id="blk-${s.id}-${bi}" data-key="${key}" data-s="${s.id}" data-b="${bi}">
       <div class="block-head" data-toggle><span class="tg">▾</span><h3>${esc(b.title)}</h3>
         <span class="badge" data-badge>${filtered ? shown + ' / ' : ''}${base.length} dòng · ✓ ${filtered ? chk : base.filter(r => r.c === true).length}</span>
@@ -278,12 +367,13 @@
     if (s.blocks.length > 1) h += '<div class="jump no-print">' + s.blocks.map((b, i) => `<button class="chip" data-jump="blk-${s.id}-${i}">${esc(b.title)} <span class="src">${stockRows(b).length}</span></button>`).join('') + '</div>';
     return h + '<div id="blocks"></div>';
   }
+
   function renderBlocks() {
     const s = sheetById(V.route.id), tokens = tokensOf(V.f.q);
     let html = '', shown = 0, total = 0;
     s.blocks.forEach((b, i) => { const base = V.f.showX ? b.rows : stockRows(b); total += base.length; shown += base.filter(r => passRow(r, tokens, V.f)).length; html += blockHTML(s, i, tokens, V.f, null); });
-    $('#blocks').innerHTML = html || '<div class="card"><div class="empty">Không có dòng nào khớp bộ lọc.</div></div>';
-    $('#fcount').textContent = shown === total ? `${total} dòng` : `Hiển thị ${shown} / ${total} dòng`;
+    const blkContainer = $('#blocks'); if (blkContainer) blkContainer.innerHTML = html || '<div class="card"><div class="empty">Không có dòng nào khớp bộ lọc.</div></div>';
+    const fc = $('#fcount'); if (fc) fc.textContent = shown === total ? `${total} dòng` : `Hiển thị ${shown} / ${total} dòng`;
   }
 
   /* ---------- Tìm kiếm toàn bộ ---------- */
@@ -307,7 +397,7 @@
   /* ---------- Vẽ trang ---------- */
   function render() {
     renderSidebar();
-    const m = $('#main');
+    const m = $('#main'); if (!m) return;
     if (V.gq.trim()) m.innerHTML = viewSearch();
     else if (V.route.page === 'sheet') { m.innerHTML = viewSheet(sheetById(V.route.id)); renderBlocks(); }
     else if (V.route.page === 'slips') {
@@ -334,7 +424,7 @@
   }
 
   function bind() {
-    const main = $('#main');
+    const main = $('#main'); if (!main) return;
 
     main.addEventListener('click', e => {
       const t = e.target;
@@ -376,7 +466,6 @@
       if (e.target.id === 'fq') { clearTimeout(ft); ft = setTimeout(() => { V.f.q = e.target.value; renderBlocks(); }, 150); }
     });
 
-    // Lưu ô đang sửa khi rời khỏi ô
     main.addEventListener('focusin', e => { const td = e.target.closest('td[contenteditable]'); if (td) td.dataset.orig = td.innerText; });
     main.addEventListener('focusout', e => {
       const td = e.target.closest('td[contenteditable]'); if (!td) return;
@@ -397,44 +486,46 @@
     });
 
     // Tìm kiếm toàn cục
-    let gt; $('#gq').addEventListener('input', e => { clearTimeout(gt); gt = setTimeout(() => setGlobalSearch(e.target.value, true), 180); });
-    $('#gqClear').addEventListener('click', () => setGlobalSearch(''));
+    let gt; const gq = $('#gq');
+    if (gq) gq.addEventListener('input', e => { clearTimeout(gt); gt = setTimeout(() => setGlobalSearch(e.target.value, true), 180); });
+    const gqClear = $('#gqClear');
+    if (gqClear) gqClear.addEventListener('click', () => setGlobalSearch(''));
     document.addEventListener('keydown', e => {
       const typing = /input|textarea|select/i.test(e.target.tagName) || e.target.isContentEditable;
-      if (e.key === '/' && !typing) { e.preventDefault(); $('#gq').focus(); }
+      if (e.key === '/' && !typing) { e.preventDefault(); const g = $('#gq'); if (g) g.focus(); }
       if (e.key === 'Escape' && e.target.id === 'gq') setGlobalSearch('');
     });
 
-    // Menu & nút
-    $('#btnMenu').addEventListener('click', () => toggleSidebar());
-    $('#overlay').addEventListener('click', () => toggleSidebar(false));
-    $('#sidebar').addEventListener('click', e => { if (e.target.closest('a')) { if (V.gq) setGlobalSearch(''); toggleSidebar(false); } });
-    $('#btnEdit').addEventListener('click', () => setEdit(!V.edit));
-    $('#btnPrint').addEventListener('click', () => window.print());
-    $('#btnTheme').addEventListener('click', () => { const t = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark'; document.documentElement.dataset.theme = t; localStorage.setItem(LS('theme'), t); });
-    $('#menuExport').addEventListener('click', e => { const b = e.target.closest('button[data-act]'); if (b) { $('#menuExport').open = false; doAction(b.dataset.act); } });
-    document.addEventListener('click', e => { const m = $('#menuExport'); if (m.open && !m.contains(e.target)) m.open = false; });
-    $('#fileIn').addEventListener('change', importJSON);
+    // Menu & Nút chức năng
+    const btnMenu = $('#btnMenu'); if (btnMenu) btnMenu.addEventListener('click', () => toggleSidebar());
+    const overlay = $('#overlay'); if (overlay) overlay.addEventListener('click', () => toggleSidebar(false));
+    const sb = $('#sidebar'); if (sb) sb.addEventListener('click', e => { if (e.target.closest('a')) { if (V.gq) setGlobalSearch(''); toggleSidebar(false); } });
+    const btnEdit = $('#btnEdit'); if (btnEdit) btnEdit.addEventListener('click', () => setEdit(!V.edit));
+    const btnPrint = $('#btnPrint'); if (btnPrint) btnPrint.addEventListener('click', () => window.print());
+    const btnTheme = $('#btnTheme'); if (btnTheme) btnTheme.addEventListener('click', () => { const t = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark'; document.documentElement.dataset.theme = t; localStorage.setItem(LS('theme'), t); });
+    const menuExp = $('#menuExport'); if (menuExp) menuExp.addEventListener('click', e => { const b = e.target.closest('button[data-act]'); if (b) { menuExp.open = false; doAction(b.dataset.act); } });
+    document.addEventListener('click', e => { const m = $('#menuExport'); if (m && m.open && !m.contains(e.target)) m.open = false; });
+    const fileIn = $('#fileIn'); if (fileIn) fileIn.addEventListener('change', importJSON);
     window.addEventListener('hashchange', () => { parseHash(); V.f = newF(); if (V.gq) setGlobalSearch(''); else render(); window.scrollTo(0, 0); });
   }
 
   function toggleSidebar(force) {
     const sb = $('#sidebar'), open = force === undefined ? !sb.classList.contains('open') : force;
-    sb.classList.toggle('open', open); $('#overlay').classList.toggle('show', open);
+    if (sb) sb.classList.toggle('open', open); const ov = $('#overlay'); if (ov) ov.classList.toggle('show', open);
   }
   function setGlobalSearch(q, fromInput) {
-    V.gq = q; const inp = $('#gq'); if (!fromInput && inp.value !== q) inp.value = q;
-    $('#gqClear').hidden = !q.trim();
+    V.gq = q; const inp = $('#gq'); if (inp && !fromInput && inp.value !== q) inp.value = q;
+    const gc = $('#gqClear'); if (gc) gc.hidden = !q.trim();
     render();
     if (q.trim() && !fromInput) window.scrollTo(0, 0);
   }
   function setEdit(on) {
     V.edit = on; document.body.classList.toggle('editing', on);
-    const b = $('#btnEdit'); b.setAttribute('aria-pressed', on); $('span', b).textContent = on ? 'Đang chỉnh sửa' : 'Chỉnh sửa';
-    $('#editbar').hidden = !on; keepScroll(render);
+    const b = $('#btnEdit'); if (b) { b.setAttribute('aria-pressed', on); const sp = $('span', b); if (sp) sp.textContent = on ? 'Đang chỉnh sửa' : 'Chỉnh sửa'; }
+    const eb = $('#editbar'); if (eb) eb.hidden = !on; keepScroll(render);
   }
 
-  /* ---------- Xuất / sao lưu ---------- */
+  /* ---------- Xuất / Sao lưu ---------- */
   const ymd = () => new Date().toISOString().slice(0, 10);
   function download(name, type, content) {
     const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([content], { type })); a.download = name;
@@ -466,11 +557,11 @@
       if (!cur) { toast('Hãy mở một sheet trước khi xuất CSV.'); return; }
       download(`${cur.id}_${ymd()}.csv`, 'text/csv;charset=utf-8', toCSV(sheetAOA(cur)));
     } else if (act === 'json-out') {
-      download(`sao-luu-lab_${ymd()}.json`, 'application/json', JSON.stringify({ ver: DATA.meta.version, source: DATA.meta.source, sheets: ST.sheets, slips: ST.slips }));
-    } else if (act === 'json-in') { $('#fileIn').click(); }
+      download(`sao-luu-lab_${ymd()}.json`, 'application/json', JSON.stringify({ ver: DATA.meta ? DATA.meta.version : '1.0', source: DATA.meta ? DATA.meta.source : 'LAB', sheets: ST.sheets, slips: ST.slips }));
+    } else if (act === 'json-in') { const fi = $('#fileIn'); if (fi) fi.click(); }
     else if (act === 'reset') {
       if (confirm('Xoá toàn bộ chỉnh sửa, PHIẾU XUẤT/NHẬP KHO trên máy này và quay về dữ liệu gốc của website?')) {
-        localStorage.removeItem(LS('state')); ST = { sheets: clone(DATA.sheets), slips: emptySlips(), dirty: false }; ensureIds(ST.sheets); $('#dirty').hidden = true; parseHash(); render(); toast('Đã khôi phục dữ liệu gốc');
+        localStorage.removeItem(LS('state')); ST = { sheets: clone(DATA.sheets), slips: emptySlips(), dirty: false }; ensureIds(ST.sheets); const d = $('#dirty'); if (d) d.hidden = true; parseHash(); render(); toast('Đã khôi phục dữ liệu gốc');
       }
     }
   }
@@ -490,12 +581,16 @@
     rd.readAsText(f, 'utf-8');
   }
 
-  /* ---------- Khởi động (có hỗ trợ dữ liệu mã hoá bằng mật khẩu) ---------- */
+  /* ---------- Khởi động ---------- */
   function start(data) {
     DATA = data; ST = loadState();
-    $('#boot').remove(); $('#topbar').hidden = false; $('#layout').hidden = false;
-    $('#appTitle').textContent = CFG.title; $('#appSub').textContent = CFG.subtitle;
-    $('#dirty').hidden = !ST.dirty;
+    const bootEl = $('#boot'); if (bootEl) bootEl.remove();
+    const topbar = $('#topbar'); if (topbar) topbar.hidden = false;
+    const layout = $('#layout'); if (layout) layout.hidden = false;
+    const appTitle = $('#appTitle'); if (appTitle) appTitle.textContent = CFG.title;
+    const appSub = $('#appSub'); if (appSub) appSub.textContent = CFG.subtitle;
+    const dirty = $('#dirty'); if (dirty) dirty.hidden = !ST.dirty;
+    
     checkModules(); SL().init(window.LabApp);
     parseHash(); bind(); render();
   }
@@ -507,30 +602,34 @@
     return JSON.parse(new TextDecoder().decode(pt));
   }
   function unlock() {
-    $('#boot').innerHTML = `<form class="lock" id="lockForm"><h2>🔒 ${esc(CFG.title)}</h2><p>Dữ liệu được bảo vệ bằng mật khẩu.</p>
+    const bootEl = $('#boot'); if (!bootEl) return;
+    bootEl.innerHTML = `<form class="lock" id="lockForm"><h2>🔒 ${esc(CFG.title)}</h2><p>Dữ liệu được bảo vệ bằng mật khẩu.</p>
       <input type="password" id="pw" placeholder="Nhập mật khẩu" autocomplete="current-password" autofocus><div class="err" id="pwErr"></div><button>Mở khoá</button></form>`;
     $('#lockForm').addEventListener('submit', async ev => {
-      ev.preventDefault(); const err = $('#pwErr'); err.textContent = 'Đang giải mã…';
+      ev.preventDefault(); const err = $('#pwErr'); if (err) err.textContent = 'Đang giải mã…';
       try { if (!window.crypto || !crypto.subtle) throw new Error('nocrypto'); start(await decrypt(window.LAB_DATA_ENC, $('#pw').value)); }
-      catch (e) { err.textContent = e.message === 'nocrypto' ? 'Trình duyệt cần mở bằng https:// (hoặc localhost) để giải mã.' : 'Sai mật khẩu.'; }
+      catch (e) { if (err) err.textContent = e.message === 'nocrypto' ? 'Trình duyệt cần mở bằng https:// (hoặc localhost) để giải mã.' : 'Sai mật khẩu.'; }
     });
   }
   let lastErr = '', lastErrT = 0;
   window.addEventListener('error', e => {
     const m = (e.message || 'lỗi không rõ') + (e.filename ? ' (' + e.filename.split('/').pop() + ':' + e.lineno + ')' : '');
     if (m === lastErr && Date.now() - lastErrT < 8000) return; lastErr = m; lastErrT = Date.now();
-    const t = $('#toast'); if (t) toast('⚠ Lỗi: ' + m + ' – thử tải lại trang (Ctrl+F5).', 7000);
+    toast('⚠ Lỗi: ' + m + ' – thử tải lại trang (Ctrl+F5).', 7000);
   });
+
   window.LabApp = {
     BUILD, CFG, esc, fold, tokensOf, toast, download, toCSV, ymd, uid, sheetById, labelOf, persist, render, keepScroll, isStock, stockRows,
     get ST() { return ST; }, get V() { return V; }, touch: r => hayCache.delete(r)
   };
+
   function boot() {
     const t = localStorage.getItem(LS('theme')) || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
     document.documentElement.dataset.theme = t;
     if (window.LAB_DATA) start(window.LAB_DATA);
     else if (window.LAB_DATA_ENC) unlock();
-    else $('#boot').innerHTML = '<p>⚠ Không tìm thấy dữ liệu (assets/data.js). Hãy chạy tools/convert.py.</p>';
+    else if (window.APP_DATA) start(window.APP_DATA);
+    else { const b = $('#boot'); if (b) b.innerHTML = '<p>⚠ Không tìm thấy dữ liệu (assets/data.js). Hãy kiểm tra file data.js đã được load.</p>'; }
   }
   boot();
 })();
