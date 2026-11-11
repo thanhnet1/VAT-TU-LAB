@@ -584,124 +584,159 @@
     rd.readAsText(f, 'utf-8');
   }
 
-  /* ---------- Xử lý Tải tệp nguồn trực tiếp (Excel, Word, PDF) ---------- */
+  /* ---------- Xử lý Tải tệp nguồn trực tiếp (Excel, Word, PDF) - Tối ưu hóa hiệu năng ---------- */
   async function handleWebFileImport(e) {
     const file = e.target.files[0]; e.target.value = ''; if (!file) return;
     const fn = file.name.toLowerCase();
-    toast(`Đang phân tích tệp: ${file.name}...`, 3500);
+    
+    toast(`⏳ Đang tải và chuẩn bị phân tích tệp: ${file.name}...`, 4000);
+    
     try {
-      if (fn.endsWith('.xlsx') || fn.endsWith('.xls')) await processWebExcel(file);
-      else if (fn.endsWith('.docx')) await processWebWord(file);
-      else if (fn.endsWith('.pdf')) await processWebPdf(file);
-      else toast('⚠ Định dạng tệp không được hỗ trợ! Vui lòng chọn tệp .xlsx, .docx hoặc .pdf', 5000);
+      if (fn.endsWith('.xlsx') || fn.endsWith('.xls')) {
+        await processWebExcel(file);
+      } else if (fn.endsWith('.docx')) {
+        await processWebWord(file);
+      } else if (fn.endsWith('.pdf')) {
+        await processWebPdf(file);
+      } else {
+        toast('⚠ Định dạng tệp không được hỗ trợ! Vui lòng chọn .xlsx, .docx hoặc .pdf', 5000);
+      }
     } catch (err) {
-      console.error(err);
-      toast('⚠ Lỗi khi đọc file: ' + err.message, 6000);
+      console.error("Lỗi đọc file:", err);
+      toast('⚠ Lỗi khi phân tích tệp: ' + err.message, 6000);
     }
   }
 
   async function processWebExcel(file) {
     if (!window.XLSX) { toast('⚠ Chưa nạp thư viện SheetJS (XLSX).', 5000); return; }
     const buffer = await file.arrayBuffer();
-    const wb = XLSX.read(buffer, { type: 'array' });
-    const newSheets = [];
     
-    wb.SheetNames.forEach((name, idx) => {
-      const ws = wb.Sheets[name];
-      const json = XLSX.utils.sheet_to_json(ws, { header: 1 });
-      const rows = json.map((r, rIdx) => ({
-        r: rIdx + 1,
-        i: 'u' + uid(),
-        c: false,
-        v: r.map(v => (v !== undefined && v !== null ? String(v) : ''))
-      })).filter(r => r.v.some(v => v !== ''));
+    // Trễ 50ms nhường luồng giao diện cập nhật Toast trước khi tính toán nặng
+    setTimeout(() => {
+      try {
+        const wb = XLSX.read(buffer, { type: 'array' });
+        const newSheets = [];
+        
+        wb.SheetNames.forEach((name, idx) => {
+          const ws = wb.Sheets[name];
+          const json = XLSX.utils.sheet_to_json(ws, { header: 1 });
+          const rows = json.map((r, rIdx) => ({
+            r: rIdx + 1,
+            i: 'u' + uid(),
+            c: false,
+            v: r.map(v => (v !== undefined && v !== null ? String(v) : ''))
+          })).filter(r => r.v.some(v => v !== ''));
 
-      if (rows.length > 0) {
-        newSheets.push({
-          id: `imp-${idx}-${Date.now()}`,
-          name: name,
-          group: 0,
-          blocks: [{
-            title: name,
-            hr: 1,
-            cols: rows[0] ? rows[0].v : ['STT', 'Nội dung'],
-            rows: rows.slice(1)
-          }]
+          if (rows.length > 0) {
+            newSheets.push({
+              id: `imp-${idx}-${Date.now()}`,
+              name: name,
+              group: 0,
+              blocks: [{
+                title: name,
+                hr: 1,
+                cols: rows[0] ? rows[0].v : ['STT', 'Nội dung'],
+                rows: rows.slice(1)
+              }]
+            });
+          }
         });
-      }
-    });
 
-    if (newSheets.length) {
-      updateImportedState(newSheets, file.name);
-      toast(`Đã cập nhật ${newSheets.length} sheet từ file Excel: ${file.name}`);
-    } else {
-      toast('⚠ Không tìm thấy dữ liệu trong file Excel.', 4000);
-    }
+        if (newSheets.length) {
+          updateImportedState(newSheets, file.name);
+          toast(`✅ Đã cập nhật thành công ${newSheets.length} sheet từ Excel!`);
+        } else {
+          toast('⚠ Không tìm thấy dữ liệu hợp lệ trong file Excel.', 4000);
+        }
+      } catch (e) {
+        toast('⚠ Lỗi đọc cấu trúc Excel: ' + e.message, 5000);
+      }
+    }, 50);
   }
 
   async function processWebWord(file) {
     if (!window.mammoth) { toast('⚠ Chưa nạp thư viện Mammoth (Word).', 5000); return; }
     const buffer = await file.arrayBuffer();
-    const result = await mammoth.extractRawText({ arrayBuffer: buffer });
-    const lines = result.value.split('\n').map(l => l.trim()).filter(Boolean);
+    toast('⏳ Đang bóc tách văn bản từ tệp Word...', 4000);
+    
+    setTimeout(async () => {
+      try {
+        const result = await mammoth.extractRawText({ arrayBuffer: buffer });
+        const lines = result.value.split('\n').map(l => l.trim()).filter(Boolean);
 
-    const rows = lines.map((line, idx) => ({
-      r: idx + 1,
-      i: 'u' + uid(),
-      c: false,
-      v: [String(idx + 1), line, '', '', '']
-    }));
+        const rows = lines.map((line, idx) => ({
+          r: idx + 1,
+          i: 'u' + uid(),
+          c: false,
+          v: [String(idx + 1), line, '', '', '']
+        }));
 
-    const newSheets = [{
-      id: `doc-${Date.now()}`,
-      name: file.name.replace(/\.docx$/i, ''),
-      group: 1,
-      blocks: [{
-        title: file.name,
-        hr: 1,
-        cols: ['STT', 'Nội dung trích xuất từ Word', 'S/N', 'Mã VT', 'Ghi chú'],
-        rows: rows
-      }]
-    }];
+        const newSheets = [{
+          id: `doc-${Date.now()}`,
+          name: file.name.replace(/\.docx$/i, ''),
+          group: 1,
+          blocks: [{
+            title: file.name,
+            hr: 1,
+            cols: ['STT', 'Nội dung trích xuất từ Word', 'S/N', 'Mã VT', 'Ghi chú'],
+            rows: rows
+          }]
+        }];
 
-    updateImportedState(newSheets, file.name);
-    toast(`Đã trích xuất ${rows.length} dòng từ file Word: ${file.name}`);
+        updateImportedState(newSheets, file.name);
+        toast(`✅ Đã trích xuất thành công ${rows.length} dòng từ Word!`);
+      } catch (e) {
+        toast('⚠ Lỗi đọc file Word: ' + e.message, 5000);
+      }
+    }, 50);
   }
 
   async function processWebPdf(file) {
     if (!window.pdfjsLib) { toast('⚠ Chưa nạp thư viện PDF.js.', 5000); return; }
+    
+    // Cấu hình Worker chính xác của PDF.js để chạy ngầm mượt mà
     pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdfjs-dist/3.11.174/pdf.worker.min.js';
+    
     const buffer = await file.arrayBuffer();
-    const pdf = await pdfjsLib.getDocument({ data: buffer }).promise;
-    const lines = [];
+    toast('⏳ Đang khởi tạo bộ đọc PDF...', 4000);
 
-    for (let i = 1; i <= pdf.numPages; i++) {
-      const page = await pdf.getPage(i);
-      const textContent = await page.getTextContent();
-      textContent.items.forEach(item => { if (item.str && item.str.trim()) lines.push(item.str.trim()); });
+    try {
+      const loadingTask = pdfjsLib.getDocument({ data: buffer });
+      const pdf = await loadingTask.promise;
+      const lines = [];
+      
+      toast(`⏳ Đang đọc nội dung từ ${pdf.numPages} trang PDF...`, 5000);
+
+      for (let i = 1; i <= pdf.numPages; i++) {
+        const page = await pdf.getPage(i);
+        const textContent = await page.getTextContent();
+        textContent.items.forEach(item => { if (item.str && item.str.trim()) lines.push(item.str.trim()); });
+      }
+
+      const rows = lines.map((line, idx) => ({
+        r: idx + 1,
+        i: 'u' + uid(),
+        c: false,
+        v: [String(idx + 1), line, '', '', '']
+      }));
+
+      const newSheets = [{
+        id: `pdf-${Date.now()}`,
+        name: file.name.replace(/\.pdf$/i, ''),
+        group: 1,
+        blocks: [{
+          title: file.name,
+          hr: 1,
+          cols: ['STT', 'Nội dung trích xuất từ PDF', 'S/N', 'Mã VT', 'Ghi chú'],
+          rows: rows
+        }]
+      }];
+
+      updateImportedState(newSheets, file.name);
+      toast(`✅ Đã trích xuất thành công ${rows.length} dòng từ PDF!`);
+    } catch (e) {
+      toast('⚠ Lỗi xử lý PDF: ' + e.message, 5000);
     }
-
-    const rows = lines.map((line, idx) => ({
-      r: idx + 1,
-      i: 'u' + uid(),
-      c: false,
-      v: [String(idx + 1), line, '', '', '']
-    }));
-
-    const newSheets = [{
-      id: `pdf-${Date.now()}`,
-      name: file.name.replace(/\.pdf$/i, ''),
-      group: 1,
-      blocks: [{
-        title: file.name,
-        hr: 1,
-        cols: ['STT', 'Nội dung trích xuất từ PDF', 'S/N', 'Mã VT', 'Ghi chú'],
-        rows: rows
-      }]
-    }];
-
-    updateImportedState(newSheets, file.name);
-    toast(`Đã trích xuất ${rows.length} dòng từ file PDF: ${file.name}`);
   }
 
   function updateImportedState(newSheets, fileName) {
@@ -714,56 +749,3 @@
     location.hash = '#/';
     render();
   }
-
-  /* ---------- Khởi động ---------- */
-  function start(data) {
-    DATA = data; ST = loadState();
-    const bootEl = $('#boot'); if (bootEl) bootEl.remove();
-    const topbar = $('#topbar'); if (topbar) topbar.hidden = false;
-    const layout = $('#layout'); if (layout) layout.hidden = false;
-    const appTitle = $('#appTitle'); if (appTitle) appTitle.textContent = CFG.title;
-    const appSub = $('#appSub'); if (appSub) appSub.textContent = CFG.subtitle;
-    const dirty = $('#dirty'); if (dirty) dirty.hidden = !ST.dirty;
-    
-    checkModules(); SL().init(window.LabApp);
-    parseHash(); bind(); render();
-  }
-  async function decrypt(enc, pw) {
-    const b64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
-    const km = await crypto.subtle.importKey('raw', new TextEncoder().encode(pw), 'PBKDF2', false, ['deriveKey']);
-    const key = await crypto.subtle.deriveKey({ name: 'PBKDF2', salt: b64(enc.salt), iterations: enc.iter, hash: 'SHA-256' }, km, { name: 'AES-GCM', length: 256 }, false, ['decrypt']);
-    const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: b64(enc.iv) }, key, b64(enc.ct));
-    return JSON.parse(new TextDecoder().decode(pt));
-  }
-  function unlock() {
-    const bootEl = $('#boot'); if (!bootEl) return;
-    bootEl.innerHTML = `<form class="lock" id="lockForm"><h2>🔒 ${esc(CFG.title)}</h2><p>Dữ liệu được bảo vệ bằng mật khẩu.</p>
-      <input type="password" id="pw" placeholder="Nhập mật khẩu" autocomplete="current-password" autofocus><div class="err" id="pwErr"></div><button>Mở khoá</button></form>`;
-    $('#lockForm').addEventListener('submit', async ev => {
-      ev.preventDefault(); const err = $('#pwErr'); if (err) err.textContent = 'Đang giải mã…';
-      try { if (!window.crypto || !crypto.subtle) throw new Error('nocrypto'); start(await decrypt(window.LAB_DATA_ENC, $('#pw').value)); }
-      catch (e) { if (err) err.textContent = e.message === 'nocrypto' ? 'Trình duyệt cần mở bằng https:// (hoặc localhost) để giải mã.' : 'Sai mật khẩu.'; }
-    });
-  }
-  let lastErr = '', lastErrT = 0;
-  window.addEventListener('error', e => {
-    const m = (e.message || 'lỗi không rõ') + (e.filename ? ' (' + e.filename.split('/').pop() + ':' + e.lineno + ')' : '');
-    if (m === lastErr && Date.now() - lastErrT < 8000) return; lastErr = m; lastErrT = Date.now();
-    toast('⚠ Lỗi: ' + m + ' – thử tải lại trang (Ctrl+F5).', 7000);
-  });
-
-  window.LabApp = {
-    BUILD, CFG, esc, fold, tokensOf, toast, download, toCSV, ymd, uid, sheetById, labelOf, persist, render, keepScroll, isStock, stockRows,
-    get ST() { return ST; }, get V() { return V; }, touch: r => hayCache.delete(r)
-  };
-
-  function boot() {
-    const t = localStorage.getItem(LS('theme')) || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
-    document.documentElement.dataset.theme = t;
-    if (window.LAB_DATA) start(window.LAB_DATA);
-    else if (window.LAB_DATA_ENC) unlock();
-    else if (window.APP_DATA) start(window.APP_DATA);
-    else { const b = $('#boot'); if (b) b.innerHTML = '<p>⚠ Không tìm thấy dữ liệu (assets/data.js). Hãy kiểm tra file data.js đã được load.</p>'; }
-  }
-  boot();
-})();
