@@ -1,5 +1,5 @@
 /* =====================================================================
-   WEB APP: Tài sản – Vật tư Truyền dẫn LAB (JavaScript thuần)
+   WEB APP: Tài sản – Vật tư Truyền dẫn LAB (JavaScript thuần - Hoàn chỉnh)
    Dữ liệu: assets/data.js  ·  Cấu hình: assets/config.js  ·  Giao diện: assets/style.css
    ===================================================================== */
 (function () {
@@ -32,7 +32,7 @@
   const bgOf = hex => { const n = parseInt(hex, 16); return `rgba(${n >> 16 & 255},${n >> 8 & 255},${n & 255},.40)`; };
   const colorLabel = hex => CFG.colorMeaning[hex] || COLOR_NAMES[hex] || ('#' + hex);
 
-  /** Tô sáng từ khoá (không phân biệt dấu / hoa-thường) */
+  /** Tô sáng từ khoá */
   function hl(text, tokens) {
     const t = disp(text);
     if (!tokens || !tokens.length) return esc(t);
@@ -60,7 +60,7 @@
   }
 
   /* ---------- Trạng thái ---------- */
-  let DATA = null;                 // dữ liệu gốc (từ data.js)
+  let DATA = null;                 // dữ liệu gốc
   let ST = null;                   // dữ liệu đang dùng (gốc + chỉnh sửa cục bộ): { sheets }
   const newF = () => ({ q: '', chk: 'all', color: 'all', showX: false });
   const V = { route: { page: 'overview', id: null }, gq: '', edit: false, f: newF(), collapsed: {} };
@@ -68,51 +68,48 @@
   const clone = o => JSON.parse(JSON.stringify(o));
   const SL = () => window.Slips || {
     init() {}, extraSheets: () => [],
-    listHTML: () => '<div class="card"><div class="empty">⚠ Không tải được <b>assets/slips.js</b> nên chưa dùng được phiếu kho. Hãy kiểm tra file đã được tải lên đủ và bấm Ctrl+F5.</div></div>',
-    view: () => toast('⚠ Thiếu file assets/slips.js – chưa mở được phiếu.', 5000), openEditor: () => toast('⚠ Thiếu file assets/slips.js – chưa tạo được phiếu.', 5000)
+    listHTML: () => '<div class="card"><div class="empty">⚠ Không tải được <b>assets/slips.js</b>. Hãy kiểm tra lại file.</div></div>',
+    view: () => toast('⚠ Thiếu file assets/slips.js – chưa mở được phiếu.', 5000), openEditor: () => toast('⚠ Thiếu file assets/slips.js.', 5000)
   };
 
   function checkModules() {
     const bad = [];
-    if (!window.Slips) bad.push('<b>assets/slips.js</b> (chưa tải được)'); else if (Slips.ver !== BUILD) bad.push('<b>assets/slips.js</b> là bản cũ (' + esc(Slips.ver || '?') + ')');
+    if (!window.Slips) bad.push('<b>assets/slips.js</b> (chưa tải được)'); else if (Slips.ver !== BUILD) bad.push('<b>assets/slips.js</b> là bản cũ');
     if (!bad.length) return;
     const d = document.createElement('div'); d.className = 'mod-banner'; d.id = 'modBanner';
-    d.innerHTML = '⚠ Một số file của web chưa cập nhật đúng: ' + bad.join('; ') + '. Hãy tải đủ các file trong thư mục <code>assets</code> rồi bấm <b>Ctrl + F5</b>.<button type="button" onclick="this.parentNode.remove()">Đóng</button>';
+    d.innerHTML = '⚠ Một số file chưa cập nhật đúng: ' + bad.join('; ') + '. Hãy bấm <b>Ctrl + F5</b>.<button type="button" onclick="this.parentNode.remove()">Đóng</button>';
     document.body.insertBefore(d, document.body.firstChild);
   }
 
-  const sheetById = id => ST.sheets.find(s => s.id === id);
-  const labelOf = s => CFG.sheetLabels[s.id] || s.name;
+  function removeBootScreen() {
+    const bootEl = $('#boot'); if (bootEl) bootEl.remove();
+  }
+
+  const sheetById = id => ST && ST.sheets ? ST.sheets.find(s => s.id === id) : null;
+  const labelOf = s => s ? (CFG.sheetLabels[s.id] || s.name) : '';
   const isStock = r => !r.x;
   const stockRows = b => b.rows.filter(isStock);
   const countRows = s => s.blocks.reduce((n, b) => n + stockRows(b).length, 0);
   const countChecked = s => s.blocks.reduce((n, b) => n + stockRows(b).filter(r => r.c === true).length, 0);
-  const countExported = () => ST.sheets.reduce((n, s) => n + s.blocks.reduce((m, b) => m + b.rows.filter(r => r.x).length, 0), 0);
+  const countExported = () => ST && ST.sheets ? ST.sheets.reduce((n, s) => n + s.blocks.reduce((m, b) => m + b.rows.filter(r => r.x).length, 0), 0) : 0;
   let uidN = 0;
   const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6) + (uidN++).toString(36);
 
   function ensureIds(sheets) {
-    sheets.forEach(s => s.blocks.forEach((b, bi) => b.rows.forEach(r => { if (!r.i) r.i = r.r ? `${s.id}:${bi}:${r.r}` : 'u' + uid(); })));
+    if (!Array.isArray(sheets)) return;
+    sheets.forEach(s => s.blocks && s.blocks.forEach((b, bi) => b.rows && b.rows.forEach(r => { if (!r.i) r.i = r.r ? `${s.id}:${bi}:${r.r}` : 'u' + uid(); })));
   }
   const emptySlips = () => ({ xuat: [], nhap: [] });
 
-  /* ---------- Tích hợp dữ liệu danh mục & gom nhóm tự động từ Excel/APP_DATA ---------- */
+  /* ---------- Tích hợp dữ liệu danh mục & gom nhóm tự động ---------- */
   function mergeSourceData(baseSheets, appData) {
     if (!appData || !Array.isArray(appData.items) || appData.items.length === 0) return baseSheets;
-    
     const sheets = clone(baseSheets);
     let newCatSheet = sheets.find(s => s.id === 'cat-new-excel');
-    
     if (!newCatSheet) {
-      newCatSheet = {
-        id: 'cat-new-excel',
-        name: 'Vật tư Nhập từ Excel',
-        group: 1,
-        blocks: []
-      };
+      newCatSheet = { id: 'cat-new-excel', name: 'Vật tư Nhập từ Excel', group: 1, blocks: [] };
       sheets.push(newCatSheet);
     }
-
     const existingMap = new Map();
     sheets.forEach(s => s.blocks.forEach(b => b.rows.forEach(r => {
       const text = (r.v || []).join(' ').toLowerCase();
@@ -125,40 +122,20 @@
         const matchedRow = existingMap.get(itemKey);
         if (item.quantity && !isNaN(item.quantity)) {
           const qtyIdx = matchedRow.v.findIndex(val => !isNaN(val) && val !== '');
-          if (qtyIdx !== -1) {
-            matchedRow.v[qtyIdx] = (parseFloat(matchedRow.v[qtyIdx]) || 0) + parseFloat(item.quantity);
-          }
+          if (qtyIdx !== -1) matchedRow.v[qtyIdx] = (parseFloat(matchedRow.v[qtyIdx]) || 0) + parseFloat(item.quantity);
         }
       } else {
         const blockTitle = item.category || 'Vật tư phát sinh mới';
         let block = newCatSheet.blocks.find(b => b.title === blockTitle);
         if (!block) {
-          block = {
-            title: blockTitle,
-            cols: ['STT', 'Mã VT', 'Tên vật tư', 'Đơn vị', 'Số lượng', 'Ghi chú'],
-            rows: []
-          };
+          block = { title: blockTitle, cols: ['STT', 'Mã VT', 'Tên vật tư', 'Đơn vị', 'Số lượng', 'Ghi chú'], rows: [] };
           newCatSheet.blocks.push(block);
         }
-
-        const newRow = {
-          r: block.rows.length + 1,
-          i: 'u' + uid(),
-          c: false,
-          v: [
-            String(block.rows.length + 1),
-            item.code || '',
-            item.name || '',
-            item.unit || 'Cái',
-            String(item.quantity || 0),
-            'Nhập từ Excel'
-          ]
-        };
+        const newRow = { r: block.rows.length + 1, i: 'u' + uid(), c: false, v: [String(block.rows.length + 1), item.code || '', item.name || '', item.unit || 'Cái', String(item.quantity || 0), 'Nhập từ Excel'] };
         block.rows.push(newRow);
         existingMap.set(itemKey, newRow);
       }
     });
-
     return sheets;
   }
 
@@ -171,7 +148,7 @@
         if (saved.ver === sysVersion) {
           st = { sheets: saved.sheets, slips: saved.slips || emptySlips(), dirty: true };
         } else {
-          const useNew = confirm('Dữ liệu gốc trên website vừa được cập nhật.\n\nOK  = dùng dữ liệu MỚI\nHủy = giữ chỉnh sửa cũ của tôi');
+          const useNew = confirm('Dữ liệu gốc trên website vừa được cập nhật.\n\nOK = dùng dữ liệu MỚI\nHủy = giữ chỉnh sửa cũ');
           if (useNew) localStorage.removeItem(LS('state'));
           else st = { sheets: saved.sheets, slips: saved.slips || emptySlips(), dirty: true };
         }
@@ -188,13 +165,14 @@
 
   let saveT;
   function persist() {
+    if (!ST) return;
     ST.dirty = true;
     const dirtyEl = $('#dirty'); if (dirtyEl) dirtyEl.hidden = false;
     clearTimeout(saveT);
     saveT = setTimeout(() => {
       try {
         localStorage.setItem(LS('state'), JSON.stringify({
-          ver: (DATA && DATA.meta) ? DATA.meta.version : '1.0',
+          ver: DATA && DATA.meta ? DATA.meta.version : '1.0',
           sheets: ST.sheets,
           slips: ST.slips
         }));
@@ -212,10 +190,10 @@
     if (m) { let sl = null; try { sl = m[2] ? decodeURIComponent(m[2]) : null; } catch (e) { sl = m[2]; } V.route = { page: 'slips', id: m[1], slip: sl }; return; }
     V.route = { page: 'overview', id: null };
   }
-  function go(hash) { if (location.hash === hash) { render(); } else location.hash = hash; }
 
   /* ---------- Thanh bên (Sidebar Navigation) ---------- */
   function renderSidebar() {
+    if (!ST || !ST.sheets) return;
     const groups = [[], []];
     ST.sheets.forEach(s => groups[s.group === 1 ? 1 : 0].push(s));
     let h = `<a class="nav-item ${V.route.page === 'overview' && !V.gq ? 'active' : ''}" href="#/"><span class="nm">🏠 Tổng quan</span></a>`;
@@ -279,11 +257,9 @@
       <button class="chip" data-q="tốt">🟢 Tốt <b>${st['tốt']}</b></button>
       <button class="chip" data-q="hỏng">🔴 Hỏng <b>${st['hỏng']}</b></button>
       <button class="chip" data-q="lỗi">🟠 Lỗi <b>${st['lỗi']}</b></button>
-      <span class="chip">⚪ Khác <b>${st['khác']}</b></span></div>
-      <p class="src" style="margin:10px 0 0">Bấm vào từng mục để lọc nhanh bằng ô tìm kiếm.</p></div></div>
+      <span class="chip">⚪ Khác <b>${st['khác']}</b></span></div></div></div>
     <div class="card"><h3>Phân loại đánh dấu màu trong Excel</h3><div class="body">
-      ${cc.length ? cc.map(([hx, n]) => `<div class="legend-row"><span class="sw" style="background:#${hx}"></span><span><b>${esc(colorLabel(hx))}</b></span><span class="src">· ${n} dòng</span></div>`).join('') : '<span class="src">Không có đánh dấu màu.</span>'}
-      <p class="src" style="margin:8px 0 0">Ghi ý nghĩa từng màu trong <code>assets/config.js</code> (mục <code>colorMeaning</code>).</p></div></div>
+      ${cc.length ? cc.map(([hx, n]) => `<div class="legend-row"><span class="sw" style="background:#${hx}"></span><span><b>${esc(colorLabel(hx))}</b></span><span class="src">· ${n} dòng</span></div>`).join('') : '<span class="src">Không có đánh dấu màu.</span>'}</div></div>
     </div>
     <div class="card" style="margin-top:16px"><h3>Danh sách sheet & danh mục vật tư</h3>
     <div style="overflow:auto"><table class="plain"><thead><tr><th>Sheet / Danh mục</th><th class="num">Khối</th><th class="num">Số dòng</th><th class="num">${esc(CFG.checkLabel)}</th><th>Tiến độ kiểm tra</th></tr></thead><tbody>`;
@@ -309,10 +285,10 @@
   const colClass = label => { const f = fold(label); return /^stt$/.test(f.trim()) ? 'c-stt' : (/serial|s\/n|part|pasnumber|ma card|^ma$|ma vt|ma vat tu/.test(f) ? 'c-mono' : ''); };
 
   function rowHTML(s, bi, b, ri, row, tokens) {
-    const tag = row.x ? `<button class="tag tag-x" data-slip="xuat:${esc(row.x)}" title="Đã xuất theo phiếu ${esc(row.x)} – bấm để xem">ĐÃ XUẤT</button>`
-      : (row.n ? `<button class="tag tag-n" data-slip="nhap:${esc(row.n)}" title="Nhập theo phiếu ${esc(row.n)} – bấm để xem">MỚI</button>` : '');
-    let h = `<tr data-s="${s.id}" data-b="${bi}" data-r="${ri}" class="${row.c === true ? 'is-checked' : ''}${row.x ? ' is-exported' : ''}" ${row.r ? `title="Dòng ${row.r} trong file Excel gốc"` : ''}>
-      <td class="c-chk"><input type="checkbox" class="chk" ${row.c === true ? 'checked' : ''} ${V.edit ? '' : 'disabled'} aria-label="${esc(CFG.checkLabel)}">${tag}</td>`;
+    const tag = row.x ? `<button class="tag tag-x" data-slip="xuat:${esc(row.x)}" title="Đã xuất theo phiếu">ĐÃ XUẤT</button>`
+      : (row.n ? `<button class="tag tag-n" data-slip="nhap:${esc(row.n)}" title="Nhập theo phiếu">MỚI</button>` : '');
+    let h = `<tr data-s="${s.id}" data-b="${bi}" data-r="${ri}" class="${row.c === true ? 'is-checked' : ''}${row.x ? ' is-exported' : ''}">
+      <td class="c-chk"><input type="checkbox" class="chk" ${row.c === true ? 'checked' : ''} ${V.edit ? '' : 'disabled'}>${tag}</td>`;
     const ce = V.edit ? ' contenteditable="true" spellcheck="false"' : '';
     for (let k = 0; k < b.cols.length; k++) {
       const span = row.s && row.s[k] ? row.s[k] : 1;
@@ -321,7 +297,7 @@
       h += `<td data-k="${k}"${span > 1 ? ` colspan="${span}"` : ''}${cls ? ` class="${cls}"` : ''}${st}${ce}>${hl(row.v[k] || '', tokens)}</td>`;
       k += span - 1;
     }
-    if (V.edit) h += '<td class="c-del"><button class="del" title="Xoá dòng này" aria-label="Xoá dòng">✕</button></td>';
+    if (V.edit) h += '<td class="c-del"><button class="del" title="Xoá dòng">✕</button></td>';
     return h + '</tr>';
   }
 
@@ -343,7 +319,7 @@
         <span class="badge" data-badge>${filtered ? shown + ' / ' : ''}${base.length} dòng · ✓ ${filtered ? chk : base.filter(r => r.c === true).length}</span>
         <span class="sp"></span>${V.edit ? '<button class="add-row" data-add>＋ Thêm dòng</button>' : ''}</div>
       ${rows ? `<div class="tbl-wrap"><table class="data"><thead><tr><th class="c-chk">${esc(CFG.checkLabel)}</th>${head}${V.edit ? '<th></th>' : ''}</tr></thead><tbody>${rows}</tbody></table></div>`
-             : `<div class="empty">${!base.length && b.rows.length ? 'Tất cả vật tư của khối này đã được xuất kho.' : 'Không có dòng nào khớp bộ lọc.'}</div>`}
+             : `<div class="empty">Không có dòng nào khớp bộ lọc.</div>`}
     </section>`;
   }
 
@@ -352,13 +328,11 @@
     s.blocks.forEach(b => b.rows.forEach(r => r.f && Object.values(r.f).forEach(x => colors.add(x))));
     const nExp = s.blocks.reduce((n, b) => n + b.rows.filter(r => r.x).length, 0);
     let h = `<div class="page-title"><h2>${esc(labelOf(s))}</h2>
-      <span class="sub">${s.blocks.length} khối · ${countRows(s)} dòng · ✓ ${countChecked(s)} ${esc(CFG.checkLabel.toLowerCase())}${nExp ? ` · ${nExp} đã xuất kho` : ''}</span></div>
+      <span class="sub">${s.blocks.length} khối · ${countRows(s)} dòng · ✓ ${countChecked(s)} ${esc(CFG.checkLabel.toLowerCase())}</span></div>
     <div class="toolbar no-print">
       <input type="search" id="fq" placeholder="Lọc trong sheet này…" value="${esc(V.f.q)}" autocomplete="off">
-      <select id="fchk" title="Lọc theo ô tích">
-        <option value="all">Tất cả dòng</option><option value="yes" ${V.f.chk === 'yes' ? 'selected' : ''}>Chỉ dòng đã tích ✓</option>
-        <option value="no" ${V.f.chk === 'no' ? 'selected' : ''}>Chỉ dòng chưa tích</option></select>
-      ${colors.size ? `<select id="fcolor" title="Lọc theo màu tô trong Excel"><option value="all">Mọi màu</option>${[...colors].map(c => `<option value="${c}" ${V.f.color === c ? 'selected' : ''}>● ${esc(colorLabel(c))}</option>`).join('')}</select>` : ''}
+      <select id="fchk"><option value="all">Tất cả dòng</option><option value="yes" ${V.f.chk === 'yes' ? 'selected' : ''}>Chỉ dòng đã tích ✓</option><option value="no" ${V.f.chk === 'no' ? 'selected' : ''}>Chỉ dòng chưa tích</option></select>
+      ${colors.size ? `<select id="fcolor"><option value="all">Mọi màu</option>${[...colors].map(c => `<option value="${c}" ${V.f.color === c ? 'selected' : ''}>● ${esc(colorLabel(c))}</option>`).join('')}</select>` : ''}
       ${nExp ? `<label class="chk-inline"><input type="checkbox" id="fshowx" ${V.f.showX ? 'checked' : ''}> Hiện cả vật tư đã xuất (${nExp})</label>` : ''}
       <button class="tbtn" data-all="collapse">Thu gọn tất cả</button><button class="tbtn" data-all="expand">Mở rộng tất cả</button>
       <span class="count" id="fcount"></span></div>`;
@@ -387,23 +361,26 @@
       });
       if (hit) { found += hit; sheetsHit++; html += `<div class="page-title" style="margin:18px 0 8px"><h2 style="font-size:16px">📁 <a href="#/s/${s.id}" data-clear>${esc(labelOf(s))}</a></h2><span class="sub">${hit} kết quả</span></div>` + part; }
     });
-    const cut = found > CFG.maxSearchResults ? ` (chỉ hiện ${CFG.maxSearchResults} dòng đầu – hãy gõ cụ thể hơn)` : '';
-    return `<div class="page-title"><h1>Kết quả tìm “${esc(V.gq)}”</h1><span class="sub">${found} dòng · ${sheetsHit} sheet${cut}</span></div>` +
-      (found ? html : '<div class="card"><div class="empty">Không tìm thấy. Thử từ khoá ngắn hơn (không cần gõ dấu).</div></div>');
+    return `<div class="page-title"><h1>Kết quả tìm “${esc(V.gq)}”</h1><span class="sub">${found} dòng · ${sheetsHit} sheet</span></div>` +
+      (found ? html : '<div class="card"><div class="empty">Không tìm thấy. Thử từ khoá ngắn hơn.</div></div>');
   }
 
   /* ---------- Vẽ trang ---------- */
   function render() {
+    removeBootScreen();
+    const topbar = $('#topbar'); if (topbar) topbar.hidden = false;
+    const layout = $('#layout'); if (layout) layout.hidden = false;
     renderSidebar();
+
     const m = $('#main'); if (!m) return;
     if (V.gq.trim()) m.innerHTML = viewSearch();
     else if (V.route.page === 'sheet') { m.innerHTML = viewSheet(sheetById(V.route.id)); renderBlocks(); }
     else if (V.route.page === 'slips') {
-      try { m.innerHTML = SL().listHTML(V.route.id); } catch (err) { m.innerHTML = '<div class="card"><div class="empty" style="color:#b91c1c">⚠ Không dựng được danh sách phiếu: ' + esc(err.message) + '<br>Hãy tải lại trang (Ctrl+F5).</div></div>'; }
+      try { m.innerHTML = SL().listHTML(V.route.id); } catch (err) { m.innerHTML = '<div class="card"><div class="empty" style="color:#b91c1c">⚠ Lỗi tải danh sách phiếu kho.</div></div>'; }
       if (V.route.slip) { const sid = V.route.slip; V.route.slip = null; SL().view(V.route.id, sid); }
     }
     else m.innerHTML = viewOverview();
-    document.title = (V.route.page === 'sheet' && !V.gq ? labelOf(sheetById(V.route.id)) + ' – ' : (V.route.page === 'slips' && !V.gq ? (V.route.id === 'xuat' ? 'Phiếu xuất kho' : 'Phiếu nhập kho') + ' – ' : '')) + CFG.title;
+    document.title = CFG.title;
   }
   const keepScroll = fn => { const y = window.scrollY; fn(); window.scrollTo(0, y); };
 
@@ -438,14 +415,12 @@
         const sec = add.closest('.block'), s = sheetById(sec.dataset.s), b = s.blocks[+sec.dataset.b];
         b.rows.push({ r: 0, i: 'u' + uid(), c: false, v: b.cols.map(() => '') }); persist();
         if (!V.gq && (V.f.q || V.f.chk !== 'all' || V.f.color !== 'all')) { V.f = newF(); render(); } else keepScroll(() => (V.gq ? render() : renderBlocks()));
-        const nr = $(`tr[data-s="${s.id}"][data-b="${sec.dataset.b}"][data-r="${b.rows.length - 1}"] td[contenteditable]`);
-        if (nr) { nr.scrollIntoView({ block: 'center' }); nr.focus(); }
         return;
       }
       const del = t.closest('.del');
       if (del) {
         const L = locate(del); if (!L) return;
-        if (confirm('Xoá dòng này?\n\n' + L.row.v.filter(Boolean).join(' | '))) { L.b.rows.splice(L.ri, 1); persist(); keepScroll(() => (V.gq ? render() : renderBlocks())); toast('Đã xoá dòng'); }
+        if (confirm('Xoá dòng này?')) { L.b.rows.splice(L.ri, 1); persist(); keepScroll(() => (V.gq ? render() : renderBlocks())); toast('Đã xoá dòng'); }
         return;
       }
       const th = t.closest('[data-toggle]');
@@ -460,6 +435,7 @@
       else if (e.target.id === 'fcolor') { V.f.color = e.target.value; renderBlocks(); }
       else if (e.target.id === 'fshowx') { V.f.showX = e.target.checked; renderBlocks(); }
     });
+
     let ft; main.addEventListener('input', e => {
       if (e.target.id === 'fq') { clearTimeout(ft); ft = setTimeout(() => { V.f.q = e.target.value; renderBlocks(); }, 150); }
     });
@@ -474,38 +450,28 @@
       if (L.row.p) L.row.p = L.row.p.filter(k => k !== +td.dataset.k);
       persist();
     });
-    main.addEventListener('paste', e => {
-      if (!e.target.closest('td[contenteditable]')) return;
-      e.preventDefault(); document.execCommand('insertText', false, (e.clipboardData || window.clipboardData).getData('text'));
-    });
-    main.addEventListener('keydown', e => {
-      const td = e.target.closest && e.target.closest('td[contenteditable]');
-      if (td && e.key === 'Escape') { td.innerText = td.dataset.orig || ''; td.blur(); }
-    });
 
     // Tìm kiếm toàn cục
     let gt; const gq = $('#gq');
     if (gq) gq.addEventListener('input', e => { clearTimeout(gt); gt = setTimeout(() => setGlobalSearch(e.target.value, true), 180); });
     const gqClear = $('#gqClear');
     if (gqClear) gqClear.addEventListener('click', () => setGlobalSearch(''));
-    document.addEventListener('keydown', e => {
-      const typing = /input|textarea|select/i.test(e.target.tagName) || e.target.isContentEditable;
-      if (e.key === '/' && !typing) { e.preventDefault(); const g = $('#gq'); if (g) g.focus(); }
-      if (e.key === 'Escape' && e.target.id === 'gq') setGlobalSearch('');
-    });
 
-    // Menu & Nút chức năng
+    // Nút chức năng thanh header
     const btnMenu = $('#btnMenu'); if (btnMenu) btnMenu.addEventListener('click', () => toggleSidebar());
     const overlay = $('#overlay'); if (overlay) overlay.addEventListener('click', () => toggleSidebar(false));
-    const sb = $('#sidebar'); if (sb) sb.addEventListener('click', e => { if (e.target.closest('a')) { if (V.gq) setGlobalSearch(''); toggleSidebar(false); } });
     const btnEdit = $('#btnEdit'); if (btnEdit) btnEdit.addEventListener('click', () => setEdit(!V.edit));
     const btnPrint = $('#btnPrint'); if (btnPrint) btnPrint.addEventListener('click', () => window.print());
-    const btnTheme = $('#btnTheme'); if (btnTheme) btnTheme.addEventListener('click', () => { const t = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark'; document.documentElement.dataset.theme = t; localStorage.setItem(LS('theme'), t); });
-    const menuExp = $('#menuExport'); if (menuExp) menuExp.addEventListener('click', e => { const b = e.target.closest('button[data-act]'); if (b) { menuExp.open = false; doAction(b.dataset.act); } });
-    document.addEventListener('click', e => { const m = $('#menuExport'); if (m && m.open && !m.contains(e.target)) m.open = false; });
+    const btnTheme = $('#btnTheme'); if (btnTheme) btnTheme.addEventListener('click', () => {
+      const t = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+      document.documentElement.dataset.theme = t; localStorage.setItem(LS('theme'), t);
+    });
+    const menuExp = $('#menuExport'); if (menuExp) menuExp.addEventListener('click', e => {
+      const b = e.target.closest('button[data-act]'); if (b) { menuExp.open = false; doAction(b.dataset.act); }
+    });
     const fileIn = $('#fileIn'); if (fileIn) fileIn.addEventListener('change', importJSON);
     
-    // Nút Cập nhật nguồn dữ liệu (Excel, Word, PDF)
+    // Nút Cập nhật nguồn dữ liệu trực tiếp (Excel, Word, PDF)
     const importFileInput = $('#importFileInput');
     if (importFileInput) importFileInput.addEventListener('change', handleWebFileImport);
 
@@ -544,27 +510,25 @@
     const cur = V.route.page === 'sheet' ? sheetById(V.route.id) : null;
     if (act === 'xlsx-all' || act === 'xlsx-cur') {
       const list = act === 'xlsx-all' ? ST.sheets : (cur ? [cur] : null);
-      if (!list) { toast('Hãy mở một sheet trước khi xuất “sheet đang xem”.'); return; }
-      if (!window.XLSX) { toast('Chưa tải được thư viện Excel (cần Internet). Hãy dùng CSV hoặc thử lại.', 5000); return; }
+      if (!list) { toast('Hãy mở một sheet trước.'); return; }
+      if (!window.XLSX) { toast('Chưa tải được thư viện Excel.', 5000); return; }
       const wb = XLSX.utils.book_new(), used = new Set();
       list.forEach(s => {
         const ws = XLSX.utils.aoa_to_sheet(sheetAOA(s));
-        ws['!cols'] = [8, 14, 18, 34, 24, 22, 36, 22, 22, 18, 18].map(w => ({ wch: w }));
         let nm = s.name.replace(/[\\\/?*\[\]:]/g, ' ').trim().slice(0, 31) || 'Sheet', i = 2; const base = nm;
         while (used.has(nm.toLowerCase())) nm = base.slice(0, 28) + ' ' + i++;
         used.add(nm.toLowerCase()); XLSX.utils.book_append_sheet(wb, ws, nm);
       });
-      if (act === 'xlsx-all') SL().extraSheets().forEach(x => { const ws = XLSX.utils.aoa_to_sheet(x.aoa); ws['!cols'] = x.aoa[0].map((_, i) => ({ wch: [16, 11, 24, 24, 24, 5, 16, 34, 22, 18, 22, 11, 7, 6, 9, 34, 24][i] || 16 })); XLSX.utils.book_append_sheet(wb, ws, x.name); });
-      XLSX.writeFile(wb, `Tai-san-Vat-tu-LAB_${act === 'xlsx-all' ? 'tat-ca' : list[0].id}_${ymd()}.xlsx`);
+      XLSX.writeFile(wb, `Tai-san-Vat-tu-LAB_${ymd()}.xlsx`);
     } else if (act === 'csv-cur') {
-      if (!cur) { toast('Hãy mở một sheet trước khi xuất CSV.'); return; }
+      if (!cur) { toast('Hãy mở một sheet trước.'); return; }
       download(`${cur.id}_${ymd()}.csv`, 'text/csv;charset=utf-8', toCSV(sheetAOA(cur)));
     } else if (act === 'json-out') {
-      download(`sao-luu-lab_${ymd()}.json`, 'application/json', JSON.stringify({ ver: DATA && DATA.meta ? DATA.meta.version : '1.0', source: DATA && DATA.meta ? DATA.meta.source : 'LAB', sheets: ST.sheets, slips: ST.slips }));
+      download(`sao-luu-lab_${ymd()}.json`, 'application/json', JSON.stringify({ ver: DATA && DATA.meta ? DATA.meta.version : '1.0', sheets: ST.sheets, slips: ST.slips }));
     } else if (act === 'json-in') { const fi = $('#fileIn'); if (fi) fi.click(); }
     else if (act === 'reset') {
-      if (confirm('Xoá toàn bộ chỉnh sửa, PHIẾU XUẤT/NHẬP KHO trên máy này và quay về dữ liệu gốc của website?')) {
-        localStorage.removeItem(LS('state')); ST = { sheets: clone(DATA.sheets), slips: emptySlips(), dirty: false }; ensureIds(ST.sheets); const d = $('#dirty'); if (d) d.hidden = true; parseHash(); render(); toast('Đã khôi phục dữ liệu gốc');
+      if (confirm('Khôi phục dữ liệu gốc? Mọi chỉnh sửa trên máy sẽ mất.')) {
+        localStorage.removeItem(LS('state')); ST = { sheets: clone(DATA.sheets), slips: emptySlips(), dirty: false }; ensureIds(ST.sheets); render(); toast('Đã khôi phục');
       }
     }
   }
@@ -574,178 +538,139 @@
     rd.onload = () => {
       try {
         const j = JSON.parse(rd.result);
-        if (!j || !Array.isArray(j.sheets) || !j.sheets.every(s => s.id && Array.isArray(s.blocks))) throw new Error('sai định dạng');
-        if (j.slips && !(Array.isArray(j.slips.xuat || []) && Array.isArray(j.slips.nhap || []))) throw new Error('phiếu kho sai định dạng');
-        const np = j.slips ? (j.slips.xuat || []).length + (j.slips.nhap || []).length : 0;
-        if (!confirm(`Nạp bản sao lưu (${j.sheets.length} sheet, ${np} phiếu kho)? Dữ liệu chỉnh sửa và phiếu hiện tại trên máy này sẽ bị thay thế.`)) return;
-        ST = { sheets: j.sheets, slips: { xuat: (j.slips && j.slips.xuat) || [], nhap: (j.slips && j.slips.nhap) || [] }, dirty: true }; ensureIds(ST.sheets); persist(); parseHash(); render(); toast('Đã nạp bản sao lưu');
+        if (!j || !Array.isArray(j.sheets)) throw new Error('sai định dạng');
+        ST = { sheets: j.sheets, slips: j.slips || emptySlips(), dirty: true }; ensureIds(ST.sheets); persist(); render(); toast('Đã nạp bản sao lưu');
       } catch (err) { toast('File không hợp lệ: ' + err.message, 4500); }
     };
     rd.readAsText(f, 'utf-8');
   }
 
-  /* ---------- Xử lý Tải tệp nguồn trực tiếp (Excel, Word, PDF) - Tối ưu hóa hiệu năng ---------- */
+  /* ---------- Xử lý Tải tệp nguồn trực tiếp (Excel, Word, PDF) ---------- */
   async function handleWebFileImport(e) {
     const file = e.target.files[0]; e.target.value = ''; if (!file) return;
     const fn = file.name.toLowerCase();
-    
-    toast(`⏳ Đang tải và chuẩn bị phân tích tệp: ${file.name}...`, 4000);
-    
+    toast(`⏳ Đang đọc tệp: ${file.name}...`, 4000);
+
     try {
-      if (fn.endsWith('.xlsx') || fn.endsWith('.xls')) {
-        await processWebExcel(file);
-      } else if (fn.endsWith('.docx')) {
-        await processWebWord(file);
-      } else if (fn.endsWith('.pdf')) {
-        await processWebPdf(file);
-      } else {
-        toast('⚠ Định dạng tệp không được hỗ trợ! Vui lòng chọn .xlsx, .docx hoặc .pdf', 5000);
-      }
+      if (fn.endsWith('.xlsx') || fn.endsWith('.xls')) await processWebExcel(file);
+      else if (fn.endsWith('.docx')) await processWebWord(file);
+      else if (fn.endsWith('.pdf')) await processWebPdf(file);
+      else toast('⚠ Vui lòng chọn tệp .xlsx, .docx hoặc .pdf', 5000);
     } catch (err) {
-      console.error("Lỗi đọc file:", err);
-      toast('⚠ Lỗi khi phân tích tệp: ' + err.message, 6000);
+      console.error(err);
+      toast('⚠ Lỗi xử lý file: ' + err.message, 6000);
     }
   }
 
   async function processWebExcel(file) {
-    if (!window.XLSX) { toast('⚠ Chưa nạp thư viện SheetJS (XLSX).', 5000); return; }
+    if (!window.XLSX) { toast('⚠ Chưa nạp thư viện SheetJS.', 5000); return; }
     const buffer = await file.arrayBuffer();
-    
-    // Trễ 50ms nhường luồng giao diện cập nhật Toast trước khi tính toán nặng
     setTimeout(() => {
-      try {
-        const wb = XLSX.read(buffer, { type: 'array' });
-        const newSheets = [];
-        
-        wb.SheetNames.forEach((name, idx) => {
-          const ws = wb.Sheets[name];
-          const json = XLSX.utils.sheet_to_json(ws, { header: 1 });
-          const rows = json.map((r, rIdx) => ({
-            r: rIdx + 1,
-            i: 'u' + uid(),
-            c: false,
-            v: r.map(v => (v !== undefined && v !== null ? String(v) : ''))
-          })).filter(r => r.v.some(v => v !== ''));
+      const wb = XLSX.read(buffer, { type: 'array' });
+      const newSheets = [];
+      wb.SheetNames.forEach((name, idx) => {
+        const ws = wb.Sheets[name];
+        const json = XLSX.utils.sheet_to_json(ws, { header: 1 });
+        const rows = json.map((r, rIdx) => ({
+          r: rIdx + 1, i: 'u' + uid(), c: false,
+          v: r.map(v => (v !== undefined && v !== null ? String(v) : ''))
+        })).filter(r => r.v.some(v => v !== ''));
 
-          if (rows.length > 0) {
-            newSheets.push({
-              id: `imp-${idx}-${Date.now()}`,
-              name: name,
-              group: 0,
-              blocks: [{
-                title: name,
-                hr: 1,
-                cols: rows[0] ? rows[0].v : ['STT', 'Nội dung'],
-                rows: rows.slice(1)
-              }]
-            });
-          }
-        });
-
-        if (newSheets.length) {
-          updateImportedState(newSheets, file.name);
-          toast(`✅ Đã cập nhật thành công ${newSheets.length} sheet từ Excel!`);
-        } else {
-          toast('⚠ Không tìm thấy dữ liệu hợp lệ trong file Excel.', 4000);
+        if (rows.length > 0) {
+          newSheets.push({
+            id: `imp-${idx}-${Date.now()}`, name: name, group: 0,
+            blocks: [{ title: name, hr: 1, cols: rows[0] ? rows[0].v : ['STT', 'Nội dung'], rows: rows.slice(1) }]
+          });
         }
-      } catch (e) {
-        toast('⚠ Lỗi đọc cấu trúc Excel: ' + e.message, 5000);
-      }
+      });
+      if (newSheets.length) updateImportedState(newSheets, file.name);
+      else toast('⚠ File Excel trống.', 4000);
     }, 50);
   }
 
   async function processWebWord(file) {
-    if (!window.mammoth) { toast('⚠ Chưa nạp thư viện Mammoth (Word).', 5000); return; }
+    if (!window.mammoth) { toast('⚠ Chưa nạp thư viện Mammoth.', 5000); return; }
     const buffer = await file.arrayBuffer();
-    toast('⏳ Đang bóc tách văn bản từ tệp Word...', 4000);
-    
-    setTimeout(async () => {
-      try {
-        const result = await mammoth.extractRawText({ arrayBuffer: buffer });
-        const lines = result.value.split('\n').map(l => l.trim()).filter(Boolean);
-
-        const rows = lines.map((line, idx) => ({
-          r: idx + 1,
-          i: 'u' + uid(),
-          c: false,
-          v: [String(idx + 1), line, '', '', '']
-        }));
-
-        const newSheets = [{
-          id: `doc-${Date.now()}`,
-          name: file.name.replace(/\.docx$/i, ''),
-          group: 1,
-          blocks: [{
-            title: file.name,
-            hr: 1,
-            cols: ['STT', 'Nội dung trích xuất từ Word', 'S/N', 'Mã VT', 'Ghi chú'],
-            rows: rows
-          }]
-        }];
-
-        updateImportedState(newSheets, file.name);
-        toast(`✅ Đã trích xuất thành công ${rows.length} dòng từ Word!`);
-      } catch (e) {
-        toast('⚠ Lỗi đọc file Word: ' + e.message, 5000);
-      }
-    }, 50);
+    const result = await mammoth.extractRawText({ arrayBuffer: buffer });
+    const lines = result.value.split('\n').map(l => l.trim()).filter(Boolean);
+    const rows = lines.map((line, idx) => ({ r: idx + 1, i: 'u' + uid(), c: false, v: [String(idx + 1), line, '', '', ''] }));
+    const newSheets = [{ id: `doc-${Date.now()}`, name: file.name.replace(/\.docx$/i, ''), group: 1, blocks: [{ title: file.name, hr: 1, cols: ['STT', 'Nội dung Word', 'S/N', 'Mã VT', 'Ghi chú'], rows: rows }] }];
+    updateImportedState(newSheets, file.name);
   }
 
   async function processWebPdf(file) {
     if (!window.pdfjsLib) { toast('⚠ Chưa nạp thư viện PDF.js.', 5000); return; }
-    
-    // Cấu hình Worker chính xác của PDF.js để chạy ngầm mượt mà
     pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdfjs-dist/3.11.174/pdf.worker.min.js';
-    
     const buffer = await file.arrayBuffer();
-    toast('⏳ Đang khởi tạo bộ đọc PDF...', 4000);
+    const pdf = await pdfjsLib.getDocument({ data: buffer }).promise;
+    const lines = [];
 
-    try {
-      const loadingTask = pdfjsLib.getDocument({ data: buffer });
-      const pdf = await loadingTask.promise;
-      const lines = [];
-      
-      toast(`⏳ Đang đọc nội dung từ ${pdf.numPages} trang PDF...`, 5000);
-
-      for (let i = 1; i <= pdf.numPages; i++) {
-        const page = await pdf.getPage(i);
-        const textContent = await page.getTextContent();
-        textContent.items.forEach(item => { if (item.str && item.str.trim()) lines.push(item.str.trim()); });
-      }
-
-      const rows = lines.map((line, idx) => ({
-        r: idx + 1,
-        i: 'u' + uid(),
-        c: false,
-        v: [String(idx + 1), line, '', '', '']
-      }));
-
-      const newSheets = [{
-        id: `pdf-${Date.now()}`,
-        name: file.name.replace(/\.pdf$/i, ''),
-        group: 1,
-        blocks: [{
-          title: file.name,
-          hr: 1,
-          cols: ['STT', 'Nội dung trích xuất từ PDF', 'S/N', 'Mã VT', 'Ghi chú'],
-          rows: rows
-        }]
-      }];
-
-      updateImportedState(newSheets, file.name);
-      toast(`✅ Đã trích xuất thành công ${rows.length} dòng từ PDF!`);
-    } catch (e) {
-      toast('⚠ Lỗi xử lý PDF: ' + e.message, 5000);
+    for (let i = 1; i <= pdf.numPages; i++) {
+      const page = await pdf.getPage(i);
+      const textContent = await page.getTextContent();
+      textContent.items.forEach(item => { if (item.str && item.str.trim()) lines.push(item.str.trim()); });
     }
+    const rows = lines.map((line, idx) => ({ r: idx + 1, i: 'u' + uid(), c: false, v: [String(idx + 1), line, '', '', ''] }));
+    const newSheets = [{ id: `pdf-${Date.now()}`, name: file.name.replace(/\.pdf$/i, ''), group: 1, blocks: [{ title: file.name, hr: 1, cols: ['STT', 'Nội dung PDF', 'S/N', 'Mã VT', 'Ghi chú'], rows: rows }] }];
+    updateImportedState(newSheets, file.name);
   }
 
   function updateImportedState(newSheets, fileName) {
-    DATA = DATA || { meta: {}, sheets: [] };
-    DATA.meta = { source: fileName, version: Date.now().toString(), generated: new Date().toLocaleString() };
-    DATA.sheets = newSheets;
-    ST.sheets = clone(newSheets);
+    DATA = { meta: { source: fileName, version: Date.now().toString(), generated: new Date().toLocaleString() }, sheets: newSheets };
+    ST = { sheets: clone(newSheets), slips: emptySlips(), dirty: true };
     ensureIds(ST.sheets);
     persist();
     location.hash = '#/';
     render();
+    toast(`✅ Đã cập nhật xong dữ liệu từ: ${fileName}`);
   }
+
+  /* ---------- Khởi động ứng dụng ---------- */
+  function start(data) {
+    DATA = data; ST = loadState();
+    removeBootScreen();
+    const topbar = $('#topbar'); if (topbar) topbar.hidden = false;
+    const layout = $('#layout'); if (layout) layout.hidden = false;
+    const appTitle = $('#appTitle'); if (appTitle) appTitle.textContent = CFG.title;
+    const appSub = $('#appSub'); if (appSub) appSub.textContent = CFG.subtitle;
+    const dirty = $('#dirty'); if (dirty) dirty.hidden = !ST.dirty;
+    
+    checkModules(); SL().init(window.LabApp);
+    parseHash(); bind(); render();
+  }
+
+  async function decrypt(enc, pw) {
+    const b64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
+    const km = await crypto.subtle.importKey('raw', new TextEncoder().encode(pw), 'PBKDF2', false, ['deriveKey']);
+    const key = await crypto.subtle.deriveKey({ name: 'PBKDF2', salt: b64(enc.salt), iterations: enc.iter, hash: 'SHA-256' }, km, { name: 'AES-GCM', length: 256 }, false, ['decrypt']);
+    const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: b64(enc.iv) }, key, b64(enc.ct));
+    return JSON.parse(new TextDecoder().decode(pt));
+  }
+
+  function unlock() {
+    const bootEl = $('#boot'); if (!bootEl) return;
+    bootEl.innerHTML = `<form class="lock" id="lockForm"><h2>🔒 ${esc(CFG.title)}</h2><p>Dữ liệu được bảo vệ bằng mật khẩu.</p>
+      <input type="password" id="pw" placeholder="Nhập mật khẩu" autocomplete="current-password" autofocus><div class="err" id="pwErr"></div><button>Mở khoá</button></form>`;
+    $('#lockForm').addEventListener('submit', async ev => {
+      ev.preventDefault(); const err = $('#pwErr'); if (err) err.textContent = 'Đang giải mã…';
+      try { if (!window.crypto || !crypto.subtle) throw new Error('nocrypto'); start(await decrypt(window.LAB_DATA_ENC, $('#pw').value)); }
+      catch (e) { if (err) err.textContent = e.message === 'nocrypto' ? 'Trình duyệt cần mở bằng https://' : 'Sai mật khẩu.'; }
+    });
+  }
+
+  window.LabApp = {
+    BUILD, CFG, esc, fold, tokensOf, toast, download, toCSV, ymd, uid, sheetById, labelOf, persist, render, keepScroll, isStock, stockRows,
+    get ST() { return ST; }, get V() { return V; }, touch: r => hayCache.delete(r)
+  };
+
+  function boot() {
+    const t = localStorage.getItem(LS('theme')) || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+    document.documentElement.dataset.theme = t;
+    if (window.LAB_DATA) start(window.LAB_DATA);
+    else if (window.LAB_DATA_ENC) unlock();
+    else if (window.APP_DATA) start(window.APP_DATA);
+    else { removeBootScreen(); const b = $('#boot'); if (b) b.innerHTML = '<p>⚠ Không tìm thấy dữ liệu (assets/data.js).</p>'; }
+  }
+
+  document.addEventListener('DOMContentLoaded', boot);
+})();
