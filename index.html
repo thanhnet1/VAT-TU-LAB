@@ -1,68 +1,82 @@
 <!DOCTYPE html>
 <html lang="vi">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Quản lý Tài sản - Vật tư Truyền dẫn LAB</title>
-    <link rel="stylesheet" href="assets/style.css">
-    <!-- Thư viện hỗ trợ đọc file nguồn trực tiếp trên trình duyệt -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdfjs-dist/3.11.174/pdf.min.js"></script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b3a5b">
+<title>Tài sản – Vật tư Truyền dẫn LAB</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E📡%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="assets/style.css?v=2026.11.07-3">
+<!-- Các thư viện bổ sung để phân tích tệp nguồn trực tiếp trên trình duyệt -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js" defer></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdfjs-dist/3.11.174/pdf.min.js" defer></script>
 </head>
 <body>
-    <header class="header">
-        <div class="header-left">
-            <button id="btnSidebar" class="btn-icon" title="Mở danh sách sheet">☰</button>
-            <h1>Quản lý Tài sản - Vật tư Truyền dẫn LAB</h1>
-        </div>
-        <div class="header-right">
-            <!-- Đặt nút Cập nhật nguồn nằm chung trong nhóm header-right với các nút chức năng -->
-            <label for="importFileInput" class="btn-ghost" title="Cập nhật nguồn dữ liệu trực tiếp từ Excel, Word, PDF" style="cursor: pointer; display: inline-flex; align-items: center; gap: 4px;">
-                📁 Cập nhật nguồn
-            </label>
-            <input type="file" id="importFileInput" accept=".xlsx, .xls, .docx, .pdf" style="display: none;" />
 
-            <button id="btnSearch" class="btn-ghost" title="Tìm kiếm (Ctrl+F)">🔍 Tìm kiếm</button>
-            <button id="btnEdit" class="btn-ghost" title="Chỉnh sửa dữ liệu">✏️ Chỉnh sửa</button>
-            
-            <details class="menu-dropdown">
-                <summary class="btn-ghost">📊 Xuất / Lưu</summary>
-                <div class="menu-pop">
-                    <button type="button" data-act="xlsx-all">📥 Excel - toàn bộ các sheet</button>
-                    <button type="button" data-act="xlsx-cur">📥 Excel - sheet đang xem</button>
-                    <button type="button" data-act="csv-cur">📥 CSV - sheet đang xem</button>
-                    <hr>
-                    <button type="button" data-act="json-out">💾 Sao lưu JSON (kèm chỉnh sửa)</button>
-                    <button type="button" data-act="json-in">📂 Nhập sao lưu JSON...</button>
-                    <hr>
-                    <button type="button" data-act="reset" class="danger">🔄 Khôi phục dữ liệu gốc</button>
-                </div>
-            </details>
-            <button id="btnSlips" class="btn-ghost" title="Quản lý phiếu xuất/nhập">📋 Phiếu</button>
-            <button id="btnThemes" class="btn-ghost" title="Đổi giao diện">🌓</button>
-        </div>
-    </header>
+<div id="boot" class="boot"><div class="spinner"></div><p>Đang tải dữ liệu…</p></div>
 
-    <div id="editbar" class="editbar" hidden>
-        ✏️ <b>Đang ở chế độ chỉnh sửa.</b> Bấm vào ô để sửa, tích ô <b>Đã kiểm</b>, thêm/xóa dòng. Thay đổi <u>chỉ lưu trên trình duyệt này</u> — dùng <b>Xuất / Sao lưu</b> để giữ hoặc chia sẻ.
-    </div>
+<header class="topbar" id="topbar" hidden>
+  <button id="btnMenu" class="icon-btn only-mobile" aria-label="Mở menu">☰</button>
+  <a class="brand" href="#/" title="Về trang Tổng quan">
+    <span class="logo">📡</span>
+    <span class="brand-text"><b id="appTitle"></b><small id="appSub"></small></span>
+  </a>
+  <label class="search">
+    <span aria-hidden="true">🔍</span>
+    <input id="gq" type="search" title="Phím tắt: /" placeholder="Tìm serial, part number, tên vật tư…" autocomplete="off" spellcheck="false">
+    <button id="gqClear" type="button" class="search-clear" hidden aria-label="Xoá tìm kiếm">✕</button>
+  </label>
+  <div class="actions">
+    <span id="dirty" class="dirty" hidden title="Bạn đã chỉnh sửa dữ liệu – chỉ lưu trên trình duyệt này">● Đã chỉnh sửa</span>
+    
+    <!-- Nút Cập nhật nguồn dữ liệu trực tiếp (Excel, Word, PDF) -->
+    <label for="importFileInput" class="btn" title="Cập nhật nguồn dữ liệu trực tiếp từ Excel, Word, PDF" style="cursor: pointer; display: inline-flex; align-items: center; gap: 4px;">
+      📁 <span>Cập nhật nguồn</span>
+    </label>
+    <input type="file" id="importFileInput" accept=".xlsx, .xls, .docx, .pdf" style="display: none;">
 
-    <div class="layout" id="layout">
-        <aside id="sidebar" class="sidebar" aria-label="Danh sách sheet"></aside>
-        <div id="overlay" class="overlay"></div>
-        <main id="main" class="main"></main>
-    </div>
+    <button id="btnPXK" class="btn accent" type="button" title="Tạo phiếu xuất kho">📤 <span>Phiếu xuất</span></button>
+    <button id="btnPNK" class="btn accent" type="button" title="Tạo phiếu nhập kho">📥 <span>Phiếu nhập</span></button>
+    <button id="btnEdit" class="btn" type="button" aria-pressed="false">✏️ <span>Chỉnh sửa</span></button>
+    <details class="menu" id="menuExport">
+      <summary class="btn">⬇ <span>Xuất / Sao lưu</span></summary>
+      <div class="menu-pop">
+        <button type="button" data-act="xlsx-all">📗 Excel – toàn bộ các sheet</button>
+        <button type="button" data-act="xlsx-cur">📗 Excel – sheet đang xem</button>
+        <button type="button" data-act="csv-cur">📄 CSV – sheet đang xem</button>
+        <hr>
+        <button type="button" data-act="json-out">💾 Sao lưu JSON (kèm chỉnh sửa)</button>
+        <button type="button" data-act="json-in">📂 Nhập sao lưu JSON…</button>
+        <hr>
+        <button type="button" data-act="reset" class="danger">↩ Khôi phục dữ liệu gốc</button>
+      </div>
+    </details>
+    <button id="btnPrint" class="btn ghost" type="button" title="In trang đang xem (A4 ngang)">🖨</button>
+    <button id="btnTheme" class="btn ghost" type="button" title="Đổi giao diện sáng / tối">🌓</button>
+  </div>
+</header>
 
-    <input type="file" id="fileIn" accept="application/json,.json" hidden>
-    <div id="modalRoot"></div>
-    <div id="printRoot"></div>
-    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+<div id="editbar" class="editbar" hidden>
+  ✏️ <b>Đang ở chế độ chỉnh sửa.</b> Bấm vào ô để sửa, tích ô <b>Đã kiểm</b>, thêm/xoá dòng.
+  Thay đổi <u>chỉ lưu trên trình duyệt này</u> – dùng <b>Xuất / Sao lưu</b> để giữ hoặc chia sẻ.
+</div>
 
-    <!-- Các tập lệnh JavaScript điều khiển ứng dụng -->
-    <script src="assets/config.js"></script>
-    <script src="assets/data.js"></script>
-    <script src="assets/slips.js"></script>
-    <script src="assets/app.js"></script>
+<div class="layout" id="layout" hidden>
+  <aside id="sidebar" class="sidebar" aria-label="Danh sách sheet"></aside>
+  <div id="overlay" class="overlay"></div>
+  <main id="main" class="main"></main>
+</div>
+
+<input type="file" id="fileIn" accept="application/json,.json" hidden>
+<div id="modalRoot"></div>
+<div id="printRoot"></div>
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+<script src="assets/config.js?v=2026.11.07-3"></script>
+<script src="assets/data.js"></script>
+<!-- Thư viện xuất / đọc Excel (SheetJS) -->
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js" defer></script>
+<script src="assets/slips.js?v=2026.11.07-3" defer></script>
+<script src="assets/app.js?v=2026.11.07-3" defer></script>
 </body>
 </html>
