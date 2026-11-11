@@ -122,7 +122,6 @@
     appData.items.forEach(item => {
       const itemKey = `${item.code || ''} ${item.name || ''}`.trim().toLowerCase();
       if (existingMap.has(itemKey)) {
-        // Gom nhóm và cộng dồn số lượng nếu trùng mã/tên
         const matchedRow = existingMap.get(itemKey);
         if (item.quantity && !isNaN(item.quantity)) {
           const qtyIdx = matchedRow.v.findIndex(val => !isNaN(val) && val !== '');
@@ -131,7 +130,6 @@
           }
         }
       } else {
-        // Phân loại tạo khối danh mục mới
         const blockTitle = item.category || 'Vật tư phát sinh mới';
         let block = newCatSheet.blocks.find(b => b.title === blockTitle);
         if (!block) {
@@ -196,7 +194,7 @@
     saveT = setTimeout(() => {
       try {
         localStorage.setItem(LS('state'), JSON.stringify({
-          ver: DATA.meta ? DATA.meta.version : '1.0',
+          ver: (DATA && DATA.meta) ? DATA.meta.version : '1.0',
           sheets: ST.sheets,
           slips: ST.slips
         }));
@@ -264,7 +262,7 @@
     const st = statusCounts(), cc = colorCounts();
     const pct = rows ? Math.round(chk * 100 / rows) : 0;
     
-    let h = `<div class="page-title"><h1>Tổng quan</h1><span class="sub">Nguồn: ${esc(DATA.meta ? DATA.meta.source : 'Hệ thống')} · Cập nhật: ${esc(DATA.meta ? DATA.meta.generated : 'Mới nhất')}</span>
+    let h = `<div class="page-title"><h1>Tổng quan</h1><span class="sub">Nguồn: ${esc(DATA && DATA.meta ? DATA.meta.source : 'Hệ thống')} · Cập nhật: ${esc(DATA && DATA.meta ? DATA.meta.generated : 'Mới nhất')}</span>
       <span class="ov-actions"><button class="tbtn primary" data-sl-new="xuat">📤 Tạo phiếu xuất kho</button><button class="tbtn primary" data-sl-new="nhap">📥 Tạo phiếu nhập kho</button></span></div>
     <div class="kpis">
       <div class="kpi"><div class="n">${ST.sheets.length}</div><div class="l">Sheet / Danh mục</div></div>
@@ -506,6 +504,11 @@
     const menuExp = $('#menuExport'); if (menuExp) menuExp.addEventListener('click', e => { const b = e.target.closest('button[data-act]'); if (b) { menuExp.open = false; doAction(b.dataset.act); } });
     document.addEventListener('click', e => { const m = $('#menuExport'); if (m && m.open && !m.contains(e.target)) m.open = false; });
     const fileIn = $('#fileIn'); if (fileIn) fileIn.addEventListener('change', importJSON);
+    
+    // Nút Cập nhật nguồn dữ liệu (Excel, Word, PDF)
+    const importFileInput = $('#importFileInput');
+    if (importFileInput) importFileInput.addEventListener('change', handleWebFileImport);
+
     window.addEventListener('hashchange', () => { parseHash(); V.f = newF(); if (V.gq) setGlobalSearch(''); else render(); window.scrollTo(0, 0); });
   }
 
@@ -557,7 +560,7 @@
       if (!cur) { toast('Hãy mở một sheet trước khi xuất CSV.'); return; }
       download(`${cur.id}_${ymd()}.csv`, 'text/csv;charset=utf-8', toCSV(sheetAOA(cur)));
     } else if (act === 'json-out') {
-      download(`sao-luu-lab_${ymd()}.json`, 'application/json', JSON.stringify({ ver: DATA.meta ? DATA.meta.version : '1.0', source: DATA.meta ? DATA.meta.source : 'LAB', sheets: ST.sheets, slips: ST.slips }));
+      download(`sao-luu-lab_${ymd()}.json`, 'application/json', JSON.stringify({ ver: DATA && DATA.meta ? DATA.meta.version : '1.0', source: DATA && DATA.meta ? DATA.meta.source : 'LAB', sheets: ST.sheets, slips: ST.slips }));
     } else if (act === 'json-in') { const fi = $('#fileIn'); if (fi) fi.click(); }
     else if (act === 'reset') {
       if (confirm('Xoá toàn bộ chỉnh sửa, PHIẾU XUẤT/NHẬP KHO trên máy này và quay về dữ liệu gốc của website?')) {
@@ -579,6 +582,137 @@
       } catch (err) { toast('File không hợp lệ: ' + err.message, 4500); }
     };
     rd.readAsText(f, 'utf-8');
+  }
+
+  /* ---------- Xử lý Tải tệp nguồn trực tiếp (Excel, Word, PDF) ---------- */
+  async function handleWebFileImport(e) {
+    const file = e.target.files[0]; e.target.value = ''; if (!file) return;
+    const fn = file.name.toLowerCase();
+    toast(`Đang phân tích tệp: ${file.name}...`, 3500);
+    try {
+      if (fn.endsWith('.xlsx') || fn.endsWith('.xls')) await processWebExcel(file);
+      else if (fn.endsWith('.docx')) await processWebWord(file);
+      else if (fn.endsWith('.pdf')) await processWebPdf(file);
+      else toast('⚠ Định dạng tệp không được hỗ trợ! Vui lòng chọn tệp .xlsx, .docx hoặc .pdf', 5000);
+    } catch (err) {
+      console.error(err);
+      toast('⚠ Lỗi khi đọc file: ' + err.message, 6000);
+    }
+  }
+
+  async function processWebExcel(file) {
+    if (!window.XLSX) { toast('⚠ Chưa nạp thư viện SheetJS (XLSX).', 5000); return; }
+    const buffer = await file.arrayBuffer();
+    const wb = XLSX.read(buffer, { type: 'array' });
+    const newSheets = [];
+    
+    wb.SheetNames.forEach((name, idx) => {
+      const ws = wb.Sheets[name];
+      const json = XLSX.utils.sheet_to_json(ws, { header: 1 });
+      const rows = json.map((r, rIdx) => ({
+        r: rIdx + 1,
+        i: 'u' + uid(),
+        c: false,
+        v: r.map(v => (v !== undefined && v !== null ? String(v) : ''))
+      })).filter(r => r.v.some(v => v !== ''));
+
+      if (rows.length > 0) {
+        newSheets.push({
+          id: `imp-${idx}-${Date.now()}`,
+          name: name,
+          group: 0,
+          blocks: [{
+            title: name,
+            hr: 1,
+            cols: rows[0] ? rows[0].v : ['STT', 'Nội dung'],
+            rows: rows.slice(1)
+          }]
+        });
+      }
+    });
+
+    if (newSheets.length) {
+      updateImportedState(newSheets, file.name);
+      toast(`Đã cập nhật ${newSheets.length} sheet từ file Excel: ${file.name}`);
+    } else {
+      toast('⚠ Không tìm thấy dữ liệu trong file Excel.', 4000);
+    }
+  }
+
+  async function processWebWord(file) {
+    if (!window.mammoth) { toast('⚠ Chưa nạp thư viện Mammoth (Word).', 5000); return; }
+    const buffer = await file.arrayBuffer();
+    const result = await mammoth.extractRawText({ arrayBuffer: buffer });
+    const lines = result.value.split('\n').map(l => l.trim()).filter(Boolean);
+
+    const rows = lines.map((line, idx) => ({
+      r: idx + 1,
+      i: 'u' + uid(),
+      c: false,
+      v: [String(idx + 1), line, '', '', '']
+    }));
+
+    const newSheets = [{
+      id: `doc-${Date.now()}`,
+      name: file.name.replace(/\.docx$/i, ''),
+      group: 1,
+      blocks: [{
+        title: file.name,
+        hr: 1,
+        cols: ['STT', 'Nội dung trích xuất từ Word', 'S/N', 'Mã VT', 'Ghi chú'],
+        rows: rows
+      }]
+    }];
+
+    updateImportedState(newSheets, file.name);
+    toast(`Đã trích xuất ${rows.length} dòng từ file Word: ${file.name}`);
+  }
+
+  async function processWebPdf(file) {
+    if (!window.pdfjsLib) { toast('⚠ Chưa nạp thư viện PDF.js.', 5000); return; }
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdfjs-dist/3.11.174/pdf.worker.min.js';
+    const buffer = await file.arrayBuffer();
+    const pdf = await pdfjsLib.getDocument({ data: buffer }).promise;
+    const lines = [];
+
+    for (let i = 1; i <= pdf.numPages; i++) {
+      const page = await pdf.getPage(i);
+      const textContent = await page.getTextContent();
+      textContent.items.forEach(item => { if (item.str && item.str.trim()) lines.push(item.str.trim()); });
+    }
+
+    const rows = lines.map((line, idx) => ({
+      r: idx + 1,
+      i: 'u' + uid(),
+      c: false,
+      v: [String(idx + 1), line, '', '', '']
+    }));
+
+    const newSheets = [{
+      id: `pdf-${Date.now()}`,
+      name: file.name.replace(/\.pdf$/i, ''),
+      group: 1,
+      blocks: [{
+        title: file.name,
+        hr: 1,
+        cols: ['STT', 'Nội dung trích xuất từ PDF', 'S/N', 'Mã VT', 'Ghi chú'],
+        rows: rows
+      }]
+    }];
+
+    updateImportedState(newSheets, file.name);
+    toast(`Đã trích xuất ${rows.length} dòng từ file PDF: ${file.name}`);
+  }
+
+  function updateImportedState(newSheets, fileName) {
+    DATA = DATA || { meta: {}, sheets: [] };
+    DATA.meta = { source: fileName, version: Date.now().toString(), generated: new Date().toLocaleString() };
+    DATA.sheets = newSheets;
+    ST.sheets = clone(newSheets);
+    ensureIds(ST.sheets);
+    persist();
+    location.hash = '#/';
+    render();
   }
 
   /* ---------- Khởi động ---------- */
@@ -633,332 +767,3 @@
   }
   boot();
 })();
-/* =====================================================================
-   BỔ SUNG: TÍNH NĂNG CẬP NHẬT NGUỒN TRỰC TIẾP TRÊN GIAO DIỆN (EXCEL, WORD, PDF)
-   ===================================================================== */
-
-// 1. Gắn sự kiện lắng nghe cho nút Cập nhật nguồn khi trang tải xong
-document.addEventListener("DOMContentLoaded", () => {
-    // Đảm bảo nút input file được lắng nghe nếu có trên giao diện
-    const fileInput = document.getElementById("importFileInput");
-    if (fileInput) {
-        fileInput.addEventListener("change", handleWebFileImport);
-    }
-});
-
-async function handleWebFileImport(event) {
-    const file = event.target.files[0];
-    if (!file) return;
-
-    const fileName = file.name.toLowerCase();
-    showToast(`Đang phân tích tệp: ${file.name}...`);
-
-    try {
-        if (fileName.endsWith('.xlsx') || fileName.endsWith('.xls')) {
-            await processWebExcel(file);
-        } else if (fileName.endsWith('.docx')) {
-            await processWebWord(file);
-        } else if (fileName.endsWith('.pdf')) {
-            await processWebPdf(file);
-        } else {
-            alert("Định dạng tệp không được hỗ trợ! Vui lòng chọn tệp .xlsx, .docx hoặc .pdf");
-        }
-    } catch (error) {
-        console.error("Lỗi xử lý file:", error);
-        alert("Có lỗi xảy ra khi phân tích tệp: " + error.message);
-    }
-    event.target.value = ''; // Reset input
-}
-
-// Xử lý file Excel qua SheetJS (đã được nhúng ở index.html)
-async function processWebExcel(file) {
-    const reader = new FileReader();
-    reader.onload = function(e) {
-        const data = new Uint8Array(e.target.result);
-        const workbook = XLSX.read(data, { type: 'array' });
-        
-        let newSheets = [];
-        workbook.SheetNames.forEach((sheetName, index) => {
-            const worksheet = workbook.Sheets[sheetName];
-            const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
-            
-            let rows = jsonData.map((rowArr, rIdx) => ({
-                r: rIdx + 1,
-                c: false,
-                v: rowArr.map(cell => (cell !== undefined && cell !== null ? String(cell) : ""))
-            })).filter(row => row.v.some(val => val !== ""));
-
-            if (rows.length > 0) {
-                newSheets.push({
-                    id: `sheet-${index}`,
-                    name: sheetName,
-                    group: 0,
-                    blocks: [{
-                        title: sheetName,
-                        hr: 1,
-                        cols: rows[0] ? rows[0].v : ["STT", "Nội dung"],
-                        rows: rows.slice(1)
-                    }]
-                });
-            }
-        });
-
-        window.LAB_DATA = {
-            meta: { source: file.name, version: new Date().toISOString(), generated: new Date().toLocaleString() },
-            sheets: newSheets
-        };
-
-        // Gọi lại hàm khởi tạo giao diện gốc của ứng dụng (ví dụ: render lại app)
-        if (typeof renderAll === 'function') {
-            renderAll();
-        } else if (typeof init === 'function') {
-            init();
-        } else {
-            location.reload(); // Tải lại trang nếu không tìm thấy hàm render trực tiếp
-        }
-        alert(`Đã cập nhật dữ liệu thành công từ tệp Excel: ${file.name}`);
-    };
-    reader.readAsArrayBuffer(file);
-}
-
-// Xử lý file Word (.docx) qua Mammoth.js
-async function processWebWord(file) {
-    const reader = new FileReader();
-    reader.onload = async function(e) {
-        const arrayBuffer = e.target.result;
-        const result = await mammoth.extractRawText({ arrayBuffer: arrayBuffer });
-        const textLines = result.value.split('\n').map(l => l.trim()).filter(l => l);
-
-        let rows = textLines.map((line, idx) => ({
-            r: idx + 1,
-            c: false,
-            v: [String(idx + 1), line, "", "", ""]
-        }));
-
-        window.LAB_DATA = {
-            meta: { source: file.name, version: new Date().toISOString(), generated: new Date().toLocaleString() },
-            sheets: [{
-                id: "word-import",
-                name: "Dữ liệu Word",
-                group: 1,
-                blocks: [{
-                    title: file.name,
-                    hr: 1,
-                    cols: ["STT", "Nội dung trích xuất từ Word", "S/N", "Mã VT", "Ghi chú"],
-                    rows: rows
-                }]
-            }]
-        };
-
-        location.reload();
-        alert(`Đã trích xuất và cập nhật dữ liệu thành công từ tệp Word: ${file.name}`);
-    };
-    reader.readAsArrayBuffer(file);
-}
-
-// Xử lý file PDF qua PDF.js
-async function processWebPdf(file) {
-    const reader = new FileReader();
-    reader.onload = async function(e) {
-        const typedarray = new Uint8Array(e.target.result);
-        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdfjs-dist/3.11.174/pdf.worker.min.js';
-        
-        const pdf = await pdfjsLib.getDocument(typedarray).promise;
-        let allLines = [];
-
-        for (let i = 1; i <= pdf.numPages; i++) {
-            const page = await pdf.getPage(i);
-            const textContent = await page.getTextContent();
-            const pageLines = textContent.items.map(item => item.str);
-            allLines.push(...pageLines.filter(l => l.trim() !== ""));
-        }
-
-        let rows = allLines.map((line, idx) => ({
-            r: idx + 1,
-            c: false,
-            v: [String(idx + 1), line, "", "", ""]
-        }));
-
-        window.LAB_DATA = {
-            meta: { source: file.name, version: new Date().toISOString(), generated: new Date().toLocaleString() },
-            sheets: [{
-                id: "pdf-import",
-                name: "Dữ liệu PDF",
-                group: 1,
-                blocks: [{
-                    title: file.name,
-                    hr: 1,
-                    cols: ["STT", "Nội dung trích xuất từ PDF", "S/N", "Mã VT", "Ghi chú"],
-                    rows: rows
-                }]
-            }]
-        };
-
-        location.reload();
-        alert(`Đã trích xuất và cập nhật dữ liệu thành công từ tệp PDF: ${file.name}`);
-    };
-    reader.readAsArrayBuffer(file);
-}
-/* =====================================================================
-   BỔ SUNG TÍNH NĂNG CẬP NHẬT NGUỒN TỆP TRỰC TIẾP (EXCEL, WORD, PDF)
-   ===================================================================== */
-document.addEventListener("DOMContentLoaded", () => {
-    // Tự động gán sự kiện cho nút "Cập nhật nguồn" trên giao diện index.html
-    const importFileInput = document.getElementById("importFileInput");
-    if (importFileInput) {
-        importFileInput.addEventListener("change", handleWebFileImport);
-    }
-});
-
-async function handleWebFileImport(event) {
-    const file = event.target.files[0];
-    if (!file) return;
-
-    const fileName = file.name.toLowerCase();
-    if (typeof showToast === 'function') {
-        showToast(`Đang phân tích tệp: ${file.name}...`, "info");
-    }
-
-    try {
-        if (fileName.endsWith('.xlsx') || fileName.endsWith('.xls')) {
-            await processWebExcel(file);
-        } else if (fileName.endsWith('.docx')) {
-            await processWebWord(file);
-        } else if (fileName.endsWith('.pdf')) {
-            await processWebPdf(file);
-        } else {
-            alert("Định dạng tệp không được hỗ trợ! Vui lòng chọn tệp .xlsx, .docx hoặc .pdf");
-        }
-    } catch (error) {
-        console.error("Lỗi xử lý file:", error);
-        alert("Có lỗi xảy ra khi phân tích tệp: " + error.message);
-    }
-    event.target.value = ''; // Reset input
-}
-
-// 1. Xử lý tệp Excel qua SheetJS
-async function processWebExcel(file) {
-    const reader = new FileReader();
-    reader.onload = function(e) {
-        const data = new Uint8Array(e.target.result);
-        const workbook = XLSX.read(data, { type: 'array' });
-        
-        let newSheets = [];
-        workbook.SheetNames.forEach((sheetName, index) => {
-            const worksheet = workbook.Sheets[sheetName];
-            const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
-            
-            let rows = jsonData.map((rowArr, rIdx) => ({
-                r: rIdx + 1,
-                c: false,
-                v: rowArr.map(cell => (cell !== undefined && cell !== null ? String(cell) : ""))
-            })).filter(row => row.v.some(val => val !== ""));
-
-            if (rows.length > 0) {
-                newSheets.push({
-                    id: `sheet-${index}`,
-                    name: sheetName,
-                    group: 0,
-                    blocks: [{
-                        title: sheetName,
-                        hr: 1,
-                        cols: rows[0] ? rows[0].v : ["STT", "Nội dung"],
-                        rows: rows.slice(1)
-                    }]
-                });
-            }
-        });
-
-        window.LAB_DATA = {
-            meta: { source: file.name, version: new Date().toISOString(), generated: new Date().toLocaleString() },
-            sheets: newSheets
-        };
-
-        // Gọi lại hàm làm mới giao diện sẵn có trong app.js gốc của bạn (ví dụ render lại)
-        if (typeof render === 'function') render();
-        else if (typeof init === 'function') init();
-        else location.reload();
-
-        alert(`Đã cập nhật dữ liệu thành công từ tệp Excel: ${file.name}`);
-    };
-    reader.readAsArrayBuffer(file);
-}
-
-// 2. Xử lý tệp Word (.docx) qua Mammoth.js
-async function processWebWord(file) {
-    const reader = new FileReader();
-    reader.onload = async function(e) {
-        const arrayBuffer = e.target.result;
-        const result = await mammoth.extractRawText({ arrayBuffer: arrayBuffer });
-        const textLines = result.value.split('\n').map(l => l.trim()).filter(l => l);
-
-        let rows = textLines.map((line, idx) => ({
-            r: idx + 1,
-            c: false,
-            v: [String(idx + 1), line, "", "", ""]
-        }));
-
-        window.LAB_DATA = {
-            meta: { source: file.name, version: new Date().toISOString(), generated: new Date().toLocaleString() },
-            sheets: [{
-                id: "word-import",
-                name: "Dữ liệu Word",
-                group: 1,
-                blocks: [{
-                    title: file.name,
-                    hr: 1,
-                    cols: ["STT", "Nội dung trích xuất từ Word", "S/N", "Mã VT", "Ghi chú"],
-                    rows: rows
-                }]
-            }]
-        };
-
-        location.reload();
-        alert(`Đã trích xuất và cập nhật dữ liệu thành công từ tệp Word: ${file.name}`);
-    };
-    reader.readAsArrayBuffer(file);
-}
-
-// 3. Xử lý tệp PDF qua PDF.js
-async function processWebPdf(file) {
-    const reader = new FileReader();
-    reader.onload = async function(e) {
-        const typedarray = new Uint8Array(e.target.result);
-        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdfjs-dist/3.11.174/pdf.worker.min.js';
-        
-        const pdf = await pdfjsLib.getDocument(typedarray).promise;
-        let allLines = [];
-
-        for (let i = 1; i <= pdf.numPages; i++) {
-            const page = await pdf.getPage(i);
-            const textContent = await page.getTextContent();
-            const pageLines = textContent.items.map(item => item.str);
-            allLines.push(...pageLines.filter(l => l.trim() !== ""));
-        }
-
-        let rows = allLines.map((line, idx) => ({
-            r: idx + 1,
-            c: false,
-            v: [String(idx + 1), line, "", "", ""]
-        }));
-
-        window.LAB_DATA = {
-            meta: { source: file.name, version: new Date().toISOString(), generated: new Date().toLocaleString() },
-            sheets: [{
-                id: "pdf-import",
-                name: "Dữ liệu PDF",
-                group: 1,
-                blocks: [{
-                    title: file.name,
-                    hr: 1,
-                    cols: ["STT", "Nội dung trích xuất từ PDF", "S/N", "Mã VT", "Ghi chú"],
-                    rows: rows
-                }]
-            }]
-        };
-
-        location.reload();
-        alert(`Đã trích xuất và cập nhật dữ liệu thành công từ tệp PDF: ${file.name}`);
-    };
-    reader.readAsArrayBuffer(file);
-}
