@@ -27,7 +27,7 @@
     xuat: [['thuTruong', 'Thủ trưởng DV'], ['ketToan', 'Kế toán trưởng'], ['nguoiLap', 'Người lập phiếu'], ['nguoiNhan', 'Người nhận hàng'], ['thuKho', 'Thủ kho']],
     nhap: [['thuTruong', 'Thủ trưởng đơn vị'], ['ketToan', 'Kế toán trưởng'], ['nguoiLap', 'Người lập phiếu'], ['nguoiGiao', 'Người giao hàng'], ['thuKho', 'Thủ kho']]
   };
-  var BUILD = '2026.11.07-3';
+  var BUILD = '2026.11.08-4';
   /* CSS của giấy in (xem trước + in). Đặt trong JS để dùng chung cho cả bản in tách rời (tab mới / tải HTML). */
   var PAPER_CSS = `/* --- GIẤY IN (dùng chung cho xem trước & in) --- */
 .paper{position:relative;background:#fff;color:#000;font-family:"Times New Roman",Times,"Liberation Serif",serif;font-size:11pt;line-height:1.3;
@@ -277,10 +277,10 @@
     try { localStorage.setItem(A.CFG.storageKey + ':slipdef', JSON.stringify(o)); } catch (e) { /* bỏ qua */ }
   }
   /** Số phiếu theo mẫu:  <số thứ tự>/<N|X>/<2 số cuối năm>/<hậu tố>   vd 1067/N/25/X.VT-28PHG-KH01 */
-  function nextId(type, dateISO) {
+  function nextId(type, dateISO, skip) {
     var C = cfg(), yy = dateISO.slice(2, 4), L = TYPES[type].letter, seq = (parseInt(C.startSeq, 10) || 1) - 1, id;
     slips(type).forEach(function (s) { var m = String(s.id).match(/^(\d+)\/[NX]\/(\d{2})\//); if (m && m[2] === yy) seq = Math.max(seq, parseInt(m[1], 10)); });
-    do { seq++; id = seq + '/' + L + '/' + yy + (C.numSuffix ? '/' + C.numSuffix : ''); } while (findSlip(type, id));
+    do { seq++; id = seq + '/' + L + '/' + yy + (C.numSuffix ? '/' + C.numSuffix : ''); } while (findSlip(type, id) || (skip && skip[id]));
     return id;
   }
   /** Số tiền bằng chữ (tiếng Việt) */
@@ -350,8 +350,9 @@
     });
     return out;
   }
-  function catLabel(sid, bi) {
+  function catLabel(sid, bi, bt) {
     var s = A.sheetById(sid); if (!s) return '';
+    if (bt) return A.labelOf(s) + ' › ' + bt;
     if (typeof bi === 'string' && bi.indexOf('new:') === 0) return A.labelOf(s) + ' › ' + bi.slice(4);
     var b = s.blocks[bi]; return A.labelOf(s) + (b ? ' › ' + b.title : '');
   }
@@ -426,7 +427,7 @@
       var last = pi === n - 1;
       var rows = pg.map(function (it) {
         seq++; var sub = [it.serial ? 'S/N: ' + esc(it.serial) : '', it.part ? 'P/N: ' + esc(it.part) : ''].filter(Boolean).join(' &nbsp; ');
-        var cat = xuat ? '' : catLabel(it.sid, it.bi);
+        var cat = xuat ? '' : catLabel(it.sid, it.bi, it.bt);
         return '<tr><td class="c">' + seq + '</td><td class="c">' + esc(it.code) + '</td><td>' + esc(it.name) + (sub ? '<div class="sub">' + sub + '</div>' : '') + (cat ? '<div class="sub cat">→ ' + esc(cat) + '</div>' : '') +
           (it.note ? '<div class="sub">' + esc(it.note) + '</div>' : '') + '</td><td class="c lot">' + esc(it.lot) + '</td><td class="c">' + esc(it.quality) + '</td><td class="c">' + esc(it.unit) +
           '</td><td class="c">' + (it.qtyReq !== '' && it.qtyReq != null ? fmt1(num(it.qtyReq)) : '') + '</td><td class="c">' + fmt1(num(it.qty)) + '</td><td class="r m">' + fmt1(num(it.price)) + '</td><td class="r m">' + fmt1(num(it.qty) * num(it.price)) + '</td></tr>';
@@ -487,7 +488,7 @@
         var title = bi.slice(4), key = s.id + '|' + title;
         if (made[key] === undefined) {
           var ex = -1; s.blocks.forEach(function (x, k) { if (x.title === title) ex = k; });
-          if (ex < 0) { s.blocks.push({ title: title, hr: 0, cols: ['STT', 'Mã VT', 'Tên vật tư', 'Serial No', 'Part Number', 'Tình trạng', 'Ghi chú'], rows: [] }); ex = s.blocks.length - 1; }
+          if (ex < 0) { s.blocks.push({ title: title, hr: 0, cols: ['STT', 'Mã VT', 'Tên vật tư', 'Serial No', 'Part Number', 'Tình trạng', 'Ghi chú'], rows: [], ord: Date.now() }); ex = s.blocks.length - 1; }
           made[key] = ex;
         }
         bi = made[key]; it.bi = bi;
@@ -496,9 +497,9 @@
       var e = it.rid ? idx.get(it.rid) : null;
       if (e && (e.s.id !== s.id || e.bi !== bi)) { removeRow(idx, it.rid); e = null; it.rid = null; }
       var row;
-      if (!e) { row = { r: 0, i: 'u' + A.uid(), c: false, n: d.id, v: b.cols.map(function () { return ''; }) }; b.rows.push(row); it.rid = row.i; idx.set(row.i, { s: s, b: b, bi: bi, row: row }); }
+      if (!e) { row = { r: 0, i: 'u' + A.uid(), ct: Date.now(), c: false, n: d.id, v: b.cols.map(function () { return ''; }) }; b.rows.push(row); it.rid = row.i; idx.set(row.i, { s: s, b: b, bi: bi, row: row }); }
       else row = e.row;
-      row.n = d.id; writeFields(b, row, it, d);
+      it.bt = b.title; row.n = d.id; writeFields(b, row, it, d);
     });
     return '';
   }
@@ -544,7 +545,7 @@
     var slip = id ? findSlip(type, id) : null, C = cfg(), df = defs();
     D = { type: type, origId: slip ? slip.id : null, id: slip ? slip.id : nextId(type, todayISO()), date: slip ? slip.date : todayISO(), idTouched: false,
           f: slip ? clone(slip.f) : { kho: df.kho || C.kho, lien: df.lien || C.lien, nguoiLap: df.nguoiLap || C.nguoiLap, thuKho: df.thuKho || C.thuKho, ketToan: df.ketToan || C.ketToan, thuTruong: df.thuTruong || C.thuTruong, thue: '0' },
-          items: slip ? clone(slip.items).map(function (i) { return Object.assign(newItem(), i); }) : [], newBlocks: [], dirty: false };
+          items: slip ? clone(slip.items).map(function (i) { var o = Object.assign(newItem(), i); if (type === 'nhap' && o.bt) { var s0 = A.sheetById(o.sid); if (s0) s0.blocks.forEach(function (b, k) { if (b.title === o.bt) o.bi = k; }); } return o; }) : [], newBlocks: [], dirty: false };
     if (!slip && type === 'nhap') addLine();
     renderEditor(); lock();
     if (!slip) setTimeout(function () { var f = $('#mdEditor [data-fld="donVi"]'), ae = document.activeElement; if (f && window.innerWidth > 760 && (!ae || ae === document.body || !ae.closest || !ae.closest('#mdEditor'))) f.focus(); }, 60);
@@ -620,6 +621,21 @@
   }
   function draftSlip() { return { id: D.id, type: D.type, date: D.date, f: clone(D.f), items: clone(D.items), updatedAt: 'draft' + Date.now() }; }
   function doSave() {
+    if (window.Sync && Sync.active && Sync.active() && !D.origId && !D.idTouched) {            // số tự sinh: tránh trùng với phiếu vừa lập trên máy khác
+      var skip = {}, tries = 0, d0 = D;
+      (function chk() {
+        Sync.exists('slips', d0.type + ':' + d0.id).then(function (ex) {
+          if (ex && tries < 30 && D === d0) {
+            tries++; skip[d0.id] = 1; d0.id = nextId(d0.type, d0.date, skip); var ii = $('[data-top="id"]'); if (ii) ii.value = d0.id;
+            A.toast('Số phiếu đã được thiết bị khác dùng – tự đổi thành ' + d0.id, 4000); chk();
+          } else if (D === d0) finishSave();
+        }).catch(function () { if (D === d0) finishSave(); });
+      })();
+      return;
+    }
+    finishSave();
+  }
+  function finishSave() {
     var err = commit(D); if (err) { A.toast('⚠ ' + err, 4200); return; }
     var type = D.type, id = D.id; closeEditor(true); A.render(); A.toast('✔ Đã lưu ' + TYPES[type].plural.toLowerCase() + ' ' + id, 3000); openView(type, id);
   }
@@ -772,7 +788,7 @@
     a.push(['TT', 'Mã vật tư', 'Tên nhãn hiệu quy cách phẩm chất vật tư', 'Serial No', 'Part Number', 'Mã lô hàng', 'Chất lượng', 'ĐVT', xuat ? 'Yêu cầu' : 'Theo chứng từ', xuat ? 'Thực xuất' : 'Thực nhập', 'Đơn giá', 'Thành tiền', 'Danh mục', 'Ghi chú']);
     slip.items.forEach(function (it, i) {
       a.push([i + 1, it.code || '', it.name || '', it.serial || '', it.part || '', it.lot || '', it.quality || '', it.unit || '', it.qtyReq === '' ? '' : num(it.qtyReq), num(it.qty), num(it.price), num(it.qty) * num(it.price),
-              xuat ? (it.cat || '') : catLabel(it.sid, it.bi), it.note || '']);
+              xuat ? (it.cat || '') : catLabel(it.sid, it.bi, it.bt), it.note || '']);
     });
     if (xuat) a.push(['', '', '', '', '', '', '', '', '', 'Tổng Cộng:', '', money]);
     else { a.push(['', '', '', '', '', '', '', '', '', 'Tổng:', '', money]); a.push(['', '', '', '', '', '', '', '', '', 'Tổng thuế:', '', tax]); a.push(['', '', '', '', '', '', '', '', '', 'Tổng thanh toán:', '', money + tax]); }
@@ -794,7 +810,7 @@
     return ['xuat', 'nhap'].map(function (t) {
       var aoa = [['Số phiếu', 'Ngày', t === 'xuat' ? 'Đơn vị nhận' : 'Đơn vị bán', t === 'xuat' ? 'Xuất dùng cho' : 'Theo hợp đồng', 'Xuất/Nhập tại kho', 'TT', 'Mã vật tư', 'Tên vật tư', 'Serial No', 'Part Number', 'Mã lô hàng', 'Chất lượng', 'ĐVT', 'SL', 'Đơn giá', 'Danh mục', 'Ghi chú']];
       slips(t).forEach(function (s) {
-        s.items.forEach(function (it, i) { aoa.push([s.id, fmtDate(s.date), (s.f || {}).donVi || '', t === 'xuat' ? (s.f || {}).dungCho || '' : (s.f || {}).hopDong || '', (s.f || {}).kho || '', i + 1, it.code || '', it.name || '', it.serial || '', it.part || '', it.lot || '', it.quality || '', it.unit || '', num(it.qty), num(it.price), t === 'xuat' ? (it.cat || '') : catLabel(it.sid, it.bi), it.note || '']); });
+        s.items.forEach(function (it, i) { aoa.push([s.id, fmtDate(s.date), (s.f || {}).donVi || '', t === 'xuat' ? (s.f || {}).dungCho || '' : (s.f || {}).hopDong || '', (s.f || {}).kho || '', i + 1, it.code || '', it.name || '', it.serial || '', it.part || '', it.lot || '', it.quality || '', it.unit || '', num(it.qty), num(it.price), t === 'xuat' ? (it.cat || '') : catLabel(it.sid, it.bi, it.bt), it.note || '']); });
       });
       return { name: TYPES[t].plural, aoa: aoa };
     }).filter(function (x) { return x.aoa.length > 1; });
