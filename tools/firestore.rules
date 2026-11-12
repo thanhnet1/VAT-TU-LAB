@@ -1,0 +1,16 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Dữ liệu đồng bộ của web LAB XVT nằm dưới  workspaces/<tên-nhóm>/...
+    // CHỈ cho các email được liệt kê bên dưới đọc / ghi. (Hãy tạo sẵn tài khoản cho đúng các email này
+    // trong Firebase → Authentication → Users để người lạ không đăng ký trước được.)
+    match /workspaces/{ws}/{document=**} {
+      allow read, write: if request.auth != null
+        && request.auth.token.email in [
+          'thanhvtn1@gmail.com',
+          'thanh80.locphat.tk@gmail.com'
+        ];
+    }
+  }
+}
