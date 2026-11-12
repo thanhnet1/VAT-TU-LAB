@@ -32,6 +32,16 @@ window.APP_CONFIG = {
   // Số dòng tối đa hiển thị khi tìm kiếm toàn bộ
   maxSearchResults: 400,
 
+  // ====== ĐỒNG BỘ NHIỀU THIẾT BỊ (máy tính, điện thoại…) – xem HUONG_DAN.md mục 12 ======
+  sync: {
+    provider: '',                  // '' = tắt (chỉ lưu trên máy)  |  'firebase'  |  'server' (tools/sync_server.py)
+    workspace: 'lab-xvt',          // tên nhóm dữ liệu (nhiều phòng LAB dùng chung 1 dự án thì đặt tên khác nhau)
+    firebase: {                    // Firebase console → Project settings → Your apps → Web app → Config
+      apiKey: '', authDomain: '', projectId: '', appId: ''
+    },
+    server: { url: '', pollMs: 4000 }   // dùng khi provider = 'server'
+  },
+
   // ====== PHIẾU XUẤT KHO / NHẬP KHO (theo phiếu mẫu Tổng Công ty Hạ tầng mạng) ======
   slip: {
     orgLine1: 'Tổng Công Ty Hạ tầng mạng',                                   // dòng 1 góc trên bên trái phiếu
