@@ -6,10 +6,7 @@
 <meta name="theme-color" content="#0b3a5b">
 <title>Tài sản – Vật tư Truyền dẫn LAB</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E📡%3C/text%3E%3C/svg%3E">
-<link rel="stylesheet" href="assets/style.css?v=2026.11.07-3">
-<!-- Các thư viện bổ sung để phân tích tệp nguồn trực tiếp trên trình duyệt -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js" defer></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/pdfjs-dist/3.11.174/pdf.min.js" defer></script>
+<link rel="stylesheet" href="assets/style.css?v=2026.11.08-4">
 </head>
 <body>
 
@@ -28,13 +25,7 @@
   </label>
   <div class="actions">
     <span id="dirty" class="dirty" hidden title="Bạn đã chỉnh sửa dữ liệu – chỉ lưu trên trình duyệt này">● Đã chỉnh sửa</span>
-    
-    <!-- Nút Cập nhật nguồn dữ liệu trực tiếp (Excel, Word, PDF) -->
-    <label for="importFileInput" class="btn" title="Cập nhật nguồn dữ liệu trực tiếp từ Excel, Word, PDF" style="cursor: pointer; display: inline-flex; align-items: center; gap: 4px;">
-      📁 <span>Cập nhật nguồn</span>
-    </label>
-    <input type="file" id="importFileInput" accept=".xlsx, .xls, .docx, .pdf" style="display: none;">
-
+    <button id="btnSync" class="btn ghost sync-off" type="button" title="Đồng bộ nhiều thiết bị"><i>☁</i> <span>Chỉ trên máy</span></button>
     <button id="btnPXK" class="btn accent" type="button" title="Tạo phiếu xuất kho">📤 <span>Phiếu xuất</span></button>
     <button id="btnPNK" class="btn accent" type="button" title="Tạo phiếu nhập kho">📥 <span>Phiếu nhập</span></button>
     <button id="btnEdit" class="btn" type="button" aria-pressed="false">✏️ <span>Chỉnh sửa</span></button>
@@ -72,11 +63,12 @@
 <div id="printRoot"></div>
 <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
-<script src="assets/config.js?v=2026.11.07-3"></script>
+<script src="assets/config.js?v=2026.11.08-4"></script>
 <script src="assets/data.js"></script>
-<!-- Thư viện xuất / đọc Excel (SheetJS) -->
+<!-- Thư viện xuất Excel (tuỳ chọn). Nếu không tải được, web vẫn chạy và tự chuyển sang xuất CSV. -->
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js" defer></script>
-<script src="assets/slips.js?v=2026.11.07-3" defer></script>
-<script src="assets/app.js?v=2026.11.07-3" defer></script>
+<script src="assets/slips.js?v=2026.11.08-4" defer></script>
+<script src="assets/sync.js?v=2026.11.08-4" defer></script>
+<script src="assets/app.js?v=2026.11.08-4" defer></script>
 </body>
 </html>
