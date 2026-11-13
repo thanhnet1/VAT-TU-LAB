@@ -403,7 +403,7 @@
       init: function (cb) {
         cbUser = cb; try { tok = localStorage.getItem(tkey); } catch (e) { tok = null; }
         if (!tok) { cb(null); return Promise.resolve(); }
-        return req('/api/doc?ws=' + encodeURIComponent(ws()) + '&col=rows&id=_').then(function () { cb({ id: 'token', name: 'Mã truy cập' }); })
+        return req('/api/doc?ws=' + encodeURIComponent(ws()) + '&col=rows&id=_', 'GET').then(function () { cb({ id: 'token', name: 'Mã truy cập' }); })
           .catch(function (e) { if (e.status === 401) { tok = null; try { localStorage.removeItem(tkey); } catch (x) { } cb(null); } else cb({ id: 'token', name: 'Mã truy cập' }); });
       },
       signIn: function (_username, token) {
