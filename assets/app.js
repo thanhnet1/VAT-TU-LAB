@@ -330,7 +330,7 @@
   const keepScroll = fn => { const y = window.scrollY; fn(); window.scrollTo(0, y); };
 
   /* =====================================================================
-     TÍNH NĂNG: THÊM VẬT TƯ & PHÂN LOẠI TỰ ĐỘNG (Ưu tiên Mã VT -> Part -> Tên)
+     TÍNH NĂNG: THÊM VẬT TƯ, DANH SÁCH SỔ TỰ ĐỘNG & PHÂN LOẠI THÔNG MINH
      ===================================================================== */
   window.openAddMaterialModal = function() {
     var currentRole = localStorage.getItem('lab_user_role');
@@ -338,6 +338,29 @@
       alert('Tài khoản Khách không có quyền thêm vật tư mới!');
       return;
     }
+    
+    // Quét toàn bộ cơ sở dữ liệu hiện tại để trích xuất danh sách giá trị sẵn có
+    var setMaVT = new Set();
+    var setPartNum = new Set();
+    var setTenVT = new Set();
+
+    if (ST && ST.sheets) {
+      ST.sheets.forEach(function(s) {
+        (s.blocks || []).forEach(function(b) {
+          (b.rows || []).forEach(function(r) {
+            if (r.v) {
+              if (r.v[1]) setMaVT.add(String(r.v[1]).trim());
+              if (r.v[2]) setTenVT.add(String(r.v[2]).trim());
+              if (r.v[4]) setPartNum.add(String(r.v[4]).trim());
+            }
+          });
+        });
+      });
+    }
+
+    var optMaVT = Array.from(setMaVT).sort().map(function(item) { return '<option value="' + esc(item) + '">'; }).join('');
+    var optPartNum = Array.from(setPartNum).sort().map(function(item) { return '<option value="' + esc(item) + '">'; }).join('');
+    var optTenVT = Array.from(setTenVT).sort().map(function(item) { return '<option value="' + esc(item) + '">'; }).join('');
     
     var modalHTML = `
       <div class="modal-back" id="mdAddMat">
@@ -348,12 +371,28 @@
           </div>
           <div class="modal-body">
             <form id="formAddMat" onsubmit="window.handleSaveNewMaterial(event)">
-              <label class="fld"><span>Mã vật tư (Mã VT):</span><input type="text" id="newMaVT" required></label>
-              <label class="fld"><span>Tên vật tư:</span><input type="text" id="newTenVT" required></label>
-              <label class="fld"><span>Part Number:</span><input type="text" id="newPartNum"></label>
-              <label class="fld"><span>Serial No:</span><input type="text" id="newSerial"></label>
+              <label class="fld">
+                <span>Mã vật tư (Mã VT):</span>
+                <input type="text" id="newMaVT" list="listMaVT" placeholder="Chọn từ danh sách hoặc nhập mới..." required>
+                <datalist id="listMaVT">${optMaVT}</datalist>
+              </label>
+
+              <label class="fld">
+                <span>Tên vật tư:</span>
+                <input type="text" id="newTenVT" list="listTenVT" placeholder="Chọn từ danh sách hoặc nhập mới..." required>
+                <datalist id="listTenVT">${optTenVT}</datalist>
+              </label>
+
+              <label class="fld">
+                <span>Part Number:</span>
+                <input type="text" id="newPartNum" list="listPartNum" placeholder="Chọn từ danh sách hoặc nhập mới...">
+                <datalist id="listPartNum">${optPartNum}</datalist>
+              </label>
+
+              <label class="fld"><span>Serial No:</span><input type="text" id="newSerial" placeholder="Nhập Serial No..."></label>
               <label class="fld"><span>Tình trạng:</span><input type="text" id="newTinhTrang" value="Tốt"></label>
-              <label class="fld"><span>Ghi chú:</span><input type="text" id="newGhiChu"></label>
+              <label class="fld"><span>Ghi chú:</span><input type="text" id="newGhiChu" placeholder="Nhập ghi chú..."></label>
+              
               <div class="sy-btns" style="margin-top: 15px;">
                 <button class="tbtn primary" type="submit">Lưu & Phân loại tự động</button>
                 <button class="tbtn" type="button" onclick="document.getElementById('mdAddMat').remove()">Hủy</button>
@@ -404,7 +443,7 @@
     var cleanNewPart = cleanStr(newPartNum);
     var cleanNewTen = cleanStr(newTenVT);
 
-    // BƯỚC 1: Ưu tiên khớp chính xác Mã VT (cột 1) hoặc Part Number (cột 4)
+    // Ưu tiên 1: Khớp chính xác Mã VT (cột 1) hoặc Part Number (cột 4)
     if (cleanNewMa || cleanNewPart) {
       for (var i = 0; i < sheets.length; i++) {
         var blocks = sheets[i].blocks || [];
@@ -427,7 +466,7 @@
       }
     }
 
-    // BƯỚC 2: Nếu chưa tìm thấy theo Mã/Part, tiến hành khớp theo Tên vật tư (cột 2)
+    // Ưu tiên 2: Khớp theo Tên vật tư (cột 2)
     if (!targetBlock && cleanNewTen) {
       for (var i = 0; i < sheets.length; i++) {
         var blocks = sheets[i].blocks || [];
@@ -447,7 +486,7 @@
       }
     }
 
-    // BƯỚC 3: Dự phòng cuối cùng - Đưa vào khối đầu tiên nếu không dò được từ khóa phù hợp
+    // Dự phòng cuối cùng: Đưa vào khối đầu tiên nếu hoàn toàn không dò thấy từ khóa phù hợp
     if (!targetBlock && sheets.length > 0 && sheets[0].blocks.length > 0) {
       targetSheet = sheets[0];
       targetBlock = sheets[0].blocks[0];
