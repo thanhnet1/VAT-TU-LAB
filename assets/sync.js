@@ -3,7 +3,7 @@
    ===================================================================== */
 (function () {
   'use strict';
-  var BUILD = '2026.11.08-5-auth-lock';
+  var BUILD = '2026.11.08-7-auth-lock';
   var A = null, CS = null, ad = null;
   var S = { st: 'off', user: null, M: null, since: null, inited: false, baseline: null, subscribed: false, pushing: false, retry: 0, lastOk: 0,
             err: '', pending: 0, conflicts: 0, ready: { rows: false, slips: false, blocks: false }, remoteSeen: 0, applyT: null, pushT: null, retryT: null, reconciling: false, loginShown: false };
