@@ -117,28 +117,11 @@
   function applyRoleUI() {
     var currentRole = localStorage.getItem('lab_user_role');
     if (currentRole === 'guest') {
-      // 1. Ẩn hoặc làm mờ các nút tạo phiếu xuất/nhập, nút thêm/sửa/xóa vật tư
-      var restrictedSelectors = [
-        'button[data-action*="create"]', 
-        'button[data-action*="add"]', 
-        'button[data-action*="edit"]', 
-        'button[data-action*="delete"]',
-        'button[data-action*="xuat"]',
-        'button[data-action*="nhap"]',
-        '.btn-create-slip',
-        '.btn-add-row',
-        '#btnCreateXuat',
-        '#btnCreateNhap'
-      ];
-      
-      // Quét và ẩn toàn bộ các nút chức năng quản trị/tạo phiếu ngoài trừ xem và xác nhận đã nhận
       document.querySelectorAll('button, a, .tbtn').forEach(function(el) {
         var text = (el.textContent || '').toLowerCase();
         var idClass = (el.id + ' ' + el.className).toLowerCase();
         
-        // Nếu là nút tạo phiếu, thêm mới, cấu hình, xóa -> Vô hiệu hóa hoặc ẩn đi
         if (text.includes('tạo phiếu') || text.includes('thêm') || text.includes('sửa') || text.includes('xoá') || text.includes('nhập kho') || text.includes('xuất kho') || idClass.includes('admin')) {
-          // Cho phép giữ lại nút xem phiếu và xác nhận đã nhận
           if (!text.includes('xem') && !text.includes('xác nhận') && !text.includes('đã nhận')) {
             el.style.opacity = '0.3';
             el.style.pointerEvents = 'none';
@@ -146,7 +129,6 @@
           }
         }
       });
-      console.log('Đã áp dụng chế độ khóa giao diện cho Khách.');
     }
   }
 
@@ -167,7 +149,6 @@
     clearTimeout(S.pushT); S.pushT = setTimeout(push, delay == null ? 1200 : delay);
   }
   function push() {
-    // Khách không được phép đẩy thay đổi tạo/sửa dữ liệu lên hệ thống
     if (localStorage.getItem('lab_user_role') === 'guest') return Promise.resolve();
 
     if (S.pushing || !ad || !S.user || !S.subscribed || !S.inited) return Promise.resolve();
@@ -360,7 +341,7 @@
       signOut: function () { 
         localStorage.removeItem('lab_user_role');
         localStorage.removeItem('lab_username');
-        location.reload(); // Tải lại trang để khôi phục giao diện mặc định
+        location.reload();
         return AU.signOut(auth); 
       },
       subscribe: function (since, onDocsCb, onErr, onOk) {
@@ -505,7 +486,6 @@
     setState('loading');
     Promise.resolve(ad.init(onUser)).catch(function (e) { S.err = 'Không tải được thư viện đồng bộ: ' + (e && e.message || e) + ' (kiểm tra mạng / cấu hình).'; setState('error'); });
     
-    // Tự động quét và khóa giao diện nếu đang là khách sau mỗi lần render trang
     setInterval(function() {
       if (localStorage.getItem('lab_user_role') === 'guest') {
         applyRoleUI();
