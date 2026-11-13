@@ -27,7 +27,7 @@
     xuat: [['thuTruong', 'Thủ trưởng DV'], ['ketToan', 'Kế toán trưởng'], ['nguoiLap', 'Người lập phiếu'], ['nguoiNhan', 'Người nhận hàng'], ['thuKho', 'Thủ kho']],
     nhap: [['thuTruong', 'Thủ trưởng đơn vị'], ['ketToan', 'Kế toán trưởng'], ['nguoiLap', 'Người lập phiếu'], ['nguoiGiao', 'Người giao hàng'], ['thuKho', 'Thủ kho']]
   };
-  var BUILD = '2026.11.08-4';
+  var BUILD = '2026.11.08-5';
   /* CSS của giấy in (xem trước + in). Đặt trong JS để dùng chung cho cả bản in tách rời (tab mới / tải HTML). */
   var PAPER_CSS = `/* --- GIẤY IN (dùng chung cho xem trước & in) --- */
 .paper{position:relative;background:#fff;color:#000;font-family:"Times New Roman",Times,"Liberation Serif",serif;font-size:11pt;line-height:1.3;
@@ -35,7 +35,7 @@
 .paper *{box-sizing:border-box}
 .paper .p-top{display:flex;justify-content:space-between;gap:12px;font-weight:700;font-size:10.5pt}
 .paper .p-org div{line-height:1.35} .paper .p-form{white-space:nowrap;font-size:10pt}
-.paper .p-head{display:grid;grid-template-columns:1fr 28mm;gap:6px;margin:10px 0 4px;align-items:start}
+.paper .p-head{display:grid;grid-template-columns:1fr 28mm;gap:6mm;margin:10px 0 4px;align-items:start}
 .paper .p-title{text-align:center;grid-column:1} .paper .p-title h1{margin:0 0 2px;font-size:16pt;letter-spacing:.5px}
 .paper .p-qr{grid-column:2;grid-row:1;width:28mm;height:28mm;justify-self:end} .paper .p-qr svg{width:100%;height:100%;display:block}
 .paper .p-info{margin:6px 0 6px;font-size:11pt}
@@ -68,8 +68,7 @@
   body.print-slip .paper *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
   body.print-slip .paper .p-page{right:0;bottom:0}
 }`;
-  /* ===== BỘ TẠO MÃ QR (nhúng sẵn – không cần file qr.js riêng) =====
-     QR Code Model 2, chế độ byte UTF-8, phiên bản 1–40, mức sửa lỗi L/M/Q/H. Chạy offline. */
+  /* ===== BỘ TẠO MÃ QR (nhúng sẵn – không cần file qr.js riêng) ===== */
   var QRLIB = (function (root) {
   'use strict';
   var ECC_CW = [
@@ -129,7 +128,6 @@
       for (k = 8; k < 15; k++) setFn(8, size - 15 + k, bit(k));
       setFn(8, size - 8, true);
     }
-    // mẫu chức năng
     for (i = 0; i < size; i++) { setFn(6, i, i % 2 === 0); setFn(i, 6, i % 2 === 0); }
     function finder(cx, cy) {
       for (var dy = -4; dy <= 4; dy++) for (var dx = -4; dx <= 4; dx++) {
@@ -150,7 +148,6 @@
       for (i = 0; i < 18; i++) { var c = ((vb >>> i) & 1) !== 0, a = size - 11 + i % 3, b = Math.floor(i / 3); setFn(a, b, c); setFn(b, a, c); }
     }
 
-    // ECC + xen kẽ
     var numBlocks = NUM_BLK[ecl][ver], eccLen = ECC_CW[ecl][ver], raw = Math.floor(rawModules(ver) / 8);
     var shortBlocks = numBlocks - raw % numBlocks, shortLen = Math.floor(raw / numBlocks), blocks = [], div = rsDivisor(eccLen), k = 0;
     for (i = 0; i < numBlocks; i++) {
@@ -160,7 +157,6 @@
     var all = [];
     for (i = 0; i < blocks[0].length; i++) blocks.forEach(function (blk, jj) { if (i !== shortLen - eccLen || jj >= shortBlocks) all.push(blk[i]); });
 
-    // đặt codeword
     var bi = 0;
     for (var right = size - 1; right >= 1; right -= 2) {
       if (right === 6) right = 5;
@@ -246,7 +242,7 @@
   root.QR = { ver: BUILD, encode: encode, svg: svg, canvas: canvas, png: png, _tables: { ECC_CW: ECC_CW, NUM_BLK: NUM_BLK } };
     return root.QR;
   })({});
-  var D = null, PK = null, VIEW = null;           // bản nháp / hộp chọn / phiếu đang xem
+  var D = null, PK = null, VIEW = null;
   var LQ = { xuat: '', nhap: '' };
   var qrCache = {}, qrWarned = false, printing = false;
 
@@ -276,14 +272,12 @@
     var o = {}; ['kho', 'nguoiLap', 'thuKho', 'ketToan', 'thuTruong', 'lien'].forEach(function (k) { if (f[k]) o[k] = f[k]; });
     try { localStorage.setItem(A.CFG.storageKey + ':slipdef', JSON.stringify(o)); } catch (e) { /* bỏ qua */ }
   }
-  /** Số phiếu theo mẫu:  <số thứ tự>/<N|X>/<2 số cuối năm>/<hậu tố>   vd 1067/N/25/X.VT-28PHG-KH01 */
   function nextId(type, dateISO, skip) {
     var C = cfg(), yy = dateISO.slice(2, 4), L = TYPES[type].letter, seq = (parseInt(C.startSeq, 10) || 1) - 1, id;
     slips(type).forEach(function (s) { var m = String(s.id).match(/^(\d+)\/[NX]\/(\d{2})\//); if (m && m[2] === yy) seq = Math.max(seq, parseInt(m[1], 10)); });
     do { seq++; id = seq + '/' + L + '/' + yy + (C.numSuffix ? '/' + C.numSuffix : ''); } while (findSlip(type, id) || (skip && skip[id]));
     return id;
   }
-  /** Số tiền bằng chữ (tiếng Việt) */
   function docSo(n) {
     n = Math.round(n); if (!n) return '';
     var ch = ['không', 'một', 'hai', 'ba', 'bốn', 'năm', 'sáu', 'bảy', 'tám', 'chín'], units = ['', 'nghìn', 'triệu', 'tỷ', 'nghìn tỷ', 'triệu tỷ'];
@@ -301,7 +295,6 @@
     var r = out.join(' ').trim(); return r.charAt(0).toUpperCase() + r.slice(1) + ' đồng chẵn';
   }
 
-  /* ---------- Ánh xạ cột của từng khối → mã / tên / serial / part / chất lượng / ghi chú ---------- */
   var fmCache = {};
   function fieldMap(b) {
     var key = b.cols.join('|'); if (fmCache[key]) return fmCache[key];
@@ -357,7 +350,6 @@
     var b = s.blocks[bi]; return A.labelOf(s) + (b ? ' › ' + b.title : '');
   }
 
-  /* ---------- Mã QR của phiếu ---------- */
   function qrPayload(slip) {
     var t = TYPES[slip.type], f = slip.f || {}, items = slip.items, L = [], enc = new TextEncoder();
     function clean(x) { return String(x == null ? '' : x).replace(/[\r\n|]+/g, ' ').trim(); }
@@ -366,7 +358,6 @@
     L.push('Tong: ' + items.length + ' dong / SL ' + sumQty(items));
     var tail = '';
     if (cfg().qrLink !== false && /^https?:/.test(location.protocol)) tail = location.origin + location.pathname + '#/' + slip.type + '/' + encodeURIComponent(slip.id);
-    /* giữ mã QR gọn (≈ 300 byte) để in 28mm vẫn quét tốt; danh sách đầy đủ xem trong phiếu */
     var budget = 300 - enc.encode(L.join('\n') + '\n' + tail).length, used = 0, shown = 0, lines = [];
     for (var i = 0; i < items.length; i++) {
       var it = items[i], nm = clean(it.name).slice(0, 28), ln = (i + 1) + '. ' + (clean(it.code) ? clean(it.code) + ' ' : '') + nm + (clean(it.serial) && clean(it.serial).length < 26 ? ' | SN ' + clean(it.serial) : '') + (num(it.qty) !== 1 ? ' | x' + it.qty : '');
@@ -381,7 +372,7 @@
     if (raw === undefined) {
       try {
         try { raw = QRLIB.svg(qrPayload(slip), { ecl: 'M', border: border == null ? 1 : border }); }
-        catch (e1) { raw = QRLIB.svg(slip.id + '\n' + TYPES[slip.type].title, { ecl: 'M', border: border == null ? 1 : border }); }   // dự phòng: chỉ số phiếu
+        catch (e1) { raw = QRLIB.svg(slip.id + '\n' + TYPES[slip.type].title, { ecl: 'M', border: border == null ? 1 : border }); }
       } catch (e) {
         raw = '<div class="qr-miss" title="' + esc(e.message) + '">QR<br>lỗi</div>';
         if (!qrWarned) { qrWarned = true; A.toast('⚠ Không tạo được mã QR (' + e.message + '). Phiếu vẫn xem / in được.', 7000); }
@@ -391,7 +382,6 @@
     return css && raw.indexOf('<svg') === 0 ? raw.replace('<svg ', '<svg style="' + css + '" ') : raw;
   }
 
-  /* ---------- Phiếu in A4 – bố cục như phiếu mẫu (chia trang tự động, “Trang: i / n”) ---------- */
   function paginate(items) {
     var pages = [], rem = items.slice();
     while (rem.length > 4) { var take = Math.min(7, rem.length - 2); pages.push(rem.splice(0, take)); }
@@ -450,7 +440,6 @@
     }).join('');
   }
 
-  /* ---------- Lưu / xoá phiếu (cập nhật danh mục vật tư) ---------- */
   function removeRow(idx, rid) {
     var e = idx.get(rid); if (!e) return;
     var k = e.b.rows.indexOf(e.row); if (k >= 0) e.b.rows.splice(k, 1); idx.delete(rid);
@@ -533,7 +522,6 @@
     A.persist(); A.render(); A.toast('Đã xoá phiếu ' + id);
   }
 
-  /* ---------- Hộp soạn phiếu ---------- */
   function lock() { document.body.classList.toggle('modal-open', !!(D || PK || VIEW)); }
   function inp(attr, key, val, type, extra) { return '<input ' + attr + '="' + key + '" type="' + (type || 'text') + '" value="' + esc(val) + '" autocomplete="off"' + (extra || '') + '>'; }
   function newItem(base) {
@@ -558,7 +546,7 @@
     }).join('');
     var signs = SIGNERS[D.type].map(function (x) { return '<label class="fld"><span>' + x[1] + '</span>' + inp('data-fld', x[0], f[x[0]] || '') + '</label>'; }).join('');
     
-    // Tích hợp hệ thống gợi ý danh sách sổ xuống (<datalist>) dùng chung cho cả Phiếu Nhập và các trường liên quan
+    // Tích hợp danh sách sổ xuống (<datalist>) từ LabApp
     var datalistsHTML = (A.getMaterialListsHTML ? A.getMaterialListsHTML() : '');
 
     $('#mdEditor').innerHTML =
@@ -606,10 +594,8 @@
           '<td data-label="Khối thiết bị" class="sel"><select data-sel="bi" data-i="' + i + '">' + blockOptions(it) + '</select></td>'
         : '<td data-label="Danh mục" class="cat">' + esc(it.cat || '') + '</td>';
       
-      // Gắn thuộc tính list datalist và sự kiện oninput tự động đồng bộ cho Phiếu Nhập
       function c(f, label, extra, type) {
-        var listAttr = '';
-        var onInputAttr = '';
+        var listAttr = '', onInputAttr = '';
         if (imp) {
           if (f === 'code') {
             listAttr = ' list="listMaVT"';
@@ -632,7 +618,7 @@
   }
   function renderItems() { $('#slItems').innerHTML = itemsHTML(); sums(); }
 
-  // Hàm hỗ trợ tự động đồng bộ Tên vật tư và Part Number cho phiếu nhập kho khi chọn Mã VT
+  // Hàm đồng bộ tự động Tên vật tư và Part Number khi nhập Mã VT trên phiếu nhập kho
   window.handleSlipMaVTChange = function(val, idx) {
     if (!window._materialDict && A.getMaterialListsHTML) A.getMaterialListsHTML();
     if (!window._materialDict) return;
@@ -642,7 +628,6 @@
       if (found.ten) D.items[idx].name = found.ten;
       if (found.part) D.items[idx].part = found.part;
       D.dirty = true;
-      // Cập nhật giá trị hiển thị trực tiếp trên giao diện input tương ứng
       var rowEl = document.querySelector('#slItems tr[data-i="' + idx + '"]');
       if (rowEl) {
         var nameInp = rowEl.querySelector('input[data-it="name"]');
@@ -665,7 +650,7 @@
   }
   function draftSlip() { return { id: D.id, type: D.type, date: D.date, f: clone(D.f), items: clone(D.items), updatedAt: 'draft' + Date.now() }; }
   function doSave() {
-    if (window.Sync && Sync.active && Sync.active() && !D.origId && !D.idTouched) {            // số tự sinh: tránh trùng với phiếu vừa lập trên máy khác
+    if (window.Sync && Sync.active && Sync.active() && !D.origId && !D.idTouched) {
       var skip = {}, tries = 0, d0 = D;
       (function chk() {
         Sync.exists('slips', d0.type + ':' + d0.id).then(function (ex) {
@@ -684,7 +669,6 @@
     var type = D.type, id = D.id; closeEditor(true); A.render(); A.toast('✔ Đã lưu ' + TYPES[type].plural.toLowerCase() + ' ' + id, 3000); openView(type, id);
   }
 
-  /* ---------- Hộp chọn vật tư từ danh mục (phiếu xuất) ---------- */
   function openPicker() {
     var excl = new Set(D.items.map(function (i) { return i.rid; }).filter(Boolean));
     PK = { items: inventory(excl, D.origId), blocks: new Set(), q: '', chk: 'all', sel: new Set(), max: 300 };
@@ -761,7 +745,6 @@
   }
   function closePicker() { PK = null; $('#mdPicker').innerHTML = ''; lock(); }
 
-  /* ---------- Xem / in / xuất ---------- */
   function openView(type, id, tmp) {
     var slip = tmp || findSlip(type, id); if (!slip) { A.toast('Không tìm thấy phiếu ' + id); return; }
     VIEW = { slip: slip, tmp: !!tmp };
@@ -813,7 +796,7 @@
       st = document.createElement('style'); st.id = 'pgStyle'; st.textContent = '@page{size:A4 portrait;margin:10mm}'; document.head.appendChild(st);
       document.body.classList.add('print-slip'); window.addEventListener('afterprint', done);
       setTimeout(function () { try { window.print(); } catch (e) { done(); printWindow(slip); } }, 80);
-      setTimeout(done, 120000);                                   // phòng khi trình duyệt không gửi sự kiện afterprint
+      setTimeout(done, 120000);
     } catch (e) { done(); A.toast('Không in trực tiếp được (' + e.message + ') – mở bản in trong tab mới.', 5000); printWindow(slip); }
   }
   function dlQR(slip) {
@@ -860,7 +843,6 @@
     }).filter(function (x) { return x.aoa.length > 1; });
   }
 
-  /* ---------- Trang danh sách phiếu ---------- */
   function listRows(type) {
     var tk = A.tokensOf(LQ[type] || '');
     var arr = slips(type).slice().sort(function (a, b) { return (b.date || '').localeCompare(a.date || '') || String(b.createdAt || '').localeCompare(String(b.createdAt || '')); });
@@ -889,7 +871,6 @@
       '<p class="src">' + (type === 'xuat' ? 'Vật tư đã lập phiếu xuất được trừ khỏi danh mục (ẩn khỏi các bảng). Xoá phiếu sẽ trả vật tư về danh mục.' : 'Vật tư nhập theo phiếu được thêm vào đúng chủng loại / khối đã chọn (nhãn “MỚI”). Xoá phiếu sẽ gỡ các vật tư đó.') + '</p>';
   }
 
-  /* ---------- Sự kiện ---------- */
   function bind() {
     var main = $('#main'), root = $('#modalRoot');
     main.addEventListener('click', function (e) {
