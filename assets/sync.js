@@ -1,18 +1,12 @@
 /* =====================================================================
    sync.js – ĐỒNG BỘ ĐÁM MÂY giữa nhiều thiết bị (máy tính, điện thoại…)
-   - Nhà cung cấp:  'firebase' (Firestore + đăng nhập Email/Mật khẩu)  hoặc  'server' (tools/sync_server.py tự lưu trữ).
-   - Cách hoạt động: dữ liệu gốc (assets/data.js) giống nhau trên mọi máy; chỉ các THAY ĐỔI được đồng bộ:
-       rows   = từng dòng vật tư đã sửa / tích / thêm / xoá / xuất (gồm cờ "đã xuất" và nhãn "mới nhập")
-       slips  = phiếu xuất kho, phiếu nhập kho (kèm vật tư)
-       blocks = khối thiết bị tạo thêm khi nhập kho
-     Mọi thay đổi trên 1 máy được đẩy lên mây và máy khác nhận về gần như tức thời (Firebase) / sau vài giây (server).
-   - Hoạt động cả khi mất mạng: ghi trên máy trước, có mạng lại thì tự đẩy lên (không mất thay đổi).
-   - Xung đột (2 máy cùng sửa 1 dòng khi chưa kịp đồng bộ): bản đẩy lên sau cùng được giữ.
+   - Nhà cung cấp:  'firebase' (Firestore + đăng nhập Tên/Mật khẩu ánh xạ ngầm)  hoặc  'server'.
+   - Hoạt động: dữ liệu gốc giống nhau; chỉ các THAY ĐỔI được đồng bộ.
    Phụ thuộc: window.LabApp (app.js).
    ===================================================================== */
 (function () {
   'use strict';
-  var BUILD = '2026.11.08-4';
+  var BUILD = '2026.11.08-4-auth';
   var A = null, CS = null, ad = null;
   var S = { st: 'off', user: null, M: null, since: null, inited: false, baseline: null, subscribed: false, pushing: false, retry: 0, lastOk: 0,
             err: '', pending: 0, conflicts: 0, ready: { rows: false, slips: false, blocks: false }, remoteSeen: 0, applyT: null, pushT: null, retryT: null, reconciling: false, loginShown: false };
@@ -22,14 +16,14 @@
   function esc(s) { return A.esc(s == null ? '' : s); }
   function clone(o) { return JSON.parse(JSON.stringify(o)); }
 
-  /* ---------- băm & chữ ký (để so sánh nội dung mà không phụ thuộc thứ tự khoá) ---------- */
+  /* ---------- băm & chữ ký ---------- */
   function stable(v) {
     if (v === undefined || v === null) return 'null';
     if (typeof v !== 'object') return JSON.stringify(v);
     if (Array.isArray(v)) return '[' + v.map(stable).join(',') + ']';
     return '{' + Object.keys(v).sort().map(function (k) { return JSON.stringify(k) + ':' + stable(v[k]); }).join(',') + '}';
   }
-  function hash(str) {                       // cyrb53
+  function hash(str) {
     var h1 = 0xdeadbeef, h2 = 0x41c6ce57, i, ch;
     for (i = 0; i < str.length; i++) { ch = str.charCodeAt(i); h1 = Math.imul(h1 ^ ch, 2654435761); h2 = Math.imul(h2 ^ ch, 1597334677); }
     h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
@@ -48,11 +42,11 @@
   function ws() { return (CS && CS.workspace) || 'lab-xvt'; }
   function metaKey() { return A.CFG.storageKey + ':sync:' + ws(); }
   function loadMeta() {
-    try { var m = JSON.parse(localStorage.getItem(metaKey()) || 'null'); if (m && m.ver === A.DATA.meta.version) return m; } catch (e) { /* bỏ qua */ }
+    try { var m = JSON.parse(localStorage.getItem(metaKey()) || 'null'); if (m && m.ver === A.DATA.meta.version) return m; } catch (e) { }
     return null;
   }
   function saveMeta() {
-    try { localStorage.setItem(metaKey(), JSON.stringify({ ver: A.DATA.meta.version, since: S.since, M: S.M, inited: S.inited })); } catch (e) { /* đầy bộ nhớ */ }
+    try { localStorage.setItem(metaKey(), JSON.stringify({ ver: A.DATA.meta.version, since: S.since, M: S.M, inited: S.inited })); } catch (e) { }
   }
   function enabled() {
     var c = A.CFG.sync || {};
@@ -122,7 +116,17 @@
     return ops;
   }
 
-  /* ---------- trạng thái hiển thị ---------- */
+  /* ---------- trạng thái hiển thị & kiểm tra phân quyền Khách / Admin ---------- */
+  function applyRoleUI() {
+    var currentRole = localStorage.getItem('lab_user_role');
+    if (currentRole === 'guest') {
+      // Khách: Ẩn/vô hiệu hóa các nút thêm, sửa, xóa dữ liệu chính, chỉ cho xem và duyệt xuất kho
+      document.querySelectorAll('.btn-admin-only, .admin-edit-control').forEach(el => {
+        el.style.display = 'none';
+      });
+    }
+  }
+
   function setState(st) {
     S.st = st; var b = $('#btnSync'); if (!b) return;
     var map = { off: ['☁', 'Chỉ trên máy', 'off'], login: ['🔒', 'Đăng nhập', 'login'], syncing: ['🔄', 'Đang đồng bộ…', 'syncing'], ok: ['☁✓', 'Đã đồng bộ', 'ok'],
@@ -131,6 +135,7 @@
     b.className = 'btn ghost sync-' + m[2]; b.innerHTML = '<i>' + m[0] + '</i> <span>' + m[1] + n + '</span>';
     b.title = 'Đồng bộ: ' + m[1] + (S.lastOk ? ' – lần cuối ' + new Date(S.lastOk).toLocaleTimeString('vi-VN') : '') + (S.err ? '\n' + S.err : '');
     var p = $('#syncPanel'); if (p) renderPanel();
+    if (st === 'ok') applyRoleUI();
   }
 
   /* ---------- đẩy thay đổi lên đám mây ---------- */
@@ -247,15 +252,15 @@
     }, 200);
   }
 
-  /* ---------- lần đồng bộ đầu tiên của thiết bị ---------- */
+  /* ---------- lần đồng bộ đầu tiên ---------- */
   function maybeReconcile() {
     if (S.inited || S.reconciling || !(S.ready.rows && S.ready.slips && S.ready.blocks)) return;
     S.reconciling = true;
     var ops = computeOps(), hasRemote = S.remoteSeen > 0;
     if (ops.length && hasRemote) {
       var slipsN = ((A.ST.slips.xuat || []).length + (A.ST.slips.nhap || []).length);
-      var merge = confirm('Thiết bị này đang có ' + ops.length + ' thay đổi chưa đồng bộ (' + slipsN + ' phiếu…), trong khi đám mây đã có dữ liệu.\\n\\n' +
-        'OK  = GỘP: giữ thay đổi của thiết bị này và đẩy lên đám mây (nếu trùng dòng thì bản của thiết bị này thắng)\\n' +
+      var merge = confirm('Thiết bị này đang có ' + ops.length + ' thay đổi chưa đồng bộ (' + slipsN + ' phiếu…), trong khi đám mây đã có dữ liệu.\n\n' +
+        'OK  = GỘP: giữ thay đổi của thiết bị này và đẩy lên đám mây\n' +
         'Hủy = BỎ dữ liệu trên thiết bị này, dùng dữ liệu của đám mây');
       if (!merge) { discardLocalAndResync(); return; }
     }
@@ -276,38 +281,62 @@
       if (e && (e.code === 'permission-denied' || e.status === 401)) { S.subscribed = false; stopSub(); setState('login'); }
     }, function () { if (S.st === 'loading' || S.st === 'error' || S.st === 'offline') { S.err = ''; setState(S.pending ? 'syncing' : 'ok'); } });
   }
-  function stopSub() { try { if (ad && ad.unsubscribe) ad.unsubscribe(); } catch (e) { /* bỏ qua */ } S.subscribed = false; }
+  function stopSub() { try { if (ad && ad.unsubscribe) ad.unsubscribe(); } catch (e) { } S.subscribed = false; }
   function onUser(u) {
     S.user = u;
-    if (!u) { stopSub(); S.inited = S.inited; setState('login'); if (!S.loginShown) { S.loginShown = true; openPanel(true); } return; }
+    if (!u) { stopSub(); setState('login'); if (!S.loginShown) { S.loginShown = true; openPanel(true); } return; }
     S.err = ''; startSub(); if (S.inited) schedule(300);
     if ($('#syncPanel')) renderPanel();
+    applyRoleUI();
   }
 
-  /* ---------- Nhà cung cấp 1: Firebase (Firestore + Email/Mật khẩu) ---------- */
+  /* ---------- Firebase Adapter (Đã tích hợp ánh xạ Tên -> Email) ---------- */
   function fbErr(e) {
     var c = (e && (e.code || e.message)) || '';
-    if (/invalid-credential|wrong-password|user-not-found|invalid-email|invalid-login/.test(c)) return 'Sai email hoặc mật khẩu.';
+    if (/invalid-credential|wrong-password|user-not-found|invalid-email|invalid-login/.test(c)) return 'Sai tên đăng nhập hoặc mật khẩu.';
     if (/too-many-requests/.test(c)) return 'Đăng nhập sai quá nhiều lần – hãy thử lại sau ít phút.';
-    if (/network-request-failed|unavailable|offline/.test(c)) return 'Không có kết nối tới máy chủ Firebase (kiểm tra mạng).';
-    if (/permission-denied/.test(c)) return 'Không có quyền truy cập dữ liệu: kiểm tra Firestore Rules và email đã được cấp quyền.';
-    if (/unauthorized-domain/.test(c)) return 'Tên miền chưa được cho phép: thêm vào Firebase → Authentication → Settings → Authorized domains.';
-    if (/operation-not-allowed/.test(c)) return 'Chưa bật đăng nhập Email/Password trong Firebase → Authentication → Sign-in method.';
-    if (/api-key|invalid-api-key/.test(c)) return 'apiKey trong config.js không đúng.';
+    if (/network-request-failed|unavailable|offline/.test(c)) return 'Không có kết nối tới máy chủ Firebase.';
+    if (/permission-denied/.test(c)) return 'Không có quyền truy cập dữ liệu.';
     return String(c || 'lỗi không rõ');
   }
   function firebaseAdapter() {
     var cfg = CS.firebase, base = CS.sdkBase || 'https://www.gstatic.com/firebasejs/10.12.2/', auth = null, db = null, FS = null, AU = null, unsubs = [];
     var o = {
-      name: 'firebase', needsEmail: true, errText: fbErr,
+      name: 'firebase', needsEmail: false, errText: fbErr,
       init: function (cb) {
         return Promise.all([import(base + 'firebase-app.js'), import(base + 'firebase-auth.js'), import(base + 'firebase-firestore.js')]).then(function (m) {
           var app = m[0].initializeApp(cfg); AU = m[1]; FS = m[2]; auth = AU.getAuth(app); db = FS.getFirestore(app);
-          AU.onAuthStateChanged(auth, function (u) { cb(u ? { id: u.uid, name: u.email || u.uid } : null); });
+          AU.onAuthStateChanged(auth, function (u) { 
+            if (u) {
+              // Khôi phục role từ localStorage nếu khớp
+              cb({ id: u.uid, name: localStorage.getItem('lab_username') || u.email });
+            } else {
+              cb(null);
+            }
+          });
         });
       },
-      signIn: function (email, pw) { return AU.signInWithEmailAndPassword(auth, email, pw); },
-      signOut: function () { return AU.signOut(auth); },
+      signIn: function (usernameInput, pw) {
+        var username = usernameInput.trim().toLowerCase();
+        var authUsers = (A.CFG.authUsers || {});
+        var userInfo = authUsers[username];
+        
+        if (!userInfo) {
+          return Promise.reject(new Error("Tên đăng nhập không tồn tại! Chỉ dùng 'admin' hoặc 'khach'."));
+        }
+        
+        // Lưu phân quyền và tên vào LocalStorage
+        localStorage.setItem('lab_user_role', userInfo.role);
+        localStorage.setItem('lab_username', username);
+
+        // Đăng nhập ngầm bằng email tương ứng lên Firebase Auth
+        return AU.signInWithEmailAndPassword(auth, userInfo.email, pw);
+      },
+      signOut: function () { 
+        localStorage.removeItem('lab_user_role');
+        localStorage.removeItem('lab_username');
+        return AU.signOut(auth); 
+      },
       subscribe: function (since, onDocsCb, onErr, onOk) {
         o.unsubscribe();
         COLS.forEach(function (name) {
@@ -324,7 +353,7 @@
           }, onErr));
         });
       },
-      unsubscribe: function () { unsubs.forEach(function (u) { try { u(); } catch (e) { /* bỏ qua */ } }); unsubs = []; },
+      unsubscribe: function () { unsubs.forEach(function (u) { try { u(); } catch (e) { } }); unsubs = []; },
       commit: function (ops) {
         var batch = FS.writeBatch(db), by = deviceId();
         ops.forEach(function (op) {
@@ -337,7 +366,7 @@
     return o;
   }
 
-  /* ---------- Nhà cung cấp 2: máy chủ tự lưu trữ (tools/sync_server.py) ---------- */
+  /* ---------- Server Adapter dự phòng ---------- */
   function serverAdapter() {
     var cfg = CS.server, url = String(cfg.url).replace(/\/+$/, ''), tkey = A.CFG.storageKey + ':sync-token', tok = null, timer = null, since = {}, cbD = null, cbE = null, cbO = null, first = {}, cbUser = null, polling = false;
     function req(path, method, body) {
@@ -362,20 +391,20 @@
     function loop() { clearTimeout(timer); if (!cbD) return; timer = setTimeout(function () { poll().then(loop); }, cfg.pollMs || 4000); }
     var o = {
       name: 'server', needsEmail: false,
-      errText: function (e) { return e && e.status === 401 ? 'Mã truy cập không đúng.' : (navigator.onLine === false ? 'Không có mạng.' : 'Không kết nối được máy chủ đồng bộ (' + (e && e.message || 'lỗi') + ').'); },
+      errText: function (e) { return e && e.status === 401 ? 'Mã truy cập không đúng.' : (navigator.onLine === false ? 'Không có mạng.' : 'Không kết nối được máy chủ đồng bộ.'); },
       init: function (cb) {
         cbUser = cb; try { tok = localStorage.getItem(tkey); } catch (e) { tok = null; }
         if (!tok) { cb(null); return Promise.resolve(); }
         return req('/api/doc?ws=' + encodeURIComponent(ws()) + '&col=rows&id=_').then(function () { cb({ id: 'token', name: 'Mã truy cập' }); })
-          .catch(function (e) { if (e.status === 401) { tok = null; try { localStorage.removeItem(tkey); } catch (x) { /* bỏ qua */ } cb(null); } else cb({ id: 'token', name: 'Mã truy cập' }); });
+          .catch(function (e) { if (e.status === 401) { tok = null; try { localStorage.removeItem(tkey); } catch (x) { } cb(null); } else cb({ id: 'token', name: 'Mã truy cập' }); });
       },
-      signIn: function (_email, token) {
+      signIn: function (_username, token) {
         return fetch(url + '/api/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: token }) }).then(function (r) {
           if (!r.ok) { var e = new Error('unauthorized'); e.status = 401; throw e; }
-          tok = token; try { localStorage.setItem(tkey, tok); } catch (e) { /* bỏ qua */ } cbUser({ id: 'token', name: 'Mã truy cập' });
+          tok = token; try { localStorage.setItem(tkey, tok); } catch (e) { } cbUser({ id: 'token', name: 'Mã truy cập' });
         });
       },
-      signOut: function () { tok = null; try { localStorage.removeItem(tkey); } catch (e) { /* bỏ qua */ } o.unsubscribe(); cbUser(null); return Promise.resolve(); },
+      signOut: function () { tok = null; try { localStorage.removeItem(tkey); } catch (e) { } o.unsubscribe(); cbUser(null); return Promise.resolve(); },
       subscribe: function (s, onDocsCb, onErr, onOk) { since = clone(s); cbD = onDocsCb; cbE = onErr; cbO = onOk; first = {}; poll().then(loop); },
       pollNow: function () { poll().then(loop); },
       unsubscribe: function () { cbD = null; clearTimeout(timer); },
@@ -385,11 +414,11 @@
     return o;
   }
 
-  /* ---------- Bảng đồng bộ (đăng nhập / trạng thái) ---------- */
+  /* ---------- Giao diện Bảng đăng nhập ---------- */
   function lockBody() { document.body.classList.toggle('modal-open', !!document.querySelector('#mdSync .modal, #mdEditor .modal, #mdPicker .modal, #mdView .modal')); }
   function openPanel(auto) {
     var root = $('#mdSync'); if (!root) return;
-    root.innerHTML = '<div class="modal-back sync-back"><div class="modal modal-sync" role="dialog" aria-modal="true" aria-label="Đồng bộ"><div class="modal-head"><h2>☁ Đồng bộ nhiều thiết bị</h2>' +
+    root.innerHTML = '<div class="modal-back sync-back"><div class="modal modal-sync" role="dialog" aria-modal="true" aria-label="Đồng bộ"><div class="modal-head"><h2>☁ Đồng bộ & Phân quyền</h2>' +
       '<button class="modal-x" data-sy="close" aria-label="Đóng">✕</button></div><div class="modal-body" id="syncPanel"></div></div></div>';
     renderPanel(auto); lockBody();
   }
@@ -399,24 +428,19 @@
     var p = $('#syncPanel'); if (!p) return;
     var h = '';
     if (!enabled()) {
-      h = '<p><b>Hiện dữ liệu chỉ lưu trên máy này</b> (trong trình duyệt) nên không thấy trên điện thoại hay máy khác.</p>' +
-        '<p>Để dùng chung nhiều thiết bị, bật đồng bộ đám mây (miễn phí với Firebase):</p><ol class="sy-steps"><li>Tạo dự án Firebase, bật <b>Firestore</b> và <b>Authentication → Email/Password</b>, tạo tài khoản cho từng người dùng.</li>' +
-        '<li>Dán thông tin kết nối vào <code>assets/config.js</code> (mục <code>sync</code>).</li><li>Đặt Firestore Rules chỉ cho tài khoản đã đăng nhập.</li></ol>' +
-        '<p class="src">Hướng dẫn từng bước: <b>HUONG_DAN.md – mục 12</b>.</p>';
+      h = '<p><b>Hiện dữ liệu chỉ lưu trên máy này</b>.</p>';
     } else if (!S.user) {
-      var fb = ad && ad.needsEmail;
-      h = '<p>Đăng nhập để <b>đồng bộ phiếu xuất / nhập kho và chỉnh sửa</b> giữa các thiết bị.' + (auto ? ' Bạn vẫn xem được dữ liệu trên máy này nếu chọn “Để sau”.' : '') + '</p>' +
-        '<form id="syLogin" class="sy-form">' + (fb ? '<label class="fld"><span>Email</span><input type="email" id="syEmail" autocomplete="username" required></label>' : '') +
-        '<label class="fld"><span>' + (fb ? 'Mật khẩu' : 'Mã truy cập') + '</span><input type="password" id="syPass" autocomplete="current-password" required></label>' +
+      h = '<p>Đăng nhập bằng tên để sử dụng hệ thống (Nhập <b>admin</b> hoặc <b>khach</b>).</p>' +
+        '<form id="syLogin" class="sy-form">' +
+        '<label class="fld"><span>Tên đăng nhập (admin / khach)</span><input type="text" id="syEmail" autocomplete="username" placeholder="admin" required></label>' +
+        '<label class="fld"><span>Mật khẩu</span><input type="password" id="syPass" autocomplete="current-password" required></label>' +
         '<div class="sy-err" id="syErr">' + esc(S.err || '') + '</div><div class="sy-btns"><button class="tbtn primary" type="submit">Đăng nhập</button><button class="tbtn" type="button" data-sy="close">Để sau</button></div></form>';
     } else {
       var st = { loading: 'Đang kết nối…', syncing: 'Đang đồng bộ…', ok: 'Đã đồng bộ', offline: 'Chờ có mạng', error: 'Lỗi đồng bộ', login: 'Chưa đăng nhập' }[S.st] || S.st;
-      h = '<div class="sy-stat sy-' + (S.st === 'ok' ? 'ok' : (S.st === 'error' || S.st === 'offline' ? 'bad' : 'wait')) + '"><b>' + st + '</b>' + (S.err ? '<div class="sy-err">' + esc(S.err) + '</div>' : '') + '</div>' +
-        '<table class="plain sy-tbl"><tr><td>Tài khoản</td><td><b>' + esc(S.user.name || '') + '</b></td></tr><tr><td>Nhà cung cấp</td><td>' + esc(ad ? ad.name : '') + ' · nhóm dữ liệu “' + esc(ws()) + '”</td></tr>' +
-        '<tr><td>Lần đồng bộ cuối</td><td>' + when(S.lastOk) + '</td></tr><tr><td>Thay đổi chờ đẩy lên</td><td>' + (S.pending || 0) + '</td></tr>' +
-        '<tr><td>Mã thiết bị</td><td>' + esc(deviceId()) + '</td></tr></table>' +
-        '<div class="sy-btns"><button class="tbtn primary" data-sy="now">🔄 Đồng bộ ngay</button><button class="tbtn danger" data-sy="out">Đăng xuất</button><button class="tbtn" data-sy="close">Đóng</button></div>' +
-        '<p class="src">Dữ liệu mới nhất từ thiết bị khác tự động hiện sau vài giây. Khi mất mạng, thay đổi được giữ trên máy và tự đẩy lên khi có mạng.</p>';
+      h = '<div class="sy-stat sy-' + (S.st === 'ok' ? 'ok' : 'wait') + '"><b>' + st + '</b>' + (S.err ? '<div class="sy-err">' + esc(S.err) + '</div>' : '') + '</div>' +
+        '<table class="plain sy-tbl"><tr><td>Tài khoản</td><td><b>' + esc(S.user.name || '') + ' (' + (localStorage.getItem('lab_user_role') || 'n/a') + ')</b></td></tr>' +
+        '<tr><td>Lần đồng bộ cuối</td><td>' + when(S.lastOk) + '</td></tr><tr><td>Thay đổi chờ đẩy lên</td><td>' + (S.pending || 0) + '</td></tr></table>' +
+        '<div class="sy-btns"><button class="tbtn primary" data-sy="now">🔄 Đồng bộ ngay</button><button class="tbtn danger" data-sy="out">Đăng xuất</button><button class="tbtn" data-sy="close">Đóng</button></div>';
     }
     p.innerHTML = h;
   }
@@ -426,7 +450,7 @@
       var b = e.target.closest('[data-sy]'); if (!b) return; var a = b.dataset.sy;
       if (a === 'close') closePanel();
       else if (a === 'now') { S.err = ''; S.retry = 0; if (ad && ad.pollNow) ad.pollNow(); push(); }
-      else if (a === 'out') { if (confirm('Đăng xuất khỏi đồng bộ? Dữ liệu trên máy vẫn giữ, nhưng sẽ không đồng bộ cho đến khi đăng nhập lại.')) ad.signOut(); }
+      else if (a === 'out') { if (confirm('Đăng xuất khỏi đồng bộ?')) ad.signOut(); }
     });
     root.addEventListener('submit', function (e) {
       if (e.target.id !== 'syLogin') return; e.preventDefault();
@@ -436,7 +460,7 @@
     });
   }
 
-  /* ---------- khởi động ---------- */
+  /* ---------- Khởi động ---------- */
   function init(app) {
     if (A) return; A = app; CS = A.CFG.sync || {};
     var root = $('#modalRoot'); if (root && !$('#mdSync')) { var d = document.createElement('div'); d.id = 'mdSync'; root.appendChild(d); bindPanel(); }
@@ -452,7 +476,7 @@
     COLS.forEach(function (c) { if (!S.M[c]) S.M[c] = {}; if (S.since[c] == null) S.since[c] = 0; });
     ad = CS.provider === 'firebase' ? firebaseAdapter() : serverAdapter();
     setState('loading');
-    Promise.resolve(ad.init(onUser)).catch(function (e) { S.err = 'Không tải được thư viện đồng bộ: ' + (e && e.message || e) + ' (kiểm tra mạng / cấu hình).'; setState('error'); });
+    Promise.resolve(ad.init(onUser)).catch(function (e) { S.err = 'Không tải được thư viện đồng bộ: ' + (e && e.message || e); setState('error'); });
   }
 
   window.Sync = {
