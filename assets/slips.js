@@ -27,11 +27,11 @@
     xuat: [['thuTruong', 'Thủ trưởng DV'], ['ketToan', 'Kế toán trưởng'], ['nguoiLap', 'Người lập phiếu'], ['nguoiNhan', 'Người nhận hàng'], ['thuKho', 'Thủ kho']],
     nhap: [['thuTruong', 'Thủ trưởng đơn vị'], ['ketToan', 'Kế toán trưởng'], ['nguoiLap', 'Người lập phiếu'], ['nguoiGiao', 'Người giao hàng'], ['thuKho', 'Thủ kho']]
   };
-  var BUILD = '2026.11.08-5';
+  var BUILD = '2026.11.08-6';
   /* CSS của giấy in (xem trước + in). Đặt trong JS để dùng chung cho cả bản in tách rời (tab mới / tải HTML). */
   var PAPER_CSS = `/* --- GIẤY IN (dùng chung cho xem trước & in) --- */
 .paper{position:relative;background:#fff;color:#000;font-family:"Times New Roman",Times,"Liberation Serif",serif;font-size:11pt;line-height:1.3;
-  width:210mm;min-height:297mm;padding:10mm;margin:0 auto 14px;box-shadow:0 2px 12px rgba(0,0,0,.3);box-sizing:border-box}
+  width:210mm;min-height:297mm;padding:10mm;margin:0 auto 14mm;box-shadow:0 2px 12px rgba(0,0,0,.3);box-sizing:border-box}
 .paper *{box-sizing:border-box}
 .paper .p-top{display:flex;justify-content:space-between;gap:12px;font-weight:700;font-size:10.5pt}
 .paper .p-org div{line-height:1.35} .paper .p-form{white-space:nowrap;font-size:10pt}
@@ -57,8 +57,6 @@
 .paper .p-sign .small{font-style:italic;font-size:9pt;font-weight:400} .paper .p-sign .sname{margin-top:34mm;font-weight:700;min-height:1em}
 .paper .p-page{position:absolute;right:10mm;bottom:8mm;font-size:11pt}
 
-
-/* ---- IN PHIẾU (A4 dọc, mỗi trang một khổ giấy) ---- */
 @media print{
   body.print-slip>*:not(#printRoot){display:none !important}
   body.print-slip{background:#fff !important;overflow:visible !important}
@@ -68,7 +66,7 @@
   body.print-slip .paper *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
   body.print-slip .paper .p-page{right:0;bottom:0}
 }`;
-  /* ===== BỘ TẠO MÃ QR (nhúng sẵn – không cần file qr.js riêng) ===== */
+
   var QRLIB = (function (root) {
   'use strict';
   var ECC_CW = [
@@ -109,13 +107,11 @@
     for (var p = size - 7; res.length < n; p -= step) res.splice(1, 0, p);
     return res;
   }
-
   function build(ver, ecl, data) {
     var size = ver * 4 + 17, i, j, x, y;
     var mod = [], fn = [];
     for (i = 0; i < size; i++) { mod.push(new Array(size).fill(false)); fn.push(new Array(size).fill(false)); }
     function setFn(px, py, dark) { mod[py][px] = dark; fn[py][px] = true; }
-
     function drawFormat(mask) {
       var d = (FMT[ecl] << 3) | mask, rem = d, k;
       for (k = 0; k < 10; k++) rem = (rem << 1) ^ ((rem >>> 9) * 0x537);
@@ -147,7 +143,6 @@
       var vb = (ver << 12) | rem;
       for (i = 0; i < 18; i++) { var c = ((vb >>> i) & 1) !== 0, a = size - 11 + i % 3, b = Math.floor(i / 3); setFn(a, b, c); setFn(b, a, c); }
     }
-
     var numBlocks = NUM_BLK[ecl][ver], eccLen = ECC_CW[ecl][ver], raw = Math.floor(rawModules(ver) / 8);
     var shortBlocks = numBlocks - raw % numBlocks, shortLen = Math.floor(raw / numBlocks), blocks = [], div = rsDivisor(eccLen), k = 0;
     for (i = 0; i < numBlocks; i++) {
@@ -156,7 +151,6 @@
     }
     var all = [];
     for (i = 0; i < blocks[0].length; i++) blocks.forEach(function (blk, jj) { if (i !== shortLen - eccLen || jj >= shortBlocks) all.push(blk[i]); });
-
     var bi = 0;
     for (var right = size - 1; right >= 1; right -= 2) {
       if (right === 6) right = 5;
@@ -165,7 +159,6 @@
         if (!fn[y][x] && bi < all.length * 8) { mod[y][x] = ((all[bi >>> 3] >>> (7 - (bi & 7))) & 1) !== 0; bi++; }
       }
     }
-
     function applyMask(m) {
       for (y = 0; y < size; y++) for (x = 0; x < size; x++) {
         var inv;
@@ -200,7 +193,6 @@
     applyMask(best); drawFormat(best);
     return { version: ver, size: size, modules: mod, mask: best };
   }
-
   function encode(text, eclName) {
     var ecl = ECL[eclName || 'M']; if (ecl === undefined) ecl = 1;
     var bytes = Array.from(new TextEncoder().encode(String(text))), ver, cap;
@@ -216,7 +208,6 @@
     var data = []; for (var i = 0; i < bb.length; i += 8) { var v = 0; for (var j = 0; j < 8; j++) v = (v << 1) | bb[i + j]; data.push(v); }
     return build(ver, ecl, data);
   }
-
   function svg(text, o) {
     o = o || {}; var q = encode(text, o.ecl), b = o.border == null ? 4 : o.border, n = q.size + b * 2, d = '';
     for (var y = 0; y < q.size; y++) {
@@ -238,10 +229,10 @@
     return c;
   }
   function png(text, o) { return canvas(text, o).toDataURL('image/png'); }
-
   root.QR = { ver: BUILD, encode: encode, svg: svg, canvas: canvas, png: png, _tables: { ECC_CW: ECC_CW, NUM_BLK: NUM_BLK } };
     return root.QR;
   })({});
+
   var D = null, PK = null, VIEW = null;
   var LQ = { xuat: '', nhap: '' };
   var qrCache = {}, qrWarned = false, printing = false;
@@ -270,7 +261,7 @@
   function defs() { try { return JSON.parse(localStorage.getItem(A.CFG.storageKey + ':slipdef') || '{}'); } catch (e) { return {}; } }
   function saveDefs(f) {
     var o = {}; ['kho', 'nguoiLap', 'thuKho', 'ketToan', 'thuTruong', 'lien'].forEach(function (k) { if (f[k]) o[k] = f[k]; });
-    try { localStorage.setItem(A.CFG.storageKey + ':slipdef', JSON.stringify(o)); } catch (e) { /* bỏ qua */ }
+    try { localStorage.setItem(A.CFG.storageKey + ':slipdef', JSON.stringify(o)); } catch (e) {}
   }
   function nextId(type, dateISO, skip) {
     var C = cfg(), yy = dateISO.slice(2, 4), L = TYPES[type].letter, seq = (parseInt(C.startSeq, 10) || 1) - 1, id;
@@ -349,6 +340,56 @@
     if (typeof bi === 'string' && bi.indexOf('new:') === 0) return A.labelOf(s) + ' › ' + bi.slice(4);
     var b = s.blocks[bi]; return A.labelOf(s) + (b ? ' › ' + b.title : '');
   }
+
+  // --- TẠO HỆ THỐNG DATALIST VÀ ĐỒNG BỘ CHO PHIẾU NHẬP KHO ---
+  function getMaterialListsHTML() {
+    var codes = new Set(), names = new Set(), parts = new Set();
+    var dict = {};
+    A.ST.sheets.forEach(function (s) {
+      s.blocks.forEach(function (b) {
+        var fm = fieldMap(b);
+        b.rows.forEach(function (r) {
+          var f = rd(fm, r);
+          var code = (f.code || '').trim();
+          var name = (f.name || '').trim();
+          var part = (f.part || '').trim();
+          if (code) {
+            codes.add(code);
+            dict[code.toLowerCase()] = { ten: name, part: part };
+          }
+          if (name) names.add(name);
+          if (part) parts.add(part);
+        });
+      });
+    });
+    window._materialDict = dict;
+    var h = '<datalist id="listMaVT">';
+    codes.forEach(function (c) { h += '<option value="' + esc(c) + '">'; });
+    h += '</datalist><datalist id="listTenVT">';
+    names.forEach(function (n) { h += '<option value="' + esc(n) + '">'; });
+    h += '</datalist><datalist id="listPartNum">';
+    parts.forEach(function (p) { h += '<option value="' + esc(p) + '">'; });
+    h += '</datalist>';
+    return h;
+  }
+
+  window.handleSlipMaVTChange = function(val, idx) {
+    if (!window._materialDict) getMaterialListsHTML();
+    var key = String(val || '').trim().toLowerCase();
+    var found = window._materialDict[key];
+    if (found && D && D.items && D.items[idx]) {
+      if (found.ten) D.items[idx].name = found.ten;
+      if (found.part) D.items[idx].part = found.part;
+      D.dirty = true;
+      var rowEl = document.querySelector('#slItems tr[data-i="' + idx + '"]');
+      if (rowEl) {
+        var nameInp = rowEl.querySelector('input[data-it="name"]');
+        var partInp = rowEl.querySelector('input[data-it="part"]');
+        if (nameInp && found.ten) nameInp.value = found.ten;
+        if (partInp && found.part) partInp.value = found.part;
+      }
+    }
+  };
 
   function qrPayload(slip) {
     var t = TYPES[slip.type], f = slip.f || {}, items = slip.items, L = [], enc = new TextEncoder();
@@ -546,8 +587,7 @@
     }).join('');
     var signs = SIGNERS[D.type].map(function (x) { return '<label class="fld"><span>' + x[1] + '</span>' + inp('data-fld', x[0], f[x[0]] || '') + '</label>'; }).join('');
     
-    // Tích hợp danh sách sổ xuống (<datalist>) từ LabApp
-    var datalistsHTML = (A.getMaterialListsHTML ? A.getMaterialListsHTML() : '');
+    var datalistsHTML = getMaterialListsHTML();
 
     $('#mdEditor').innerHTML =
       '<div class="modal-back"><div class="modal" role="dialog" aria-modal="true" aria-label="' + t.title + '">' +
@@ -617,26 +657,6 @@
     return '<div class="sl-wrap"><table class="sl-items"><thead>' + head + '</thead><tbody>' + rows + '</tbody></table></div>';
   }
   function renderItems() { $('#slItems').innerHTML = itemsHTML(); sums(); }
-
-  // Hàm đồng bộ tự động Tên vật tư và Part Number khi nhập Mã VT trên phiếu nhập kho
-  window.handleSlipMaVTChange = function(val, idx) {
-    if (!window._materialDict && A.getMaterialListsHTML) A.getMaterialListsHTML();
-    if (!window._materialDict) return;
-    var key = String(val || '').trim().toLowerCase();
-    var found = window._materialDict[key];
-    if (found && D && D.items && D.items[idx]) {
-      if (found.ten) D.items[idx].name = found.ten;
-      if (found.part) D.items[idx].part = found.part;
-      D.dirty = true;
-      var rowEl = document.querySelector('#slItems tr[data-i="' + idx + '"]');
-      if (rowEl) {
-        var nameInp = rowEl.querySelector('input[data-it="name"]');
-        var partInp = rowEl.querySelector('input[data-it="part"]');
-        if (nameInp && found.ten) nameInp.value = found.ten;
-        if (partInp && found.part) partInp.value = found.part;
-      }
-    }
-  };
 
   function sums() {
     var n = D.items.length, q = D.type === 'nhap' ? n : sumQty(D.items), m = sumMoney(D.items);
