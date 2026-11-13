@@ -557,10 +557,15 @@
         (x[2] === 'area' ? '<textarea data-fld="' + x[0] + '" rows="2">' + esc(f[x[0]] || '') + '</textarea>' : inp('data-fld', x[0], f[x[0]] || '', x[2] === 'number' ? 'number' : 'text', x[2] === 'number' ? ' step="any" inputmode="decimal"' : '')) + '</label>';
     }).join('');
     var signs = SIGNERS[D.type].map(function (x) { return '<label class="fld"><span>' + x[1] + '</span>' + inp('data-fld', x[0], f[x[0]] || '') + '</label>'; }).join('');
+    
+    // Tích hợp hệ thống gợi ý danh sách sổ xuống (<datalist>) dùng chung cho cả Phiếu Nhập và các trường liên quan
+    var datalistsHTML = (A.getMaterialListsHTML ? A.getMaterialListsHTML() : '');
+
     $('#mdEditor').innerHTML =
       '<div class="modal-back"><div class="modal" role="dialog" aria-modal="true" aria-label="' + t.title + '">' +
       '<div class="modal-head"><h2>' + t.icon + ' ' + (D.origId ? 'Sửa ' : 'Tạo ') + t.plural.toLowerCase() + '</h2><button class="modal-x" data-close aria-label="Đóng">✕</button></div>' +
       '<div class="modal-body">' +
+      datalistsHTML +
       '<div class="sl-form">' +
         '<label class="fld"><span>Số phiếu</span>' + inp('data-top', 'id', D.id) + '</label>' +
         '<label class="fld"><span>Ngày ' + (imp ? 'nhập' : 'xuất') + '</span>' + inp('data-top', 'date', D.date, 'date') + '</label>' + flds +
@@ -600,7 +605,24 @@
         ? '<td data-label="Chủng loại" class="sel"><select data-sel="sid" data-i="' + i + '">' + A.ST.sheets.map(function (s) { return '<option value="' + s.id + '"' + (s.id === it.sid ? ' selected' : '') + '>' + esc(A.labelOf(s)) + '</option>'; }).join('') + '</select></td>' +
           '<td data-label="Khối thiết bị" class="sel"><select data-sel="bi" data-i="' + i + '">' + blockOptions(it) + '</select></td>'
         : '<td data-label="Danh mục" class="cat">' + esc(it.cat || '') + '</td>';
-      function c(f, label, extra, type) { return '<td data-label="' + label + '"' + (extra || '') + '><input data-it="' + f + '" data-i="' + i + '"' + (type === 'num' ? ' type="number" min="0" step="any" inputmode="decimal"' : '') + (f === 'quality' ? ' list="dlQ"' : '') + ' value="' + esc(it[f] == null ? '' : it[f]) + '" autocomplete="off"></td>'; }
+      
+      // Gắn thuộc tính list datalist và sự kiện oninput tự động đồng bộ cho Phiếu Nhập
+      function c(f, label, extra, type) {
+        var listAttr = '';
+        var onInputAttr = '';
+        if (imp) {
+          if (f === 'code') {
+            listAttr = ' list="listMaVT"';
+            onInputAttr = ' oninput="window.handleSlipMaVTChange && window.handleSlipMaVTChange(this.value, ' + i + ')"';
+          } else if (f === 'name') {
+            listAttr = ' list="listTenVT"';
+          } else if (f === 'part') {
+            listAttr = ' list="listPartNum"';
+          }
+        }
+        return '<td data-label="' + label + '"' + (extra || '') + '><input data-it="' + f + '" data-i="' + i + '"' + (type === 'num' ? ' type="number" min="0" step="any" inputmode="decimal"' : '') + (f === 'quality' ? ' list="dlQ"' : '') + listAttr + onInputAttr + ' value="' + esc(it[f] == null ? '' : it[f]) + '" autocomplete="off"></td>';
+      }
+
       return '<tr data-i="' + i + '"><td class="n">' + (i + 1) + '</td>' + cat + c('code', 'Mã vật tư', ' class="mono"') + c('name', 'Tên nhãn hiệu quy cách') + c('serial', 'Serial No', ' class="mono"') + c('part', 'Part Number', ' class="mono"') +
         c('lot', 'Mã lô hàng', ' class="mono"') + c('quality', 'Chất lượng') + c('unit', 'ĐVT') + c('qtyReq', imp ? 'SL theo chứng từ' : 'SL yêu cầu', '', 'num') +
         (imp ? '<td data-label="Thực nhập" class="qty1">1</td>' : c('qty', 'Thực xuất', '', 'num')) + c('price', 'Đơn giá', '', 'num') + c('note', 'Ghi chú') +
@@ -609,6 +631,28 @@
     return '<div class="sl-wrap"><table class="sl-items"><thead>' + head + '</thead><tbody>' + rows + '</tbody></table></div>';
   }
   function renderItems() { $('#slItems').innerHTML = itemsHTML(); sums(); }
+
+  // Hàm hỗ trợ tự động đồng bộ Tên vật tư và Part Number cho phiếu nhập kho khi chọn Mã VT
+  window.handleSlipMaVTChange = function(val, idx) {
+    if (!window._materialDict && A.getMaterialListsHTML) A.getMaterialListsHTML();
+    if (!window._materialDict) return;
+    var key = String(val || '').trim().toLowerCase();
+    var found = window._materialDict[key];
+    if (found && D && D.items && D.items[idx]) {
+      if (found.ten) D.items[idx].name = found.ten;
+      if (found.part) D.items[idx].part = found.part;
+      D.dirty = true;
+      // Cập nhật giá trị hiển thị trực tiếp trên giao diện input tương ứng
+      var rowEl = document.querySelector('#slItems tr[data-i="' + idx + '"]');
+      if (rowEl) {
+        var nameInp = rowEl.querySelector('input[data-it="name"]');
+        var partInp = rowEl.querySelector('input[data-it="part"]');
+        if (nameInp && found.ten) nameInp.value = found.ten;
+        if (partInp && found.part) partInp.value = found.part;
+      }
+    }
+  };
+
   function sums() {
     var n = D.items.length, q = D.type === 'nhap' ? n : sumQty(D.items), m = sumMoney(D.items);
     var c = $('#slCnt'); if (c) c.textContent = n + ' dòng';
@@ -819,7 +863,7 @@
   /* ---------- Trang danh sách phiếu ---------- */
   function listRows(type) {
     var tk = A.tokensOf(LQ[type] || '');
-    var arr = slips(type).slice().sort(function (a, b) { return (b.date || '').localeCompare(a.date || '') || String(b.createdAt || '').localeCompare(String(a.createdAt || '')); });
+    var arr = slips(type).slice().sort(function (a, b) { return (b.date || '').localeCompare(a.date || '') || String(b.createdAt || '').localeCompare(String(b.createdAt || '')); });
     arr = arr.filter(function (s) {
       if (!tk.length) return true; var h = A.fold([s.id, fmtDate(s.date), (s.f || {}).donVi, (s.f || {}).dungCho, (s.f || {}).hopDong, (s.f || {}).kho].concat(s.items.map(function (i) { return [i.name, i.serial, i.code, i.part].join(' '); })).join(' '));
       return tk.every(function (k) { return h.indexOf(k) >= 0; });
