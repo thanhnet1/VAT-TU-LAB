@@ -13,6 +13,7 @@
   function esc(s) { return A.esc(s == null ? '' : s); }
   function clone(o) { return JSON.parse(JSON.stringify(o)); }
 
+  /* ---------- băm & chữ ký ---------- */
   function stable(v) {
     if (v === undefined || v === null) return 'null';
     if (typeof v !== 'object') return JSON.stringify(v);
@@ -34,6 +35,7 @@
   function blockSig(b) { return hash(stable([b.cols])); }
   function enc(key) { return encodeURIComponent(key); }
 
+  /* ---------- trạng thái & meta lưu trên máy ---------- */
   function ws() { return (CS && CS.workspace) || 'lab-xvt'; }
   function metaKey() { return A.CFG.storageKey + ':sync:' + ws(); }
   function loadMeta() {
@@ -53,6 +55,7 @@
     return v;
   }
 
+  /* ---------- dữ liệu gốc (baseline) ---------- */
   function buildBaseline() {
     var rows = new Map(), blocks = new Set();
     A.DATA.sheets.forEach(function (s) {
@@ -70,6 +73,7 @@
   }
   function findSlip(type, id) { var a = (A.ST.slips && A.ST.slips[type]) || []; for (var i = 0; i < a.length; i++) if (a[i].id === id) return a[i]; return null; }
 
+  /* ---------- tính các thay đổi cần đẩy lên ---------- */
   function rowData(e) {
     var r = e.row;
     return { rid: r.i, sid: e.s.id, bt: e.b.title, r: r.r || 0, ct: r.ct || 0, v: r.v.slice(), c: (r.c === true || r.c === false) ? r.c : null,
@@ -109,15 +113,32 @@
     return ops;
   }
 
-  /* ---------- PHÂN QUYỀN: KHÁCH CHỈ XEM PHIẾU & XÁC NHẬN, CÒN LẠI LÀM MỜ ---------- */
+  /* ---------- CHẶN & LÀM MỜ TÍNH NĂNG ĐỐI VỚI TÀI KHOẢN KHÁCH (GUEST) ---------- */
   function applyRoleUI() {
     var currentRole = localStorage.getItem('lab_user_role');
     if (currentRole === 'guest') {
+      // 1. Ẩn hoặc làm mờ các nút tạo phiếu xuất/nhập, nút thêm/sửa/xóa vật tư
+      var restrictedSelectors = [
+        'button[data-action*="create"]', 
+        'button[data-action*="add"]', 
+        'button[data-action*="edit"]', 
+        'button[data-action*="delete"]',
+        'button[data-action*="xuat"]',
+        'button[data-action*="nhap"]',
+        '.btn-create-slip',
+        '.btn-add-row',
+        '#btnCreateXuat',
+        '#btnCreateNhap'
+      ];
+      
+      // Quét và ẩn toàn bộ các nút chức năng quản trị/tạo phiếu ngoài trừ xem và xác nhận đã nhận
       document.querySelectorAll('button, a, .tbtn').forEach(function(el) {
         var text = (el.textContent || '').toLowerCase();
         var idClass = (el.id + ' ' + el.className).toLowerCase();
         
-        if (text.includes('tạo phiếu') || text.includes('thêm') || text.includes('sửa') || text.includes('xoá') || text.includes('nhập kho') || text.includes('xuất kho') || idClass.includes('admin') || idClass.includes('edit')) {
+        // Nếu là nút tạo phiếu, thêm mới, cấu hình, xóa -> Vô hiệu hóa hoặc ẩn đi
+        if (text.includes('tạo phiếu') || text.includes('thêm') || text.includes('sửa') || text.includes('xoá') || text.includes('nhập kho') || text.includes('xuất kho') || idClass.includes('admin')) {
+          // Cho phép giữ lại nút xem phiếu và xác nhận đã nhận
           if (!text.includes('xem') && !text.includes('xác nhận') && !text.includes('đã nhận')) {
             el.style.opacity = '0.3';
             el.style.pointerEvents = 'none';
@@ -125,6 +146,7 @@
           }
         }
       });
+      console.log('Đã áp dụng chế độ khóa giao diện cho Khách.');
     }
   }
 
@@ -139,12 +161,15 @@
     applyRoleUI();
   }
 
+  /* ---------- đẩy thay đổi lên đám mây ---------- */
   function schedule(delay) {
     if (!ad || !S.user || !S.subscribed || (!S.inited && !S.reconciling)) { if (ad && S.user && !S.inited) setState(S.st); return; }
     clearTimeout(S.pushT); S.pushT = setTimeout(push, delay == null ? 1200 : delay);
   }
   function push() {
+    // Khách không được phép đẩy thay đổi tạo/sửa dữ liệu lên hệ thống
     if (localStorage.getItem('lab_user_role') === 'guest') return Promise.resolve();
+
     if (S.pushing || !ad || !S.user || !S.subscribed || !S.inited) return Promise.resolve();
     var ops = computeOps(); S.pending = ops.length;
     if (!ops.length) { if (S.st !== 'loading') setState('ok'); return Promise.resolve(); }
@@ -166,6 +191,7 @@
   }
   function retryLater() { clearTimeout(S.retryT); S.retry++; S.retryT = setTimeout(function () { push(); }, Math.min(60000, 3000 * Math.pow(2, Math.min(S.retry, 4)))); }
 
+  /* ---------- nhận thay đổi từ đám mây ---------- */
   function defaultCols(n) { var c = ['STT', 'Mã VT', 'Tên vật tư', 'Serial No', 'Part Number', 'Tình trạng', 'Ghi chú']; while (c.length < n) c.push('Cột ' + (c.length + 1)); return c.slice(0, Math.max(n, 1)); }
   function ensureBlock(sid, title, ncols) {
     var s = A.sheetById(sid); if (!s) return null;
@@ -253,6 +279,7 @@
     }, 200);
   }
 
+  /* ---------- lần đồng bộ đầu tiên ---------- */
   function maybeReconcile() {
     if (S.inited || S.reconciling || !(S.ready.rows && S.ready.slips && S.ready.blocks)) return;
     S.reconciling = true;
@@ -271,6 +298,7 @@
     S.ready = { rows: false, slips: false, blocks: false }; S.remoteSeen = 0; S.reconciling = false; S.inited = true; saveMeta(); A.saveLocal(); A.refresh(); startSub();
   }
 
+  /* ---------- kết nối ---------- */
   function startSub() {
     if (!ad || S.subscribed) return;
     S.subscribed = true; setState('loading');
@@ -289,6 +317,7 @@
     applyRoleUI();
   }
 
+  /* ---------- Firebase Adapter ---------- */
   function fbErr(e) {
     var c = (e && (e.code || e.message)) || '';
     if (/invalid-credential|wrong-password|user-not-found|invalid-email|invalid-login/.test(c)) return 'Sai tên đăng nhập hoặc mật khẩu.';
@@ -331,7 +360,7 @@
       signOut: function () { 
         localStorage.removeItem('lab_user_role');
         localStorage.removeItem('lab_username');
-        location.reload();
+        location.reload(); // Tải lại trang để khôi phục giao diện mặc định
         return AU.signOut(auth); 
       },
       subscribe: function (since, onDocsCb, onErr, onOk) {
@@ -364,6 +393,7 @@
     return o;
   }
 
+  /* ---------- Server Adapter ---------- */
   function serverAdapter() {
     var cfg = CS.server, url = String(cfg.url).replace(/\/+$/, ''), tkey = A.CFG.storageKey + ':sync-token', tok = null, timer = null, since = {}, cbD = null, cbE = null, cbO = null, first = {}, cbUser = null, polling = false;
     function req(path, method, body) {
@@ -411,6 +441,7 @@
     return o;
   }
 
+  /* ---------- Giao diện Bảng đăng nhập ---------- */
   function lockBody() { document.body.classList.toggle('modal-open', !!document.querySelector('#mdSync .modal, #mdEditor .modal, #mdPicker .modal, #mdView .modal')); }
   function openPanel(auto) {
     var root = $('#mdSync'); if (!root) return;
@@ -450,12 +481,13 @@
     });
     root.addEventListener('submit', function (e) {
       if (e.target.id !== 'syLogin') return; e.preventDefault();
-      var em = $('#syEmail') ? $('#syEmail'].value.trim() : '', pw = $('#syPass').value, err = $('#syErr'), btn = e.target.querySelector('button[type=submit]');
+      var em = $('#syEmail') ? $('#syEmail').value.trim() : '', pw = $('#syPass').value, err = $('#syErr'), btn = e.target.querySelector('button[type=submit]');
       err.textContent = ''; btn.disabled = true; btn.textContent = 'Đang đăng nhập…';
       Promise.resolve(ad.signIn(em, pw)).then(function () { closePanel(); applyRoleUI(); }).catch(function (x) { err.textContent = ad.errText ? ad.errText(x) : String(x); btn.disabled = false; btn.textContent = 'Đăng nhập'; });
     });
   }
 
+  /* ---------- Khởi động ---------- */
   function init(app) {
     if (A) return; A = app; CS = A.CFG.sync || {};
     var root = $('#modalRoot'); if (root && !$('#mdSync')) { var d = document.createElement('div'); d.id = 'mdSync'; root.appendChild(d); bindPanel(); }
@@ -471,8 +503,9 @@
     COLS.forEach(function (c) { if (!S.M[c]) S.M[c] = {}; if (S.since[c] == null) S.since[c] = 0; });
     ad = CS.provider === 'firebase' ? firebaseAdapter() : serverAdapter();
     setState('loading');
-    Promise.resolve(ad.init(onUser)).catch(function (e) { S.err = 'Không tải được thư viện đồng bộ: ' + (e && e.message || e); setState('error'); });
+    Promise.resolve(ad.init(onUser)).catch(function (e) { S.err = 'Không tải được thư viện đồng bộ: ' + (e && e.message || e) + ' (kiểm tra mạng / cấu hình).'; setState('error'); });
     
+    // Tự động quét và khóa giao diện nếu đang là khách sau mỗi lần render trang
     setInterval(function() {
       if (localStorage.getItem('lab_user_role') === 'guest') {
         applyRoleUI();
