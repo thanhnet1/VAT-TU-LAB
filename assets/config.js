@@ -1,5 +1,5 @@
 /* =====================================================================
-   CẤU HÌNH WEB APP – bạn chỉ cần sửa file này để đổi tên, màu, nhãn…
+   CẤU HÌNH WEB APP – TÀI SẢN VẬT TƯ LAB
    ===================================================================== */
 window.APP_CONFIG = {
   // Tiêu đề hiển thị trên thanh trên cùng
@@ -9,30 +9,34 @@ window.APP_CONFIG = {
   // Tên cột tích chọn (ô ☑ ở cột A của file Excel gốc)
   checkLabel: 'Đã kiểm',
 
-  // Khoá lưu chỉnh sửa trong trình duyệt (đổi nếu bạn chạy nhiều bản web trên cùng một tên miền)
+  // Khoá lưu chỉnh sửa trong trình duyệt
   storageKey: 'lab-xvt-v1',
 
-  // Tên nhóm ở thanh bên: [nhóm 0, nhóm 1]
+  // Tên nhóm ở thanh bên
   groupNames: [
     'Thiết bị theo hệ thống',
     'Vật tư rời / không rõ nguồn / đo kiểm'
   ],
 
-  // Đặt tên dễ hiểu cho sheet:  'id-sheet': 'Tên hiển thị'
-  sheetLabels: {
-    // 'trang-tinh14': 'Trang tính14 – Vật tư theo dõi tình trạng',
-  },
-
-  // Ý nghĩa các màu tô trong file Excel gốc
-  colorMeaning: {
-    // 'FFFF00': 'Cần kiểm tra lại',
-    // 'FF0000': 'Hỏng / mất',
-  },
-
-  // Số dòng tối đa hiển thị khi tìm kiếm toàn bộ
+  sheetLabels: {},
+  colorMeaning: {},
   maxSearchResults: 400,
 
-  // ====== ĐỒNG BỘ NHIỀU THIẾT BỊ (Firebase) ======
+  // ====== CẤU HÌNH PHÂN QUYỀN TÊN ĐĂNG NHẬP (Đăng nhập bằng Tên) ======
+  authUsers: {
+    'admin': {
+      email: 'admin@lab-xvt.local',
+      role: 'admin', // Quyền cao nhất: toàn quyền chỉnh sửa, thêm xóa, duyệt
+      name: 'Quản trị viên'
+    },
+    'khach': {
+      email: 'khach@lab-xvt.local',
+      role: 'guest', // Khách: chỉ xem phiếu xuất kho và xác nhận đã nhận
+      name: 'Khách xem kho'
+    }
+  },
+
+  // ====== KẾT NỐI FIREBASE (Đồng bộ nhiều thiết bị) ======
   sync: {
     provider: 'firebase',
     workspace: 'lab-xvt',
