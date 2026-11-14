@@ -37,30 +37,16 @@ window.APP_CONFIG = {
   },
 
   // ====== KẾT NỐI FIREBASE (Đồng bộ nhiều thiết bị) ======
-  <script type="module">
-  // Import the functions you need from the SDKs you need
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/13.3.0/firebase-app.js";
-  import { getAnalytics } from "https://www.gstatic.com/firebasejs/13.3.0/firebase-analytics.js";
-  // TODO: Add SDKs for Firebase products that you want to use
-  // https://firebase.google.com/docs/web/setup#available-libraries
-
-  // Your web app's Firebase configuration
-  // For Firebase JS SDK v7.20.0 and later, measurementId is optional
-  const firebaseConfig = {
-    apiKey: "AIzaSyAzE8Eb7Jd2j2FTt6nVw3gJ57ENBV-soeA",
-    authDomain: "minigame-8a94c.firebaseapp.com",
-    databaseURL: "https://minigame-8a94c-default-rtdb.asia-southeast1.firebasedatabase.app",
-    projectId: "minigame-8a94c",
-    storageBucket: "minigame-8a94c.firebasestorage.app",
-    messagingSenderId: "604735984087",
-    appId: "1:604735984087:web:882f08736a7b9f56c6bb92",
-    measurementId: "G-4T15Z1TDDN"
-  };
-
-  // Initialize Firebase
-  const app = initializeApp(firebaseConfig);
-  const analytics = getAnalytics(app);
-</script>
+  sync: {
+    provider: 'firebase',
+    workspace: 'lab-xvt',
+    firebase: {
+      apiKey: "AIzaSyAzE8Eb7Jd2j2FTt6nVw3gJ57ENBV-soeA",
+      authDomain: "minigame-8a94c.firebaseapp.com",
+      projectId: "minigame-8a94c",
+      appId: "1:604735984087:web:5f33810121c3be91c6bb92"
+    }
+  },
 
   // ====== PHIẾU XUẤT KHO / NHẬP KHO ======
   slip: {
