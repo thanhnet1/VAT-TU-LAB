@@ -27,7 +27,7 @@
     xuat: [['thuTruong', 'Thủ trưởng DV'], ['ketToan', 'Kế toán trưởng'], ['nguoiLap', 'Người lập phiếu'], ['nguoiNhan', 'Người nhận hàng'], ['thuKho', 'Thủ kho']],
     nhap: [['thuTruong', 'Thủ trưởng đơn vị'], ['ketToan', 'Kế toán trưởng'], ['nguoiLap', 'Người lập phiếu'], ['nguoiGiao', 'Người giao hàng'], ['thuKho', 'Thủ kho']]
   };
-  var BUILD = '2026.11.08-6';
+  var BUILD = '2026.11.14-1';
   /* CSS của giấy in (xem trước + in). Đặt trong JS để dùng chung cho cả bản in tách rời (tab mới / tải HTML). */
   var PAPER_CSS = `/* --- GIẤY IN (dùng chung cho xem trước & in) --- */
 .paper{position:relative;background:#fff;color:#000;font-family:"Times New Roman",Times,"Liberation Serif",serif;font-size:11pt;line-height:1.3;
