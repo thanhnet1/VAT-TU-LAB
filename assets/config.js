@@ -43,8 +43,12 @@ window.APP_CONFIG = {
     firebase: {
       apiKey: "AIzaSyAzE8Eb7Jd2j2FTt6nVw3gJ57ENBV-soeA",
       authDomain: "minigame-8a94c.firebaseapp.com",
+      databaseURL: "https://minigame-8a94c-default-rtdb.asia-southeast1.firebasedatabase.app",
       projectId: "minigame-8a94c",
-      appId: "1:604735984087:web:5f33810121c3be91c6bb92"
+      storageBucket: "minigame-8a94c.firebasestorage.app",
+      messagingSenderId: "604735984087",
+      appId: "1:604735984087:web:83b5926e168efb02c6bb92",
+     measurementId: "G-4FXBFBE74T"
     }
   },
 
