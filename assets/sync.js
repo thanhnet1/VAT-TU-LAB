@@ -1,6 +1,6 @@
 /* =====================================================================
    sync.js – ĐỒNG BỘ DỮ LIỆU ĐA THIẾT BỊ & PHÂN QUYỀN (Admin vs Guest)
-   Tương thích 100% với app.js (BUILD 2026.11.08-4) và slips.js
+   Tương thích 100% với app.js (BUILD 2026.11.14-2) và slips.js
    ===================================================================== */
 (function () {
   'use strict';
