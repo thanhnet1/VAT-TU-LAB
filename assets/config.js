@@ -23,34 +23,30 @@ window.APP_CONFIG = {
   maxSearchResults: 400,
 
   // ====== CẤU HÌNH PHÂN QUYỀN TÊN ĐĂNG NHẬP (Đăng nhập bằng Tên) ======
-authUsers: {
+  authUsers: {
     'admin': {
-        email: 'admin@lab-xvt.local',
-        role: 'admin', // Quyền cao nhất: toàn quyền chỉnh sửa, thêm xóa, duyệt
-        name: 'Quản trị viên'
+      email: 'admin@lab-xvt.local',
+      role: 'admin', // Quyền cao nhất: toàn quyền chỉnh sửa, thêm xóa, duyệt
+      name: 'Quản trị viên'
     },
-    'khách': {
-        email: 'khach@lab-xvt.local',
-        role: 'guest', // Khách: chỉ xem phiếu xuất kho và xác nhận đã nhận
-        name: 'Khách xem kho'
+    'khach': {
+      email: 'khach@lab-xvt.local',
+      role: 'guest', // Khách: chỉ xem phiếu xuất kho và xác nhận đã nhận
+      name: 'Khách xem kho'
     }
-},
+  },
 
-// ====== KẾT NỐI FIREBASE (Đồng bộ nhiều thiết bị) ======
-sync: {
+  // ====== KẾT NỐI FIREBASE (Đồng bộ nhiều thiết bị) ======
+  sync: {
     provider: 'firebase',
     workspace: 'lab-xvt',
     firebase: {
-        apiKey: "AIzaSyAzE87Jd2j2FTt6nVw3gJ57ENBV-soea",
-        authDomain: "minigame-8a94c.firebaseapp.com",
-        databaseURL: "https://minigame-8a94c-default-rtdb.asia-southeast1.firebasedatabase.app",
-        projectId: "minigame-8a94c",
-        storageBucket: "minigame-8a94c.appspot.com",
-        messagingSenderId: "604735984087",
-        appId: "1:604735984087:web:83b5926e168efb02c6bb92",
-        measurementId: "G-4FXBFBE74T"
+      apiKey: "AIzaSyAzE8Eb7Jd2j2FTt6nVw3gJ57ENBV-soeA",
+      authDomain: "minigame-8a94c.firebaseapp.com",
+      projectId: "minigame-8a94c",
+      appId: "1:604735984087:web:5f33810121c3be91c6bb92"
     }
-}
+  },
 
   // ====== PHIẾU XUẤT KHO / NHẬP KHO ======
   slip: {
