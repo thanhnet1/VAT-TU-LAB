@@ -11,7 +11,7 @@
     groupNames: ['Thiết bị theo hệ thống', 'Vật tư rời / đo kiểm'], sheetLabels: {}, colorMeaning: {}, maxSearchResults: 400
   }, window.APP_CONFIG || {});
 
-  const BUILD = '2026.11.08-4';           // phải trùng với slips.js (dùng để phát hiện file cũ do bộ nhớ đệm)
+  const BUILD = '2026.11.14-2';           // phải trùng với slips.js (dùng để phát hiện file cũ do bộ nhớ đệm)
   const $ = (s, el = document) => el.querySelector(s);
   const $$ = (s, el = document) => Array.from(el.querySelectorAll(s));
   const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
