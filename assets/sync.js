@@ -3,7 +3,7 @@
    ===================================================================== */
 (function () {
   'use strict';
-  var BUILD = '2026.11.16-multi-device-sync-fix';
+  var BUILD = '2026.11.14-2';
   var A = null, CS = null, ad = null;
   var S = {
     st: 'off', user: null, M: null, since: null, inited: false, baseline: null,
