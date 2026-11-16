@@ -1,12 +1,9 @@
 /* =====================================================================
    slips.js – PHIẾU XUẤT KHO (Mẫu số 02 VT-DN) & PHIẾU NHẬP KHO (Mẫu số 1 VT-DN) kèm mã QR
-   Bố cục, cột, trường thông tin và khối chữ ký làm theo phiếu mẫu của Tổng Công ty Hạ tầng mạng.
-   - Phiếu xuất: chọn vật tư từ danh mục (1, 2 hay nhiều danh mục) → vật tư đã lập phiếu được TRỪ khỏi danh sách
-     (ẩn khỏi các bảng, không hiện lại trong ô chọn). Xoá phiếu / bỏ vật tư khỏi phiếu → vật tư quay lại danh mục.
-   - Phiếu nhập: đơn vị khác nhập vật tư về LAB → mỗi dòng chọn Chủng loại (sheet) + Khối thiết bị → vật tư được
-     THÊM vào đúng danh mục đó (gắn nhãn "MỚI" + số phiếu). Xoá phiếu → gỡ các vật tư đã nhập.
-   - Sửa / lưu / xem / in A4 (lưu PDF) / xuất Excel / tải mã QR cho từng phiếu.
-   Phụ thuộc: window.LabApp (app.js). Bộ tạo mã QR đã NHÚNG SẴN trong file này (không cần qr.js).
+   Đã đồng bộ phân quyền tài khoản admin / guest với sync.js và index.html:
+   - Tài khoản admin: toàn quyền tạo, sửa, lưu, xoá phiếu xuất/nhập kho.
+   - Tài khoản guest (khach): chỉ được xem, in/lưu PDF, xuất Excel, tải mã QR;
+     chặn tuyệt đối các thao tác tạo mới, chỉnh sửa, lưu và xoá phiếu.
    ===================================================================== */
 (function () {
   'use strict';
@@ -27,7 +24,20 @@
     xuat: [['thuTruong', 'Thủ trưởng DV'], ['ketToan', 'Kế toán trưởng'], ['nguoiLap', 'Người lập phiếu'], ['nguoiNhan', 'Người nhận hàng'], ['thuKho', 'Thủ kho']],
     nhap: [['thuTruong', 'Thủ trưởng đơn vị'], ['ketToan', 'Kế toán trưởng'], ['nguoiLap', 'Người lập phiếu'], ['nguoiGiao', 'Người giao hàng'], ['thuKho', 'Thủ kho']]
   };
-  var BUILD = '2026.11.08-6';
+  var BUILD = '2026.11.16-auth-slips';
+
+  /* ---------- Kiểm tra phân quyền Admin / Guest ---------- */
+  function isGuest() {
+    return localStorage.getItem('lab_user_role') === 'guest';
+  }
+  function denyGuest(actionLabel) {
+    if (!isGuest()) return false;
+    var msg = '👁️ Tài khoản Khách (Guest) chỉ có quyền xem, không thể ' + (actionLabel || 'thực hiện thao tác này') + '.';
+    if (A && A.toast) A.toast(msg, 3500);
+    else alert(msg);
+    return true;
+  }
+
   /* CSS của giấy in (xem trước + in). Đặt trong JS để dùng chung cho cả bản in tách rời (tab mới / tải HTML). */
   var PAPER_CSS = `/* --- GIẤY IN (dùng chung cho xem trước & in) --- */
 .paper{position:relative;background:#fff;color:#000;font-family:"Times New Roman",Times,"Liberation Serif",serif;font-size:11pt;line-height:1.3;
@@ -246,7 +256,7 @@
   function clone(o) { return JSON.parse(JSON.stringify(o)); }
   function num(v) { var n = parseFloat(String(v == null ? '' : v).replace(',', '.')); return isNaN(n) ? 0 : n; }
   function fmt1(n) { return (Number(n) || 0).toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 }); }
-  function safeName(s) { return String(s).replace(/[\\\/:*?"<>|\s]+/g, '_'); }
+  function safeName(s) { return String(s).replace(/[\\/:*?"<>|\s]+/g, '_'); }
   function cfg() {
     return Object.assign({
       orgLine1: 'Tổng Công Ty Hạ tầng mạng', orgLine2: 'Trung Tâm Hạ Tầng Mạng Miền Bắc - CN Tổng công ty Hạ tầng mạng',
@@ -260,6 +270,7 @@
   function sumMoney(items) { return items.reduce(function (n, i) { return n + num(i.qty) * num(i.price); }, 0); }
   function defs() { try { return JSON.parse(localStorage.getItem(A.CFG.storageKey + ':slipdef') || '{}'); } catch (e) { return {}; } }
   function saveDefs(f) {
+    if (isGuest()) return;
     var o = {}; ['kho', 'nguoiLap', 'thuKho', 'ketToan', 'thuTruong', 'lien'].forEach(function (k) { if (f[k]) o[k] = f[k]; });
     try { localStorage.setItem(A.CFG.storageKey + ':slipdef', JSON.stringify(o)); } catch (e) {}
   }
@@ -277,7 +288,7 @@
       if (tr > 0 || full) { s += ch[tr] + ' trăm'; if (c2 === 0 && dv > 0) s += ' lẻ'; }
       if (c2 > 1) { s += (s ? ' ' : '') + ch[c2] + ' mươi'; if (dv === 1) s += ' mốt'; else if (dv === 5) s += ' lăm'; else if (dv > 0) s += ' ' + ch[dv]; }
       else if (c2 === 1) { s += (s ? ' ' : '') + 'mười'; if (dv === 5) s += ' lăm'; else if (dv > 0) s += ' ' + ch[dv]; }
-      else if (dv > 0) s += (s ? ' ' : '') + ch[dv];
+      else if (dv > 0) { s += (s ? ' ' : '') + ch[dv]; }
       return s;
     }
     var parts = [], out = [], k;
@@ -328,7 +339,7 @@
           var f = rd(fm, r); if (!f.name && !f.serial && !f.code && !f.part) return;
           var cat = A.labelOf(s) + ' › ' + b.title, note = fm.noteRead >= 0 ? (r.v[fm.noteRead] || '') : '';
           out.push({ rid: r.i, sid: s.id, bi: bi, cat: cat, name: f.name, code: f.code, serial: f.serial, part: f.part, quality: f.quality, note: note, checked: r.c === true,
-                     h: A.fold([f.name, f.code, f.serial, f.part, cat, note].join(' \u00a6 ')) });
+                     h: A.fold([f.name, f.code, f.serial, f.part, cat, note].join(' ¦ ')) });
         });
       });
     });
@@ -393,27 +404,33 @@
 
   function qrPayload(slip) {
     var t = TYPES[slip.type], f = slip.f || {}, items = slip.items, L = [], enc = new TextEncoder();
-    function clean(x) { return String(x == null ? '' : x).replace(/[\r\n|]+/g, ' ').trim(); }
+    function clean(x) { return String(x == null ? '' : x).replace(/[
+|]+/g, ' ').trim(); }
     L.push(slip.id); L.push(t.title + ' | ' + fmtDate(slip.date));
     if (clean(f.donVi)) L.push((slip.type === 'xuat' ? 'Nhan: ' : 'Ban: ') + clean(f.donVi).slice(0, 50));
     L.push('Tong: ' + items.length + ' dong / SL ' + sumQty(items));
     var tail = '';
     if (cfg().qrLink !== false && /^https?:/.test(location.protocol)) tail = location.origin + location.pathname + '#/' + slip.type + '/' + encodeURIComponent(slip.id);
-    var budget = 300 - enc.encode(L.join('\n') + '\n' + tail).length, used = 0, shown = 0, lines = [];
+    var budget = 300 - enc.encode(L.join('
+') + '
+' + tail).length, used = 0, shown = 0, lines = [];
     for (var i = 0; i < items.length; i++) {
       var it = items[i], nm = clean(it.name).slice(0, 28), ln = (i + 1) + '. ' + (clean(it.code) ? clean(it.code) + ' ' : '') + nm + (clean(it.serial) && clean(it.serial).length < 26 ? ' | SN ' + clean(it.serial) : '') + (num(it.qty) !== 1 ? ' | x' + it.qty : '');
-      var len = enc.encode(ln + '\n').length; if (used + len > budget - 26) break; used += len; shown++; lines.push(ln);
+      var len = enc.encode(ln + '
+').length; if (used + len > budget - 26) break; used += len; shown++; lines.push(ln);
     }
     L = L.concat(lines); if (shown < items.length) L.push('... +' + (items.length - shown) + ' dong nua');
     if (tail) L.push(tail);
-    return L.join('\n');
+    return L.join('
+');
   }
   function qrSVG(slip, border, css) {
     var key = slip.id + '|' + (slip.updatedAt || '') + '|' + slip.items.length + '|' + border, raw = qrCache[key];
     if (raw === undefined) {
       try {
         try { raw = QRLIB.svg(qrPayload(slip), { ecl: 'M', border: border == null ? 1 : border }); }
-        catch (e1) { raw = QRLIB.svg(slip.id + '\n' + TYPES[slip.type].title, { ecl: 'M', border: border == null ? 1 : border }); }
+        catch (e1) { raw = QRLIB.svg(slip.id + '
+' + TYPES[slip.type].title, { ecl: 'M', border: border == null ? 1 : border }); }
       } catch (e) {
         raw = '<div class="qr-miss" title="' + esc(e.message) + '">QR<br>lỗi</div>';
         if (!qrWarned) { qrWarned = true; A.toast('⚠ Không tạo được mã QR (' + e.message + '). Phiếu vẫn xem / in được.', 7000); }
@@ -534,6 +551,7 @@
     return '';
   }
   function commit(d) {
+    if (isGuest()) return 'Tài khoản Khách (Guest) không có quyền lưu phiếu.';
     var type = d.type, old = d.origId ? findSlip(type, d.origId) : null, err = '';
     if (!d.date) return 'Hãy chọn ngày lập phiếu.';
     if (!String(d.id).trim()) return 'Hãy nhập số phiếu.';
@@ -551,10 +569,15 @@
     arr.push(slip); saveDefs(d.f); A.persist(); return '';
   }
   function deleteSlip(type, id) {
+    if (denyGuest('xoá phiếu')) return;
     var s = findSlip(type, id); if (!s) return;
     var msg = type === 'xuat'
-      ? 'Xoá phiếu ' + id + '?\n\n' + s.items.length + ' vật tư trong phiếu sẽ QUAY LẠI danh mục (tồn kho).'
-      : 'Xoá phiếu ' + id + '?\n\n' + s.items.length + ' vật tư đã nhập theo phiếu này sẽ bị GỠ khỏi danh mục.';
+      ? 'Xoá phiếu ' + id + '?
+
+' + s.items.length + ' vật tư trong phiếu sẽ QUAY LẠI danh mục (tồn kho).'
+      : 'Xoá phiếu ' + id + '?
+
+' + s.items.length + ' vật tư đã nhập theo phiếu này sẽ bị GỠ khỏi danh mục.';
     if (!confirm(msg)) return;
     var idx = rowIndex();
     if (type === 'xuat') s.items.forEach(function (it) { var e = idx.get(it.rid); if (e && e.row.x === id) { delete e.row.x; A.touch(e.row); } });
@@ -571,6 +594,7 @@
              part: base && base.part || '', lot: '', quality: base && base.quality || C.quality, unit: C.unit, qtyReq: '', qty: 1, price: 0, note: base && base.note || '' };
   }
   function openEditor(type, id) {
+    if (denyGuest(id ? 'sửa phiếu' : 'tạo phiếu mới')) return;
     var slip = id ? findSlip(type, id) : null, C = cfg(), df = defs();
     D = { type: type, origId: slip ? slip.id : null, id: slip ? slip.id : nextId(type, todayISO()), date: slip ? slip.date : todayISO(), idTouched: false,
           f: slip ? clone(slip.f) : { kho: df.kho || C.kho, lien: df.lien || C.lien, nguoiLap: df.nguoiLap || C.nguoiLap, thuKho: df.thuKho || C.thuKho, ketToan: df.ketToan || C.ketToan, thuTruong: df.thuTruong || C.thuTruong, thue: '0' },
@@ -670,6 +694,7 @@
   }
   function draftSlip() { return { id: D.id, type: D.type, date: D.date, f: clone(D.f), items: clone(D.items), updatedAt: 'draft' + Date.now() }; }
   function doSave() {
+    if (denyGuest('lưu phiếu')) return;
     if (window.Sync && Sync.active && Sync.active() && !D.origId && !D.idTouched) {
       var skip = {}, tries = 0, d0 = D;
       (function chk() {
@@ -768,14 +793,16 @@
   function openView(type, id, tmp) {
     var slip = tmp || findSlip(type, id); if (!slip) { A.toast('Không tìm thấy phiếu ' + id); return; }
     VIEW = { slip: slip, tmp: !!tmp };
-    var t = TYPES[type], paper;
+    var t = TYPES[type], paper, guest = isGuest();
     try { paper = paperHTML(slip); }
     catch (err) { paper = '<div class="empty" style="background:#fff;color:#b91c1c;padding:24px"><b>Không dựng được phiếu để xem.</b><br>' + esc(err && err.message || err) + '<br><small>Dữ liệu phiếu vẫn được lưu. Hãy tải lại trang (Ctrl+F5) rồi mở lại; nếu vẫn lỗi hãy chụp màn hình này gửi người hỗ trợ.</small></div>'; }
+    var adminBtnsEdit = (!tmp && !guest) ? '<button class="tbtn" data-v="edit">✏️ Sửa phiếu</button>' : '';
+    var adminBtnsDel = (!tmp && !guest) ? '<button class="tbtn danger" data-v="del">🗑 Xoá phiếu</button>' : '';
     $('#mdView').innerHTML =
       '<div class="modal-back view-back"><div class="modal modal-view" role="dialog" aria-modal="true" aria-label="' + t.title + '">' +
       '<div class="modal-head"><h2>' + t.icon + ' ' + t.plural + ' <small>' + esc(slip.id) + (tmp ? ' · bản xem trước (chưa lưu)' : '') + '</small></h2><button class="modal-x" data-vclose aria-label="Đóng">✕</button></div>' +
-      '<div class="view-tools"><button class="tbtn primary" data-v="print">🖨 In / Lưu PDF</button><button class="tbtn" data-v="win" title="Mở bản in trong tab mới – dùng khi nút In không phản hồi">↗ In bằng tab mới</button><button class="tbtn" data-v="html" title="Tải phiếu thành file .html, mở ra và in được ở bất kỳ máy nào">⬇ Tải phiếu (.html)</button>' + (tmp ? '' : '<button class="tbtn" data-v="edit">✏️ Sửa phiếu</button>') +
-      '<button class="tbtn" data-v="xlsx">📗 Excel</button><button class="tbtn" data-v="qr">▦ Tải mã QR (PNG)</button>' + (tmp ? '' : '<button class="tbtn danger" data-v="del">🗑 Xoá phiếu</button>') + '</div>' +
+      '<div class="view-tools"><button class="tbtn primary" data-v="print">🖨 In / Lưu PDF</button><button class="tbtn" data-v="win" title="Mở bản in trong tab mới – dùng khi nút In không phản hồi">↗ In bằng tab mới</button><button class="tbtn" data-v="html" title="Tải phiếu thành file .html, mở ra và in được ở bất kỳ máy nào">⬇ Tải phiếu (.html)</button>' + adminBtnsEdit +
+      '<button class="tbtn" data-v="xlsx">📗 Excel</button><button class="tbtn" data-v="qr">▦ Tải mã QR (PNG)</button>' + adminBtnsDel + '</div>' +
       '<div class="paper-wrap" id="paperWrap"><div id="paperZoom">' + paper + '</div></div><div class="ver-note">Mã nguồn phiên bản ' + BUILD + ' · mã QR: tích hợp sẵn</div></div></div>';
     lock(); fitPaper();
   }
@@ -864,27 +891,34 @@
   }
 
   function listRows(type) {
+    var guest = isGuest();
     var tk = A.tokensOf(LQ[type] || '');
-    var arr = slips(type).slice().sort(function (a, b) { return (b.date || '').localeCompare(a.date || '') || String(b.createdAt || '').localeCompare(String(b.createdAt || '')); });
+    var arr = slips(type).slice().sort(function (a, b) { return (b.date || '').localeCompare(a.date || '') || String(b.createdAt || '').localeCompare(String(a.createdAt || '')); });
     arr = arr.filter(function (s) {
       if (!tk.length) return true; var h = A.fold([s.id, fmtDate(s.date), (s.f || {}).donVi, (s.f || {}).dungCho, (s.f || {}).hopDong, (s.f || {}).kho].concat(s.items.map(function (i) { return [i.name, i.serial, i.code, i.part].join(' '); })).join(' '));
       return tk.every(function (k) { return h.indexOf(k) >= 0; });
     });
-    if (!arr.length) return '<tr><td colspan="8" class="empty">' + (slips(type).length ? 'Không có phiếu nào khớp.' : 'Chưa có phiếu nào. Bấm “＋ Tạo ' + TYPES[type].plural.toLowerCase() + '” để bắt đầu.') + '</td></tr>';
+    if (!arr.length) return '<tr><td colspan="8" class="empty">' + (slips(type).length ? 'Không có phiếu nào khớp.' : (guest ? 'Chưa có phiếu nào.' : 'Chưa có phiếu nào. Bấm “＋ Tạo ' + TYPES[type].plural.toLowerCase() + '” để bắt đầu.')) + '</td></tr>';
     return arr.map(function (s) {
       var f = s.f || {}, why = type === 'xuat' ? f.dungCho : f.hopDong;
+      var adminActs = guest
+        ? ''
+        : '<button class="ico" data-sl-act="edit" title="Sửa">✏️</button><button class="ico del" data-sl-act="del" title="Xoá phiếu">🗑</button>';
       return '<tr data-sl="' + esc(s.id) + '" data-t="' + type + '"><td data-label="Số phiếu"><b>' + esc(s.id) + '</b></td><td data-label="Ngày">' + fmtDate(s.date) + '</td>' +
         '<td data-label="' + TYPES[type].fromTo + '">' + esc(f.donVi || '—') + (f.kho ? '<div class="src">' + esc(f.kho) + '</div>' : '') + '</td>' +
         '<td data-label="' + (type === 'xuat' ? 'Xuất dùng cho' : 'Theo hợp đồng') + '" class="reason">' + esc(why || '') + '</td>' +
         '<td class="num" data-label="Số dòng">' + s.items.length + '</td><td class="num" data-label="Tổng SL">' + sumQty(s.items) + '</td>' +
         '<td class="qrc" data-label="QR"><button class="qr-thumb" data-sl-act="view" title="Xem phiếu & mã QR" style="display:block;width:58px;height:58px;padding:2px;background:#fff;border:1px solid #cbd5e1;border-radius:8px;cursor:pointer">' + qrSVG(s, 1, 'display:block;width:100%;height:100%') + '</button></td>' +
-        '<td class="acts"><button class="ico" data-sl-act="view" title="Xem / In">👁</button><button class="ico" data-sl-act="edit" title="Sửa">✏️</button><button class="ico" data-sl-act="xlsx" title="Xuất Excel">📗</button><button class="ico del" data-sl-act="del" title="Xoá phiếu">🗑</button></td></tr>';
+        '<td class="acts"><button class="ico" data-sl-act="view" title="Xem / In">👁</button><button class="ico" data-sl-act="xlsx" title="Xuất Excel">📗</button>' + adminActs + '</td></tr>';
     }).join('');
   }
   function listHTML(type) {
     var t = TYPES[type], arr = slips(type), items = arr.reduce(function (n, s) { return n + s.items.length; }, 0);
+    var newBtn = isGuest()
+      ? ''
+      : '<button class="tbtn primary" data-sl-new="' + type + '" style="margin-left:auto">＋ Tạo ' + t.plural.toLowerCase() + '</button>';
     return '<div class="page-title"><h1>' + t.icon + ' ' + t.plural + '</h1><span class="sub">' + arr.length + ' phiếu · ' + items + ' vật tư ' + (type === 'xuat' ? 'đã xuất' : 'đã nhập') + '</span>' +
-      '<button class="tbtn primary" data-sl-new="' + type + '" style="margin-left:auto">＋ Tạo ' + t.plural.toLowerCase() + '</button></div>' +
+      newBtn + '</div>' +
       '<div class="toolbar no-print"><input type="search" id="slq" data-type="' + type + '" placeholder="Tìm theo số phiếu, đơn vị, serial, tên vật tư…" value="' + esc(LQ[type] || '') + '" autocomplete="off"></div>' +
       '<div class="card"><div style="overflow:auto"><table class="plain sl-list"><thead><tr><th>Số phiếu</th><th>Ngày</th><th>' + t.fromTo + '</th><th>' + (type === 'xuat' ? 'Xuất dùng cho' : 'Theo hợp đồng') + '</th><th class="num">Số dòng</th><th class="num">Tổng SL</th><th>QR</th><th></th></tr></thead>' +
       '<tbody id="slBody">' + listRows(type) + '</tbody></table></div></div>' +
