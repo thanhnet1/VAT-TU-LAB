@@ -3,7 +3,7 @@
    ===================================================================== */
 (function () {
   'use strict';
-  var BUILD = '2026.11.14-1-auth-lock';
+  var BUILD = '2026.11.14-1-auth-lock-fixed';
   var A = null, CS = null, ad = null;
   var S = { st: 'off', user: null, M: null, since: null, inited: false, baseline: null, subscribed: false, pushing: false, retry: 0, lastOk: 0,
             err: '', pending: 0, conflicts: 0, ready: { rows: false, slips: false, blocks: false }, remoteSeen: 0, applyT: null, pushT: null, retryT: null, reconciling: false, loginShown: false };
@@ -416,7 +416,10 @@
       subscribe: function (s, onDocsCb, onErr, onOk) { since = clone(s); cbD = onDocsCb; cbE = onErr; cbO = onOk; first = {}; poll().then(loop); },
       pollNow: function () { poll().then(loop); },
       unsubscribe: function () { cbD = null; clearTimeout(timer); },
-      commit: function (ops) { return req('/api/batch', 'POST', { ops: ops.map(function (op) { return { ws: ws(), col: op.col, id: op.id, data: op.data }; }) }); },
+      commit: function (ops) { 
+        if (localStorage.getItem('lab_user_role') === 'guest') return Promise.reject(new Error("Tài khoản khách không có quyền ghi dữ liệu."));
+        return req('/api/batch', 'POST', { ops: ops.map(function (op) { return { ws: ws(), col: op.col, id: op.id, data: op.data }; }) }); 
+      },
       exists: function (colName, id) { return req('/api/doc?ws=' + encodeURIComponent(ws()) + '&col=' + colName + '&id=' + encodeURIComponent(id)).then(function (r) { return !!r.exists; }); }
     };
     return o;
