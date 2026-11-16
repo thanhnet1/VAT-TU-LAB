@@ -5,7 +5,7 @@
 (function () {
   'use strict';
 
-  var BUILD = '2026.11.08-4'; // Khớp tuyệt đối với phiên bản hệ thống
+  var BUILD = '2026.11.14-2'; // Khớp tuyệt đối với phiên bản hệ thống
   var A = null, CS = null, ad = null;
   var S = {
     st: 'off', user: null, M: null, since: null, inited: false, baseline: null,
