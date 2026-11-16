@@ -1,9 +1,9 @@
 /* =====================================================================
-   sync.js (slips.js) – ĐỒNG BỘ ĐÁM MÂY ĐA THIẾT BỊ & PHÂN QUYỀN (FIXED)
+   sync.js – ĐỒNG BỘ ĐÁM MÂY ĐA THIẾT BỊ & PHÂN QUYỀN (FIXED & OPTIMIZED)
    ===================================================================== */
 (function () {
   'use strict';
-  var BUILD = '2026.11.14-2';
+  var BUILD = '2026.11.16-multi-device-sync-fix';
   var A = null, CS = null, ad = null;
   var S = {
     st: 'off', user: null, M: null, since: null, inited: false, baseline: null,
@@ -11,8 +11,7 @@
     err: '', pending: 0, conflicts: 0,
     ready: { rows: false, slips: false, blocks: false },
     remoteSeen: 0, applyT: null, pushT: null, retryT: null,
-    reconciling: false, loginShown: false,
-    remoteQueue: [] // Hàng đợi xử lý tuần tự tránh race-condition
+    reconciling: false, loginShown: false
   };
   var COLS = ['rows', 'slips', 'blocks'];
 
@@ -372,7 +371,6 @@
     var data = d.data, rid = data.rid;
     if (!rid) return false;
 
-    // Bỏ qua echo từ chính thiết bị này nếu dữ liệu cục bộ đã khớp
     var rs = data.del ? 'DEL' : rowSig(data);
     var idx = localRows(), cur = idx.get(rid);
     var ls = cur ? rowSig(cur.row) : 'DEL';
@@ -382,11 +380,9 @@
       return false;
     }
 
-    // Ưu tiên dữ liệu mới nhất từ Server (Last-Write-Wins) để tránh kẹt conflict giữa các máy
     var last = S.M.rows[rid], base = S.baseline.rows.get(rid);
     var dirty = last !== undefined ? last !== ls : (base ? base.sig !== ls : ls !== 'DEL');
     if (dirty && data.by === deviceId()) {
-      // Nếu chính máy này đang sửa dở (dirty) và gói tin đến cũng từ máy này (gói cũ), bỏ qua
       return false;
     }
 
@@ -441,7 +437,6 @@
       return false;
     }
 
-    // Nếu cả 2 cùng tồn tại, so sánh updatedAt để đảm bảo bản mới hơn luôn thắng
     if (loc && !data.del && loc.updatedAt && data.updatedAt && loc.updatedAt > data.updatedAt && data.by === deviceId()) {
       return false;
     }
@@ -492,7 +487,6 @@
 
   function onDocs(col, docs) {
     var changed = 0;
-    // Lùi lại 5 giây làm vùng đệm an toàn (overlap window) chống lệch đồng hồ giữa các thiết bị
     var maxUpd = S.since[col] || 0;
 
     docs.sort(function (a, b) { return (a.upd || 0) - (b.upd || 0); });
@@ -573,7 +567,7 @@
     saveMeta();
     A.saveLocal();
     A.refresh();
-    startSub(true); // Ép tải toàn bộ từ đầu
+    startSub(true);
   }
 
   /* ---------- Kết nối ---------- */
@@ -582,7 +576,6 @@
     S.subscribed = true;
     setState('loading');
 
-    // Luôn tạo vùng đệm lùi 10 giây nếu không ép tải toàn bộ, hoặc đặt về 0 nếu ép tải lại
     var querySince = {
       rows: forceFullSync ? 0 : Math.max(0, (S.since.rows || 0) - 10000),
       slips: forceFullSync ? 0 : Math.max(0, (S.since.slips || 0) - 10000),
@@ -619,7 +612,6 @@
       return;
     }
     S.err = '';
-    // Khi mở app trên thiết bị mới hoặc reload, tải lại toàn bộ snapshot để đảm bảo không sót bản ghi nào
     startSub(true);
     if (S.inited) schedule(300);
     if ($('#syncPanel')) renderPanel();
@@ -686,7 +678,6 @@
         o.unsubscribe();
         COLS.forEach(function (name) {
           var colRef = FS.collection(db, 'workspaces', ws(), name);
-          // Nếu since == 0, lắng nghe toàn bộ collection để đảm bảo không bao giờ bỏ sót dữ liệu
           var q = (since[name] && since[name] > 0)
             ? FS.query(colRef, FS.where('upd', '>=', FS.Timestamp.fromMillis(since[name])))
             : colRef;
@@ -901,7 +892,7 @@
         S.err = '';
         S.retry = 0;
         stopSub();
-        startSub(true); // Ép tải lại toàn bộ snapshot mới nhất + đẩy thay đổi cục bộ
+        startSub(true);
         push();
       } else if (a === 'resync') {
         if (confirm('Tải lại toàn bộ dữ liệu từ đám mây về thiết bị này?')) {
@@ -968,7 +959,6 @@
       if (ad && S.user) setState('offline');
     });
 
-    // Khi chuyển tab hoặc mở lại màn hình điện thoại, tự động đồng bộ lại ngay
     document.addEventListener('visibilitychange', function () {
       if (!document.hidden && ad && S.user) {
         schedule(200);
