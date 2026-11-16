@@ -5,7 +5,7 @@
 (function () {
   'use strict';
 
-  var BUILD = '2026.11.08-4'; // Khớp chính xác với BUILD trong app.js
+  var BUILD = '2026.11.08-4'; // Khớp tuyệt đối với phiên bản hệ thống
   var A = null, CS = null, ad = null;
   var S = {
     st: 'off', user: null, M: null, since: null, inited: false, baseline: null,
@@ -123,7 +123,7 @@
     return null;
   }
 
-  /* ---------- Tính các thay đổi cần đẩy lên ---------- */
+  /* ---------- Tính toán thay đổi ---------- */
   function rowData(e) {
     var r = e.row;
     return {
@@ -196,14 +196,12 @@
     return ops;
   }
 
-  /* ---------- Phân quyền giao diện (Admin vs Guest) ---------- */
+  /* ---------- Phân quyền giao diện ---------- */
   function applyRoleUI() {
     var currentRole = localStorage.getItem('lab_user_role');
     var isGuest = currentRole === 'guest';
     var btnEdit = $('#btnEdit');
-    if (btnEdit) {
-      btnEdit.style.display = isGuest ? 'none' : '';
-    }
+    if (btnEdit) btnEdit.style.display = isGuest ? 'none' : '';
     if (isGuest) {
       document.querySelectorAll('#main button, #main .tbtn').forEach(function (el) {
         var text = (el.textContent || '').toLowerCase();
@@ -243,7 +241,7 @@
     applyRoleUI();
   }
 
-  /* ---------- Đẩy thay đổi lên đám mây ---------- */
+  /* ---------- Đồng bộ lên ---------- */
   function schedule(delay) {
     if (!ad || !S.user || !S.subscribed || (!S.inited && !S.reconciling)) {
       if (ad && S.user && !S.inited) setState(S.st);
@@ -306,7 +304,7 @@
     S.retryT = setTimeout(function () { push(); }, wait);
   }
 
-  /* ---------- Nhận thay đổi từ đám mây ---------- */
+  /* ---------- Nhận dữ liệu về ---------- */
   function defaultCols(n) {
     var c = ['STT', 'Mã VT', 'Tên vật tư', 'Serial No', 'Part Number', 'Tình trạng', 'Ghi chú'];
     while (c.length < n) c.push('Cột ' + (c.length + 1));
@@ -345,7 +343,6 @@
       S.M.rows[rid] = rs;
       return false;
     }
-    // Nếu thiết bị hiện tại chưa khởi tạo xong hoặc không có thay đổi cục bộ chưa lưu, ưu tiên dữ liệu đám mây
     if (dirty && S.inited && S.pushing) {
       S.conflicts++;
       return false;
@@ -458,7 +455,6 @@
       var ok = col === 'rows' ? applyRow(d) : (col === 'slips' ? applySlip(d) : applyBlock(d));
       if (ok) changed++;
     });
-    // Lùi 1ms để không bao giờ bỏ lỡ các bản ghi trùng timestamp ở lần truy vấn kế tiếp
     if (maxUpd > 0) S.since[col] = Math.max(0, maxUpd - 1);
     saveMeta();
 
@@ -492,7 +488,6 @@
     }, 200);
   }
 
-  /* ---------- Lần đồng bộ đầu tiên ---------- */
   function maybeReconcile() {
     if (S.inited || S.reconciling || !(S.ready.rows && S.ready.slips && S.ready.blocks)) return;
     S.reconciling = true;
@@ -530,7 +525,6 @@
     startSub();
   }
 
-  /* ---------- Kết nối ---------- */
   function startSub() {
     if (!ad || S.subscribed) return;
     S.subscribed = true;
@@ -708,119 +702,6 @@
     return o;
   }
 
-  /* ---------- Server Adapter ---------- */
-  function serverAdapter() {
-    var cfg = CS.server, url = String(cfg.url).replace(/\/+$/, ''), tkey = A.CFG.storageKey + ':sync-token';
-    var tok = null, timer = null, since = {}, cbD = null, cbE = null, cbO = null, first = {}, cbUser = null, polling = false;
-
-    function req(path, method, body) {
-      var h = { 'Content-Type': 'application/json' };
-      if (tok) h.Authorization = 'Bearer ' + tok;
-      return fetch(url + path, {
-        method: method || 'GET',
-        headers: h,
-        body: body ? JSON.stringify(body) : undefined
-      }).then(function (r) {
-        if (r.status === 401) { var e = new Error('unauthorized'); e.status = 401; throw e; }
-        if (!r.ok) throw new Error('HTTP ' + r.status);
-        return r.json();
-      });
-    }
-
-    function poll() {
-      if (polling || !cbD) return Promise.resolve();
-      polling = true;
-      return COLS.reduce(function (p, name) {
-        return p.then(function () {
-          return req('/api/docs?ws=' + encodeURIComponent(ws()) + '&col=' + name + '&since=' + (since[name] || 0)).then(function (r) {
-            var docs = r.docs || [];
-            docs.forEach(function (d) { if (d.upd > (since[name] || 0)) since[name] = d.upd; });
-            if (docs.length || !first[name]) {
-              first[name] = true;
-              cbD(name, docs);
-            }
-          });
-        });
-      }, Promise.resolve()).then(function () {
-        if (cbO) cbO();
-      }).catch(function (e) {
-        if (cbE) cbE(e);
-      }).then(function () {
-        polling = false;
-      });
-    }
-
-    function loop() {
-      clearTimeout(timer);
-      if (!cbD) return;
-      timer = setTimeout(function () { poll().then(loop); }, cfg.pollMs || 4000);
-    }
-
-    var o = {
-      name: 'server',
-      needsEmail: false,
-      errText: function (e) {
-        return e && e.status === 401 ? 'Mã truy cập không đúng.' : 'Không kết nối được máy chủ đồng bộ.';
-      },
-      init: function (cb) {
-        cbUser = cb;
-        try { tok = localStorage.getItem(tkey); } catch (e) { tok = null; }
-        if (!tok) { cb(null); return Promise.resolve(); }
-        return req('/api/doc?ws=' + encodeURIComponent(ws()) + '&col=rows&id=_').then(function () {
-          cb({ id: 'token', name: 'Mã truy cập' });
-        }).catch(function (e) {
-          if (e.status === 401) {
-            tok = null;
-            try { localStorage.removeItem(tkey); } catch (x) { }
-            cb(null);
-          } else {
-            cb({ id: 'token', name: 'Mã truy cập' });
-          }
-        });
-      },
-      signIn: function (_username, token) {
-        return fetch(url + '/api/login', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ token: token })
-        }).then(function (r) {
-          if (!r.ok) { var e = new Error('unauthorized'); e.status = 401; throw e; }
-          tok = token;
-          try { localStorage.setItem(tkey, tok); } catch (e) { }
-          cbUser({ id: 'token', name: 'Mã truy cập' });
-        });
-      },
-      signOut: function () {
-        tok = null;
-        try { localStorage.removeItem(tkey); } catch (e) { }
-        o.unsubscribe();
-        cbUser(null);
-        return Promise.resolve();
-      },
-      subscribe: function (s, onDocsCb, onErr, onOk) {
-        since = clone(s);
-        cbD = onDocsCb;
-        cbE = onErr;
-        cbO = onOk;
-        first = {};
-        poll().then(loop);
-      },
-      pollNow: function () { poll().then(loop); },
-      unsubscribe: function () { cbD = null; clearTimeout(timer); },
-      commit: function (ops) {
-        return req('/api/batch', 'POST', {
-          ops: ops.map(function (op) { return { ws: ws(), col: op.col, id: op.id, data: op.data }; })
-        });
-      },
-      exists: function (colName, id) {
-        return req('/api/doc?ws=' + encodeURIComponent(ws()) + '&col=' + colName + '&id=' + encodeURIComponent(id)).then(function (r) {
-          return !!r.exists;
-        });
-      }
-    };
-    return o;
-  }
-
   /* ---------- Giao diện Bảng đăng nhập & Trạng thái ---------- */
   function lockBody() {
     document.body.classList.toggle(
@@ -986,7 +867,7 @@
       if (S.since[c] == null) S.since[c] = 0;
     });
 
-    ad = CS.provider === 'firebase' ? firebaseAdapter() : serverAdapter();
+    ad = firebaseAdapter();
     setState('loading');
     Promise.resolve(ad.init(onUser)).catch(function (e) {
       S.err = 'Không tải được thư viện đồng bộ: ' + ((e && e.message) || e) + ' (kiểm tra mạng / cấu hình).';
