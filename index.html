@@ -6,7 +6,44 @@
 <meta name="theme-color" content="#0b3a5b">
 <title>Tài sản – Vật tư Truyền dẫn LAB</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E📡%3C/text%3E%3C/svg%3E">
-<link rel="stylesheet" href="assets/style.css?v=2026.11.08-4">
+<link rel="stylesheet" href="assets/style.css?v=2026.11.16-1">
+<style>
+  /* CSS hỗ trợ hiển thị Badge phân quyền & trạng thái khóa Guest mượt mà */
+  .role-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 8px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.2px;
+    user-select: none;
+  }
+  .role-badge.admin {
+    background: rgba(16, 185, 129, 0.15);
+    color: #059669;
+    border: 1px solid rgba(16, 185, 129, 0.35);
+  }
+  .role-badge.guest {
+    background: rgba(245, 158, 11, 0.15);
+    color: #d97706;
+    border: 1px solid rgba(245, 158, 11, 0.35);
+  }
+  [data-theme="dark"] .role-badge.admin { color: #34d399; }
+  [data-theme="dark"] .role-badge.guest { color: #fbbf24; }
+
+  /* Ẩn/vô hiệu hóa các nút thao tác ghi dữ liệu khi đang ở quyền Guest */
+  body.role-guest #btnPXK,
+  body.role-guest #btnPNK,
+  body.role-guest #btnEdit,
+  body.role-guest [data-act="json-in"],
+  body.role-guest [data-act="reset"] {
+    opacity: 0.35 !important;
+    pointer-events: none !important;
+    filter: grayscale(1);
+  }
+</style>
 </head>
 <body>
 
@@ -24,8 +61,9 @@
     <button id="gqClear" type="button" class="search-clear" hidden aria-label="Xoá tìm kiếm">✕</button>
   </label>
   <div class="actions">
-    <span id="dirty" class="dirty" hidden title="Bạn đã chỉnh sửa dữ liệu – chỉ lưu trên trình duyệt này">● Đã chỉnh sửa</span>
-    <button id="btnSync" class="btn ghost sync-off" type="button" title="Đồng bộ nhiều thiết bị"><i>☁</i> <span>Chỉ trên máy</span></button>
+    <span id="roleBadge" class="role-badge" hidden title="Quyền truy cập hiện tại"></span>
+    <span id="dirty" class="dirty" hidden title="Bạn đã chỉnh sửa dữ liệu – đang chờ đồng bộ">● Chưa đồng bộ</span>
+    <button id="btnSync" class="btn ghost sync-off" type="button" title="Đồng bộ đám mây & Đăng nhập Admin / Guest"><i>☁</i> <span>Chỉ trên máy</span></button>
     <button id="btnPXK" class="btn accent" type="button" title="Tạo phiếu xuất kho">📤 <span>Phiếu xuất</span></button>
     <button id="btnPNK" class="btn accent" type="button" title="Tạo phiếu nhập kho">📥 <span>Phiếu nhập</span></button>
     <button id="btnEdit" class="btn" type="button" aria-pressed="false">✏️ <span>Chỉnh sửa</span></button>
@@ -49,7 +87,7 @@
 
 <div id="editbar" class="editbar" hidden>
   ✏️ <b>Đang ở chế độ chỉnh sửa.</b> Bấm vào ô để sửa, tích ô <b>Đã kiểm</b>, thêm/xoá dòng.
-  Thay đổi <u>chỉ lưu trên trình duyệt này</u> – dùng <b>Xuất / Sao lưu</b> để giữ hoặc chia sẻ.
+  Mọi thay đổi sẽ tự động <u>đồng bộ lên đám mây</u> khi bạn đăng nhập tài khoản <b>Admin</b>.
 </div>
 
 <div class="layout" id="layout" hidden>
@@ -63,12 +101,49 @@
 <div id="printRoot"></div>
 <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
-<script src="assets/config.js?v=2026.11.08-6"></script>
+<script src="assets/config.js?v=2026.11.16-1"></script>
+<script>
+  /* Đồng bộ alias tài khoản 'guest' <-> 'khach' trong cấu hình authUsers để đăng nhập bằng cả hai tên đều hợp lệ */
+  (function () {
+    if (window.CONFIG && window.CONFIG.authUsers) {
+      var u = window.CONFIG.authUsers;
+      if (u.khach && !u.guest) u.guest = u.khach;
+      if (u.guest && !u.khach) u.khach = u.guest;
+    }
+  })();
+</script>
 <script src="assets/data.js"></script>
 <!-- Thư viện xuất Excel (tuỳ chọn). Nếu không tải được, web vẫn chạy và tự chuyển sang xuất CSV. -->
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js" defer></script>
-<script src="assets/app.js?v=2026.11.08-6" defer></script>
-<script src="assets/slips.js?v=2026.11.08-6" defer></script>
-<script src="assets/sync.js?v=2026.11.08-6" defer></script>
+<script src="assets/app.js?v=2026.11.16-1" defer></script>
+<script src="assets/slips.js?v=2026.11.16-1" defer></script>
+<script src="assets/sync.js?v=2026.11.16-1" defer></script>
+<script>
+  /* Cập nhật giao diện thanh công cụ theo phân quyền Admin / Guest từ sync.js */
+  document.addEventListener('DOMContentLoaded', function () {
+    function syncRoleDisplay() {
+      var role = localStorage.getItem('lab_user_role');
+      var uname = localStorage.getItem('lab_username');
+      var badge = document.getElementById('roleBadge');
+      document.body.classList.toggle('role-guest', role === 'guest');
+      document.body.classList.toggle('role-admin', role === 'admin');
+      if (badge) {
+        if (role === 'admin') {
+          badge.hidden = false;
+          badge.className = 'role-badge admin';
+          badge.innerHTML = '🛡️ Admin' + (uname ? ' (' + uname + ')' : '');
+        } else if (role === 'guest') {
+          badge.hidden = false;
+          badge.className = 'role-badge guest';
+          badge.innerHTML = '👁️ Guest (Chỉ xem)';
+        } else {
+          badge.hidden = true;
+        }
+      }
+    }
+    syncRoleDisplay();
+    setInterval(syncRoleDisplay, 800);
+  });
+</script>
 </body>
 </html>
