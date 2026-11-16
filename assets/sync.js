@@ -5,7 +5,7 @@
 (function () {
   'use strict';
 
-  var BUILD = '2026.11.08-4'; // Khớp chính xác với BUILD trong app.js
+  var BUILD = '2026.11.14-2'; // Khớp chính xác với BUILD trong app.js
   var A = null, CS = null, ad = null;
   var S = {
     st: 'off', user: null, M: null, since: null, inited: false, baseline: null,
