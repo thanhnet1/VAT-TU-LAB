@@ -514,15 +514,20 @@
     }
 
     if (targetBlock) {
-      targetBlock.rows.push(newMat);
-      persist();
-      render();
-      document.getElementById('mdAddMat').remove();
-      toast('Đã phân loại và thêm vật tư vào nhóm: "' + targetBlock.title + '"');
-    } else {
-      alert('Lỗi: Không tìm thấy danh mục kho phù hợp trong hệ thống.');
+    targetBlock.rows.push(newMat);
+    persist();
+    render();
+    
+    // Sửa lỗi: Kiểm tra phần tử tồn tại trước khi gọi .remove()
+    var mdAddMat = document.getElementById('mdAddMat');
+    if (mdAddMat) {
+        mdAddMat.remove();
     }
-  };
+    
+    toast('Đã phân loại và thêm vật tư vào nhóm: "' + targetBlock.title + '"');
+} else {
+    alert('Lỗi: Không tìm thấy danh mục kho phù hợp trong hệ thống.');
+}
 
   /* ---------- Sự kiện ---------- */
   function locate(el) {
