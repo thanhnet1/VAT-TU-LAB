@@ -22,37 +22,32 @@ window.APP_CONFIG = {
   colorMeaning: {},
   maxSearchResults: 400,
 
-  // ====== CẤU HÌNH PHÂN QUYỀN TÊN ĐĂNG NHẬP (Đăng nhập bằng Tên) ======
-  authUsers: {
-    'admin': {
-      email: 'admin@lab-xvt.local',
-      role: 'admin', // Quyền cao nhất: toàn quyền chỉnh sửa, thêm xóa, duyệt
-      name: 'Quản trị viên'
-    },
-    'khach': {
-      email: 'khach@lab-xvt.local',
-      role: 'guest', // Khách: chỉ xem phiếu xuất kho và xác nhận đã nhận
-      name: 'Khách xem kho'
-    }
-  },
-
-  // ====== KẾT NỐI FIREBASE (Đồng bộ nhiều thiết bị) ======
+  /**
+ * -----------------------------------------------------------------
+ * CONFIGURATION - Cấu hình hệ thống & Kết nối Firebase (BUILD 2026.11.08-5)
+ * -----------------------------------------------------------------
+ */
+window.APP_CONFIG = {
+  title: 'Tài sản – Vật tư Truyền dẫn LAB',
+  storageKey: 'lab-xvt-v1',
   sync: {
     provider: 'firebase',
     workspace: 'lab-xvt',
     firebase: {
-    apiKey: "AIzaSyAzE8Eb7Jd2j2FTt6nVw3gJ57ENBV-soeA",
-    authDomain: "minigame-8a94c.firebaseapp.com",
-    databaseURL: "https://minigame-8a94c-default-rtdb.asia-southeast1.firebasedatabase.app",
-    projectId: "minigame-8a94c",
-    storageBucket: "minigame-8a94c.firebasestorage.app",
-    messagingSenderId: "604735984087",
-    appId: "1:604735984087:web:83b5926e168efb02c6bb92",
-    measurementId: "G-4FXBFBE74T"
+      apiKey: "AIzaSyAzE8Eb7Jd2j2FTt6nVw3gJ57ENBV-soaeA",
+      authDomain: "minigame-8a94c.firebaseapp.com",
+      databaseURL: "https://minigame-8a94c-default-rtdb.asia-southeast1.firebasedatabase.app",
+      projectId: "minigame-8a94c",
+      storageBucket: "minigame-8a94c.appspot.com",
+      messagingSenderId: "604735984087",
+      appId: "1:604735984087:web:83b5926e168efb02c6bb92",
+      measurementId: "G-4FXFBE74T"
     }
   },
-
-  // ====== PHIẾU XUẤT KHO / NHẬP KHO ======
+  authUsers: {
+    "admin": { email: "admin@lab.com", role: "admin" },
+    "khach": { email: "khach@lab.com", role: "guest" }
+  },
   slip: {
     orgLine1: 'Tổng Công Ty Hạ tầng mạng',
     orgLine2: 'Trung Tâm Hạ Tầng Mạng Miền Bắc - CN Tổng công ty Hạ tầng mạng',
@@ -61,13 +56,9 @@ window.APP_CONFIG = {
     kho: 'Kho-X.VT-28-PHAM-HUNG-NTL_HNI',
     numSuffix: 'X.VT-28PHG-KH01',
     startSeq: 1,
+    lien: '',
     unit: 'Cái',
     quality: 'Tốt',
-    lien: '',
-    thuTruong: '',
-    ketToan: '',
-    nguoiLap: '',
-    thuKho: '',
     qrLink: true
   }
 };
