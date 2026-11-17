@@ -227,7 +227,7 @@
 
   /* ---------- Đồng bộ lên ---------- */
   function schedule(delay) {
-    if (!ad || !S.user || !S.subscribed || (!S.inited && !S.reconciling)) {
+    if (!A || !ad || !S.user || !S.subscribed || (!S.inited && !S.reconciling)) {
       if (ad && S.user && !S.inited) setState(S.st);
       return;
     }
@@ -279,6 +279,14 @@
       setState(navigator.onLine === false ? 'offline' : 'error');
       retryLater();
     });
+  }
+
+  function pushNow() {
+    return push();
+  }
+
+  function active() {
+    return !!(ad && S.user && S.subscribed && S.inited);
   }
 
   function retryLater() {
@@ -842,24 +850,11 @@
   }
 
   window.Sync = {
-    ver: BUILD,
+    ver: '2026.11.08-5',
     init: init,
-    schedule: function (d) { if (A && ad) schedule(d); },
-    active: function () { return !!(ad && S.user && S.subscribed && S.inited); },
-    exists: function (col, key) { return ad && S.user ? ad.exists(col, enc(key)) : Promise.resolve(false); },
-    status: function () {
-      return {
-        state: S.st,
-        user: S.user,
-        pending: S.pending,
-        lastOk: S.lastOk,
-        conflicts: S.conflicts,
-        inited: S.inited,
-        since: S.since
-      };
-    },
-    pushNow: function () { return push(); },
-    open: function () { openPanel(false); },
-    _computeOps: function () { return computeOps(); }
+    schedule: schedule,
+    pushNow: pushNow,
+    active: active,
+    open: openPanel
   };
 })();
