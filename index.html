@@ -36,6 +36,8 @@
         <button type="button" data-act="xlsx-cur">📗 Excel – sheet đang xem</button>
         <button type="button" data-act="csv-cur">📄 CSV – sheet đang xem</button>
         <hr>
+        <button type="button" onclick="document.getElementById('importFileInput').click()">📂 Cập nhật nguồn (Excel, Word, PDF)…</button>
+        <hr>
         <button type="button" data-act="json-out">💾 Sao lưu JSON (kèm chỉnh sửa)</button>
         <button type="button" data-act="json-in">📂 Nhập sao lưu JSON…</button>
         <hr>
@@ -59,14 +61,17 @@
 </div>
 
 <input type="file" id="fileIn" accept="application/json,.json" hidden>
+<input type="file" id="importFileInput" accept=".xlsx,.xls,.docx,.pdf" hidden>
 <div id="modalRoot"></div>
 <div id="printRoot"></div>
 <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
 <script src="assets/config.js?v=2026.11.08-5"></script>
 <script src="assets/data.js"></script>
-<!-- Thư viện xuất Excel (tuỳ chọn). Nếu không tải được, web vẫn chạy và tự chuyển sang xuất CSV. -->
+<!-- Thư viện phụ trợ đọc tệp trực tiếp trên Web -->
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js" defer></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js" defer></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdfjs-dist/3.11.174/pdf.min.js" defer></script>
 <script src="assets/app.js?v=2026.11.08-5" defer></script>
 <script src="assets/slips.js?v=2026.11.08-5" defer></script>
 <script src="assets/sync.js?v=2026.11.08-5" defer></script>
