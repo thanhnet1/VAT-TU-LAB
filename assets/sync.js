@@ -403,7 +403,7 @@
       init: function (cb) {
         cbUser = cb; try { tok = localStorage.getItem(tkey); } catch (e) { tok = null; }
         if (!tok) { cb(null); return Promise.resolve(); }
-        return req('/api/doc?ws=' + encodeURIComponent(ws()) + '&col=rows&id=_').then(function () { cb({ id: 'token', name: 'Mã truy cập' }); })
+        return req('/api/doc?ws=' + encodeURIComponent(ws()) + '&col=rows&id=_', 'GET').then(function () { cb({ id: 'token', name: 'Mã truy cập' }); })
           .catch(function (e) { if (e.status === 401) { tok = null; try { localStorage.removeItem(tkey); } catch (x) { } cb(null); } else cb({ id: 'token', name: 'Mã truy cập' }); });
       },
       signIn: function (_username, token) {
@@ -416,7 +416,10 @@
       subscribe: function (s, onDocsCb, onErr, onOk) { since = clone(s); cbD = onDocsCb; cbE = onErr; cbO = onOk; first = {}; poll().then(loop); },
       pollNow: function () { poll().then(loop); },
       unsubscribe: function () { cbD = null; clearTimeout(timer); },
-      commit: function (ops) { return req('/api/batch', 'POST', { ops: ops.map(function (op) { return { ws: ws(), col: op.col, id: op.id, data: op.data }; }) }); },
+      commit: function (ops) { 
+        if (localStorage.getItem('lab_user_role') === 'guest') return Promise.reject(new Error("Tài khoản khách không có quyền ghi dữ liệu."));
+        return req('/api/batch', 'POST', { ops: ops.map(function (op) { return { ws: ws(), col: op.col, id: op.id, data: op.data }; }) }); 
+      },
       exists: function (colName, id) { return req('/api/doc?ws=' + encodeURIComponent(ws()) + '&col=' + colName + '&id=' + encodeURIComponent(id)).then(function (r) { return !!r.exists; }); }
     };
     return o;
