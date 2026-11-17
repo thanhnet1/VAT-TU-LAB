@@ -195,7 +195,7 @@
       <div class="kpi"><div class="n">${rows.toLocaleString('vi-VN')}</div><div class="l">Vật tư trong danh mục (tồn)</div></div>
       <div class="kpi ok"><div class="n">${chk.toLocaleString('vi-VN')}</div><div class="l">${esc(CFG.checkLabel)} (${pct}%)</div></div>
       <div class="kpi warn"><div class="n">${(rows - chk).toLocaleString('vi-VN')}</div><div class="l">Chưa tích “${esc(CFG.checkLabel)}”</div></div>
-      <button class="kpi bad" data-q="??" title="Bấm để xem danh sách"><div class="n">${q2}</div><div class="l">Dòng ghi “??s” (cần xác minh)</div></button>
+      <button class="kpi bad" data-q="??" title="Bấm để xem danh sách"><div class="n">${q2}</div><div class="l">Dòng ghi “??” (cần xác minh)</div></button>
       <a class="kpi" href="#/xuat" style="text-decoration:none;color:inherit"><div class="n">${expo}</div><div class="l">Đã xuất kho · ${nX} phiếu xuất</div></a>
       <a class="kpi" href="#/nhap" style="text-decoration:none;color:inherit"><div class="n">${nN}</div><div class="l">Phiếu nhập kho</div></a>
     </div>
@@ -203,7 +203,7 @@
     <div class="card"><h3>Tình trạng vật tư <span class="src">(cột “Tình trạng”)</span></h3><div class="body"><div class="chips">
       <button class="chip" data-q="tốt">🟢 Tốt <b>${st['tốt']}</b></button>
       <button class="chip" data-q="hỏng">🔴 Hỏng <b>${st['hỏng']}</b></button>
-      <button class="chip" data-q="lỗi">🟠 Lỗi <b>${st['لỗi']}</b></button>
+      <button class="chip" data-q="lỗi">🟠 Lỗi <b>${st['lỗi']}</b></button>
       <span class="chip">⚪ Khác <b>${st['khác']}</b></span></div>
       <p class="src" style="margin:10px 0 0">Bấm vào từng mục để lọc nhanh bằng ô tìm kiếm.</p></div></div>
     <div class="card"><h3>Màu đánh dấu trong file Excel gốc</h3><div class="body">
@@ -371,17 +371,21 @@
   window.handleSaveNewMaterial = function(e) {
     e.preventDefault();
     
+    var newMaVT = (document.getElementById('newMaVT').value || '').trim();
+    var newTenVT = (document.getElementById('newTenVT').value || '').trim();
+    var newPartNum = (document.getElementById('newPartNum').value || '').trim();
+
     var newMat = {
       r: 0,
       i: 'm_' + Math.random().toString(36).substr(2, 9),
       v: [
         '', 
-        document.getElementById('newMaVT').value.trim(),
-        document.getElementById('newTenVT').value.trim(),
-        document.getElementById('newSerial').value.trim(),
-        document.getElementById('newPartNum').value.trim(),
-        document.getElementById('newTinhTrang').value.trim(),
-        document.getElementById('newGhiChu').value.trim()
+        newMaVT,
+        newTenVT,
+        (document.getElementById('newSerial').value || '').trim(),
+        newPartNum,
+        (document.getElementById('newTinhTrang').value || '').trim(),
+        (document.getElementById('newGhiChu').value || '').trim()
       ],
       ct: Date.now(),
       c: false
@@ -391,35 +395,27 @@
     var targetSheet = null;
     var sheets = ST.sheets || [];
     
-    // Ưu tiên 1: Khớp chính xác Mã VT (cột 1) hoặc Part Number (cột 4)
-    for (var i = 0; i < sheets.length; i++) {
-      var blocks = sheets[i].blocks || [];
-      for (var b = 0; b < blocks.length; b++) {
-        var rows = blocks[b].rows || [];
-        for (var r = 0; r < rows.length; r++) {
-          var exMa = (rows[r].v[1] || '').trim();
-          var exPart = (rows[r].v[4] || '').trim();
-          if ((newMat.v[1] && exMa && newMat.v[1].toLowerCase() === exMa.toLowerCase()) ||
-              (newMat.v[4] && exPart && newMat.v[4].toLowerCase() === exPart.toLowerCase())) {
-            targetSheet = sheets[i];
-            targetBlock = blocks[b];
-            break;
-          }
-        }
-        if (targetBlock) break;
-      }
-      if (targetBlock) break;
+    function cleanStr(str) {
+      if (!str) return '';
+      return str.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\s+/g, '');
     }
 
-    // Ưu tiên 2: Khớp Tên vật tư (cột 2)
-    if (!targetBlock) {
+    var cleanNewMa = cleanStr(newMaVT);
+    var cleanNewPart = cleanStr(newPartNum);
+    var cleanNewTen = cleanStr(newTenVT);
+
+    // BƯỚC 1: Ưu tiên khớp chính xác Mã VT (cột 1) hoặc Part Number (cột 4)
+    if (cleanNewMa || cleanNewPart) {
       for (var i = 0; i < sheets.length; i++) {
         var blocks = sheets[i].blocks || [];
         for (var b = 0; b < blocks.length; b++) {
           var rows = blocks[b].rows || [];
           for (var r = 0; r < rows.length; r++) {
-            var exTen = (rows[r].v[2] || '').trim();
-            if (newMat.v[2] && exTen && newMat.v[2].toLowerCase() === exTen.toLowerCase()) {
+            var exMa = cleanStr(rows[r].v[1]);
+            var exPart = cleanStr(rows[r].v[4]);
+            
+            if ((cleanNewMa && exMa && cleanNewMa === exMa) ||
+                (cleanNewPart && exPart && cleanNewPart === exPart)) {
               targetSheet = sheets[i];
               targetBlock = blocks[b];
               break;
@@ -431,7 +427,27 @@
       }
     }
 
-    // Mặc định: Đưa vào khối đầu tiên nếu không tìm thấy từ khóa khớp
+    // BƯỚC 2: Nếu chưa tìm thấy theo Mã/Part, tiến hành khớp theo Tên vật tư (cột 2)
+    if (!targetBlock && cleanNewTen) {
+      for (var i = 0; i < sheets.length; i++) {
+        var blocks = sheets[i].blocks || [];
+        for (var b = 0; b < blocks.length; b++) {
+          var rows = blocks[b].rows || [];
+          for (var r = 0; r < rows.length; r++) {
+            var exTen = cleanStr(rows[r].v[2]);
+            if (exTen && (cleanNewTen === exTen || exTen.includes(cleanNewTen) || cleanNewTen.includes(exTen))) {
+              targetSheet = sheets[i];
+              targetBlock = blocks[b];
+              break;
+            }
+          }
+          if (targetBlock) break;
+        }
+        if (targetBlock) break;
+      }
+    }
+
+    // BƯỚC 3: Dự phòng cuối cùng - Đưa vào khối đầu tiên nếu không dò được từ khóa phù hợp
     if (!targetBlock && sheets.length > 0 && sheets[0].blocks.length > 0) {
       targetSheet = sheets[0];
       targetBlock = sheets[0].blocks[0];
@@ -442,9 +458,9 @@
       persist();
       render();
       document.getElementById('mdAddMat').remove();
-      toast('Thêm vật tư thành công vào nhóm: "' + targetBlock.title + '"');
+      toast('Đã phân loại và thêm vật tư vào nhóm: "' + targetBlock.title + '"');
     } else {
-      alert('Lỗi: Không tìm thấy danh mục kho phù hợp.');
+      alert('Lỗi: Không tìm thấy danh mục kho phù hợp trong hệ thống.');
     }
   };
 
