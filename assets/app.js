@@ -330,7 +330,7 @@
   const keepScroll = fn => { const y = window.scrollY; fn(); window.scrollTo(0, y); };
 
   /* =====================================================================
-     TÍNH NĂNG: THÊM VẬT TƯ, DANH SÁCH SỔ TỰ ĐỘNG & PHÂN LOẠI THÔNG MINH
+     TÍNH NĂNG: THÊM VẬT TƯ, DANH SÁCH SỔ & TỰ ĐỘNG ĐỒNG BỘ DỮ LIỆU GỐC
      ===================================================================== */
   window.openAddMaterialModal = function() {
     var currentRole = localStorage.getItem('lab_user_role');
@@ -339,7 +339,8 @@
       return;
     }
     
-    // Quét toàn bộ cơ sở dữ liệu hiện tại để trích xuất danh sách giá trị sẵn có
+    // Xây dựng kho dữ liệu tra cứu từ cơ sở dữ liệu hiện có (Mã VT -> {ten, part})
+    window._materialDict = {};
     var setMaVT = new Set();
     var setPartNum = new Set();
     var setTenVT = new Set();
@@ -349,9 +350,16 @@
         (s.blocks || []).forEach(function(b) {
           (b.rows || []).forEach(function(r) {
             if (r.v) {
-              if (r.v[1]) setMaVT.add(String(r.v[1]).trim());
-              if (r.v[2]) setTenVT.add(String(r.v[2]).trim());
-              if (r.v[4]) setPartNum.add(String(r.v[4]).trim());
+              var ma = String(r.v[1] || '').trim();
+              var ten = String(r.v[2] || '').trim();
+              var part = String(r.v[4] || '').trim();
+
+              if (ma) {
+                setMaVT.add(ma);
+                window._materialDict[ma.toLowerCase()] = { ten: ten, part: part };
+              }
+              if (ten) setTenVT.add(ten);
+              if (part) setPartNum.add(part);
             }
           });
         });
@@ -373,19 +381,19 @@
             <form id="formAddMat" onsubmit="window.handleSaveNewMaterial(event)">
               <label class="fld">
                 <span>Mã vật tư (Mã VT):</span>
-                <input type="text" id="newMaVT" list="listMaVT" placeholder="Chọn từ danh sách hoặc nhập mới..." required>
+                <input type="text" id="newMaVT" list="listMaVT" placeholder="Chọn hoặc nhập mã VT..." oninput="window.handleMaVTChange(this.value)" required>
                 <datalist id="listMaVT">${optMaVT}</datalist>
               </label>
 
               <label class="fld">
                 <span>Tên vật tư:</span>
-                <input type="text" id="newTenVT" list="listTenVT" placeholder="Chọn từ danh sách hoặc nhập mới..." required>
+                <input type="text" id="newTenVT" list="listTenVT" placeholder="Tên vật tư sẽ đồng bộ theo mã VT..." required>
                 <datalist id="listTenVT">${optTenVT}</datalist>
               </label>
 
               <label class="fld">
                 <span>Part Number:</span>
-                <input type="text" id="newPartNum" list="listPartNum" placeholder="Chọn từ danh sách hoặc nhập mới...">
+                <input type="text" id="newPartNum" list="listPartNum" placeholder="Part number sẽ đồng bộ theo mã VT...">
                 <datalist id="listPartNum">${optPartNum}</datalist>
               </label>
 
@@ -405,6 +413,19 @@
     var div = document.createElement('div');
     div.innerHTML = modalHTML;
     document.body.appendChild(div);
+  };
+
+  // Hàm tự động đồng bộ Tên vật tư và Part Number khi người dùng chọn/nhập Mã VT
+  window.handleMaVTChange = function(val) {
+    if (!window._materialDict) return;
+    var key = String(val || '').trim().toLowerCase();
+    var found = window._materialDict[key];
+    if (found) {
+      var tenInput = document.getElementById('newTenVT');
+      var partInput = document.getElementById('newPartNum');
+      if (tenInput && found.ten) tenInput.value = found.ten;
+      if (partInput && found.part) partInput.value = found.part;
+    }
   };
 
   window.handleSaveNewMaterial = function(e) {
@@ -486,7 +507,7 @@
       }
     }
 
-    // Dự phòng cuối cùng: Đưa vào khối đầu tiên nếu hoàn toàn không dò thấy từ khóa phù hợp
+    // Dự phòng cuối cùng: Đưa vào khối đầu tiên nếu không dò thấy từ khóa phù hợp
     if (!targetBlock && sheets.length > 0 && sheets[0].blocks.length > 0) {
       targetSheet = sheets[0];
       targetBlock = sheets[0].blocks[0];
