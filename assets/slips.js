@@ -1,6 +1,6 @@
 /* =====================================================================
    slips.js – PHIẾU XUẤT KHO (Mẫu số 02 VT-DN), PHIẾU NHẬP KHO (Mẫu số 1 VT-DN)
-   & BIÊN BẢN NGHIỆM THU, BÀN GIAO (BM-KTTC001) kèm mã QR
+   & BIÊN BẢN NGHIỆM THU, BÀN GIAO (BM-KTTC001) kèm mã QR & tuỳ chỉnh linh hoạt
    ===================================================================== */
 (function () {
   'use strict';
@@ -67,8 +67,13 @@
 .bbbg-tbl th,.bbbg-tbl td{border:1px solid #000;padding:6px 5px;vertical-align:middle}
 .bbbg-tbl th{font-weight:700;text-align:center;text-transform:uppercase;font-size:10.5pt}
 .bbbg-tbl td.c{text-align:center}
-.bbbg-sign{display:grid;grid-template-columns:1fr 1fr;text-align:center;margin-top:18px;font-weight:700;font-size:11.5pt}
-.bbbg-sign .space{height:28mm}
+
+/* Chữ ký chuẩn theo mẫu ảnh mới */
+.bbbg-sign-tbl{width:100%;border-collapse:collapse;margin-top:20px;font-size:10.5pt;text-align:center}
+.bbbg-sign-tbl th,.bbbg-sign-tbl td{border:1px solid #000;padding:6px 4px;vertical-align:middle}
+.bbbg-sign-tbl th{font-weight:700;text-transform:uppercase;background:#fff}
+.bbbg-sign-tbl .role-cell{font-weight:700;font-size:10pt}
+.bbbg-sign-tbl .name-cell{font-weight:700;height:24mm;vertical-align:bottom;padding-bottom:6px}
 
 @media print{
   body.print-slip>*:not(#printRoot){display:none !important}
@@ -534,6 +539,8 @@
       ngayToTrinh: '20/8/' + today[0],
       veViec: 'lắp đặt kết nối antenna GPS thiết bị IPCLK 3000, đo kiểm tín hiệu',
       taiDonVi: 'Đài VT HNI',
+      
+      // Khối đại diện linh hoạt
       benGiaoTitle: 'I - ĐẠI DIỆN BÊN GIAO: XVT',
       giao1Ten: 'Thân Phụng Trí',
       giao1ChucVu: 'Phó Trưởng Xưởng VT',
@@ -544,8 +551,26 @@
       nhan1ChucVu: 'Trưởng Đài VT HNI',
       nhan2Ten: 'Nguyễn Thị Vân Anh',
       nhan2ChucVu: 'Trạm VT Phạm Hùng',
+      
       diaDiemLapDat: 'Rack H2-2 Phòng máy tầng 5 Trạm PHG- 30 Đường Phạm Hùng- HNI',
-      soHieuCongTrinh: '26.00717.BBHT.13002'
+      soHieuCongTrinh: '26.00717.BBHT.13002',
+
+      // Chữ ký cuối bảng chuẩn theo ảnh mẫu mới (có thể chỉnh sửa danh hiệu cột)
+      signCol1Title: 'NGƯỜI GIAO',
+      signCol1Sub: 'CBKT Xưởng VT',
+      signCol1Name: 'Nguyễn Chí Thanh',
+
+      signCol2Title: 'P.TRƯỞNG X.VT',
+      signCol2Sub: 'Phó Trưởng Xưởng VT',
+      signCol2Name: 'Thân Phụng Trí',
+
+      signCol3Title: 'NGƯỜI NHẬN',
+      signCol3Sub: 'Trạm VT Phạm Hùng',
+      signCol3Name: 'Nguyễn Thị Vân Anh',
+
+      signCol4Title: 'NGƯỜI NHẬN',
+      signCol4Sub: 'Trưởng Đài VT HNI',
+      signCol4Name: 'Nguyễn Minh Trường'
     };
   }
 
@@ -604,10 +629,27 @@
       '</table>' +
       '<div class="bbbg-p" style="text-indent:12mm"><b>(Số hiệu công trình): ' + esc(bb.soHieuCongTrinh) + '</b></div>' +
       '<div class="bbbg-p" style="margin-top:10px;text-indent:12mm">Toàn bộ vật tư, thiết bị trên đã được lắp đặt hoàn thành và đưa vào sử dụng. Biên bản được lập thành 2 bản, có giá trị như nhau. Mỗi bên giữ 01 bản ./.</div>' +
-      '<div class="bbbg-sign">' +
-        '<div>ĐẠI DIỆN BÊN GIAO<div class="space"></div></div>' +
-        '<div>ĐẠI DIỆN BÊN NHẬN<div class="space"></div></div>' +
-      '</div>' +
+      
+      /* Bảng chữ ký chuẩn theo ảnh mẫu mới */
+      '<table class="bbbg-sign-tbl">' +
+        '<thead>' +
+          '<tr><th colspan="2">BÊN GIAO</th><th colspan="2">BÊN NHẬN</th></tr>' +
+        '</thead>' +
+        '<tbody>' +
+          '<tr>' +
+            '<td style="width:25%" class="role-cell">' + esc(bb.signCol1Title) + '</td>' +
+            '<td style="width:25%" class="role-cell">' + esc(bb.signCol2Title) + '</td>' +
+            '<td style="width:25%" class="role-cell">' + esc(bb.signCol3Title) + '</td>' +
+            '<td style="width:25%" class="role-cell">' + esc(bb.signCol4Title) + '</td>' +
+          '</tr>' +
+          '<tr>' +
+            '<td class="name-cell"><b>' + esc(bb.signCol1Name) + '</b></td>' +
+            '<td class="name-cell"><b>' + esc(bb.signCol2Name) + '</b></td>' +
+            '<td class="name-cell"><b>' + esc(bb.signCol3Name) + '</b></td>' +
+            '<td class="name-cell"><b>' + esc(bb.signCol4Name) + '</b></td>' +
+          '</tr>' +
+        '</tbody>' +
+      '</table>' +
     '</div>';
   }
 
@@ -635,10 +677,26 @@
         '<input type="text" data-bb="' + k + '" value="' + esc(bb[k] || '') + '" autocomplete="off"></label>';
     }
 
+    var items = D && D.items ? D.items : [];
+    var itemRowsHTML = items.map(function(it, idx) {
+      return '<tr data-bb-item-idx="' + idx + '">' +
+        '<td class="c">' + (idx + 1) + '</td>' +
+        '<td><input type="text" data-bbi-code="' + idx + '" value="' + esc(it.code || '') + '"></td>' +
+        '<td><input type="text" data-bbi-name="' + idx + '" value="' + esc(it.name || '') + '"></td>' +
+        '<td><input type="text" data-bbi-serial="' + idx + '" value="' + esc(it.serial || '') + '"></td>' +
+        '<td><input type="text" data-bbi-unit="' + idx + '" value="' + esc(it.unit || 'Cái') + '"></td>' +
+        '<td><input type="number" data-bbi-qty="' + idx + '" value="' + esc(it.qty || '1') + '" style="width:60px"></td>' +
+        '<td><input type="text" data-bbi-note="' + idx + '" value="' + esc(it.note || '') + '"></td>' +
+        '<td class="c"><button type="button" class="ico del" data-bb-del-item="' + idx + '" title="Xoá dòng">✕</button></td>' +
+      '</tr>';
+    }).join('');
+
     md.innerHTML =
-      '<div class="modal-back pk-back"><div class="modal" role="dialog" aria-modal="true" aria-label="Biên bản nghiệm thu bàn giao">' +
-      '<div class="modal-head"><h2>📄 Biên bản nghiệm thu, bàn giao (BM-KTTC001)</h2><button class="modal-x" data-bb-close aria-label="Đóng">✕</button></div>' +
-      '<div class="modal-body">' +
+      '<div class="modal-back pk-back"><div class="modal" role="dialog" aria-modal="true" aria-label="Biên bản nghiệm thu bàn giao" style="max-width:920px">' +
+      '<div class="modal-head"><h2>📄 Biên bản nghiệm thu, bàn giao (BM-KTTC001) – Tùy chỉnh linh hoạt</h2><button class="modal-x" data-bb-close aria-label="Đóng">✕</button></div>' +
+      '<div class="modal-body" style="max-height:72vh;overflow-y:auto">' +
+        
+        '<h3 style="margin-top:0;color:var(--brand);font-size:14px">1. Thông tin chung & Nội dung biên bản</h3>' +
         '<div class="sl-form">' +
           bInp('formCode', 'Mã biểu mẫu') +
           bInp('donViChuQuan', 'Đơn vị chủ quản') +
@@ -654,28 +712,52 @@
           bInp('diaDiemLapDat', 'Địa điểm lắp đặt chi tiết', true) +
           bInp('soHieuCongTrinh', 'Số hiệu công trình', true) +
         '</div>' +
-        '<h4 style="margin:10px 0 6px;color:var(--brand)">I. Đại diện Bên giao</h4>' +
+
+        '<h3 style="margin:14px 0 6px;color:var(--brand);font-size:14px">2. Đại diện Bên Giao & Bên Nhận</h3>' +
         '<div class="sl-form">' +
           bInp('benGiaoTitle', 'Tiêu đề bên giao', true) +
           bInp('giao1Ten', 'Ông (Bà) 1 - Họ tên') +
           bInp('giao1ChucVu', 'Ông (Bà) 1 - Đơn vị / Chức vụ') +
           bInp('giao2Ten', 'Ông (Bà) 2 - Họ tên') +
           bInp('giao2ChucVu', 'Ông (Bà) 2 - Đơn vị / Chức vụ') +
-        '</div>' +
-        '<h4 style="margin:10px 0 6px;color:var(--brand)">II. Đại diện Bên nhận</h4>' +
-        '<div class="sl-form">' +
           bInp('benNhanTitle', 'Tiêu đề bên nhận', true) +
           bInp('nhan1Ten', 'Ông (Bà) 1 - Họ tên') +
           bInp('nhan1ChucVu', 'Ông (Bà) 1 - Đơn vị / Chức vụ') +
           bInp('nhan2Ten', 'Ông (Bà) 2 - Họ tên') +
           bInp('nhan2ChucVu', 'Ông (Bà) 2 - Đơn vị / Chức vụ') +
         '</div>' +
-        '<p class="src" style="margin-top:8px">* Bảng vật tư trong Biên bản bàn giao sẽ tự động lấy toàn bộ <b>' + (D.items ? D.items.length : 0) + ' vật tư</b> đang có trong phiếu này.</p>' +
+
+        '<h3 style="margin:14px 0 6px;color:var(--brand);font-size:14px">3. Danh sách vật tư trong BBBG (Có thể thêm dòng hoặc chỉnh sửa trực tiếp)</h3>' +
+        '<div style="margin-bottom:8px"><button type="button" class="tbtn primary" data-bb-add-item>＋ Thêm dòng vật tư vào BBBG</button></div>' +
+        '<div style="overflow-x:auto"><table class="p-tbl" style="font-size:9.5pt">' +
+          '<thead><tr><th style="width:5%">TT</th><th style="width:18%">Mã vật tư</th><th style="width:26%">Tên vật tư</th><th style="width:16%">Serial</th><th style="width:8%">Đ/V</th><th style="width:8%">SL</th><th style="width:15%">Ghi chú</th><th style="width:4%"></th></tr></thead>' +
+          '<tbody>' + itemRowsHTML + '</tbody>' +
+        '</table></div>' +
+
+        '<h3 style="margin:16px 0 6px;color:var(--brand);font-size:14px">4. Thông tin Chữ ký cuối biên bản (Theo mẫu ảnh mới)</h3>' +
+        '<div class="sl-form">' +
+          bInp('signCol1Title', 'Cột 1 - Chức danh / Vai trò (VD: NGƯỜI GIAO)') +
+          bInp('signCol1Sub', 'Cột 1 - Đơn vị phụ') +
+          bInp('signCol1Name', 'Cột 1 - Họ tên') +
+
+          bInp('signCol2Title', 'Cột 2 - Chức danh / Vai trò (VD: P.TRƯỞNG X.VT)') +
+          bInp('signCol2Sub', 'Cột 2 - Đơn vị phụ') +
+          bInp('signCol2Name', 'Cột 2 - Họ tên') +
+
+          bInp('signCol3Title', 'Cột 3 - Chức danh / Vai trò (VD: NGƯỜI NHẬN)') +
+          bInp('signCol3Sub', 'Cột 3 - Đơn vị phụ') +
+          bInp('signCol3Name', 'Cột 3 - Họ tên') +
+
+          bInp('signCol4Title', 'Cột 4 - Chức danh / Vai trò (VD: NGƯỜI NHẬN)') +
+          bInp('signCol4Sub', 'Cột 4 - Đơn vị phụ') +
+          bInp('signCol4Name', 'Cột 4 - Họ tên') +
+        '</div>' +
+
       '</div>' +
       '<div class="modal-foot">' +
         '<button class="tbtn" data-bb-preview>👁 Xem trước & In BBBG</button>' +
         '<span class="sp"></span>' +
-        '<button class="tbtn primary" data-bb-save>💾 Lưu nội dung BBBG</button>' +
+        '<button class="tbtn primary" data-bb-save>💾 Lưu nội dung BBBG vào phiếu</button>' +
         '<button class="tbtn" data-bb-close>Đóng</button>' +
       '</div>' +
       '</div></div>';
@@ -1139,16 +1221,6 @@
     } else { if (A && A.toast) A.toast('Chưa tải được thư viện Excel (cần Internet) – xuất CSV thay thế.', 4000); if (A && A.download) A.download(name + '.csv', 'text/csv;charset=utf-8', A.toCSV(aoa)); }
   }
 
-  function extraSheets() {
-    return ['xuat', 'nhap'].map(function (t) {
-      var aoa = [['Số phiếu', 'Ngày', t === 'xuat' ? 'Đơn vị nhận' : 'Đơn vị bán', t === 'xuat' ? 'Xuất dùng cho' : 'Theo hợp đồng', 'Xuất/Nhập tại kho', 'TT', 'Mã vật tư', 'Tên vật tư', 'Serial No', 'Part Number', 'Mã lô hàng', 'Chất lượng', 'ĐVT', 'SL', 'Đơn giá', 'Danh mục', 'Ghi chú']];
-      slips(t).forEach(function (s) {
-        (s.items || []).forEach(function (it, i) { aoa.push([s.id, fmtDate(s.date), (s.f || {}).donVi || '', t === 'xuat' ? (s.f || {}).dungCho || '' : (s.f || {}).hopDong || '', (s.f || {}).kho || '', i + 1, it.code || '', it.name || '', it.serial || '', it.part || '', it.lot || '', it.quality || '', it.unit || '', num(it.qty), num(it.price), t === 'xuat' ? (it.cat || '') : catLabel(it.sid, it.bi, it.bt), it.note || '']); });
-      });
-      return { name: TYPES[t].plural, aoa: aoa };
-    }).filter(function (x) { return x.aoa.length > 1; });
-  }
-
   function listRows(type) {
     var tk = A && A.tokensOf ? A.tokensOf(LQ[type] || '') : [];
     var arr = slips(type).slice().sort(function (a, b) { return (b.date || '').localeCompare(a.date || '') || String(b.createdAt || '').localeCompare(String(b.createdAt || '')); });
@@ -1206,6 +1278,15 @@
         BBBG[t.dataset.bb] = t.value;
         return;
       }
+      if (BBBG) {
+        var idx;
+        if ((idx = t.dataset.bbiCode) !== undefined) { if (D && D.items[+idx]) D.items[+idx].code = t.value; return; }
+        if ((idx = t.dataset.bbiName) !== undefined) { if (D && D.items[+idx]) D.items[+idx].name = t.value; return; }
+        if ((idx = t.dataset.bbiSerial) !== undefined) { if (D && D.items[+idx]) D.items[+idx].serial = t.value; return; }
+        if ((idx = t.dataset.bbiUnit) !== undefined) { if (D && D.items[+idx]) D.items[+idx].unit = t.value; return; }
+        if ((idx = t.dataset.bbiQty) !== undefined) { if (D && D.items[+idx]) D.items[+idx].qty = t.value; return; }
+        if ((idx = t.dataset.bbiNote) !== undefined) { if (D && D.items[+idx]) D.items[+idx].note = t.value; return; }
+      }
       if (!D) return;
       if (t.dataset.fld !== undefined) { D.f[t.dataset.fld] = t.value; D.dirty = true; }
       else if (t.dataset.top !== undefined) {
@@ -1254,6 +1335,15 @@
       if (t.closest('[data-pick]')) { openPicker(); return; }
       if (t.closest('[data-open-bbbg]')) { openBBBGModal(); return; }
       if (t.closest('[data-bb-close]')) { closeBBBGModal(); return; }
+      if (t.closest('[data-bb-add-item]')) {
+        if (D) { D.items.push({ code: '', name: '', serial: '', unit: 'Cái', qty: 1, note: '' }); renderBBBGModal(); }
+        return;
+      }
+      if ((b = t.closest('[data-bb-del-item]'))) {
+        var idx = +b.dataset.bbDelItem;
+        if (D && D.items) { D.items.splice(idx, 1); renderBBBGModal(); }
+        return;
+      }
       if (t.closest('[data-bb-save]')) {
         if (D && BBBG) {
           D.bbbg = clone(BBBG);
