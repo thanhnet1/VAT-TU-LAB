@@ -1400,6 +1400,6 @@
       if (modalRoot) modalRoot.innerHTML = '<div id="mdEditor"></div><div id="mdPicker"></div><div id="mdBBBG"></div><div id="mdView"></div>'; 
       bind(); 
     },
-    listHTML: listHTML, openEditor: openEditor, view: openView, extraSheets: extraSheets, docSo: docSo, _paperHTML: paperHTML, _qrPayload: qrPayload
+    listHTML: listHTML, openEditor: openEditor, view: openView, docSo: docSo, _paperHTML: paperHTML, _qrPayload: qrPayload
   };
 })();
