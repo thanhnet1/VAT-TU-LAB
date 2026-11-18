@@ -540,7 +540,6 @@
       veViec: 'lắp đặt kết nối antenna GPS thiết bị IPCLK 3000, đo kiểm tín hiệu',
       taiDonVi: 'Đài VT HNI',
       
-      // Khối đại diện linh hoạt
       benGiaoTitle: 'I - ĐẠI DIỆN BÊN GIAO: XVT',
       giao1Ten: 'Thân Phụng Trí',
       giao1ChucVu: 'Phó Trưởng Xưởng VT',
@@ -555,7 +554,6 @@
       diaDiemLapDat: 'Rack H2-2 Phòng máy tầng 5 Trạm PHG- 30 Đường Phạm Hùng- HNI',
       soHieuCongTrinh: '26.00717.BBHT.13002',
 
-      // Chữ ký cuối bảng chuẩn theo ảnh mẫu mới (có thể chỉnh sửa danh hiệu cột)
       signCol1Title: 'NGƯỜI GIAO',
       signCol1Sub: 'CBKT Xưởng VT',
       signCol1Name: 'Nguyễn Chí Thanh',
@@ -630,7 +628,6 @@
       '<div class="bbbg-p" style="text-indent:12mm"><b>(Số hiệu công trình): ' + esc(bb.soHieuCongTrinh) + '</b></div>' +
       '<div class="bbbg-p" style="margin-top:10px;text-indent:12mm">Toàn bộ vật tư, thiết bị trên đã được lắp đặt hoàn thành và đưa vào sử dụng. Biên bản được lập thành 2 bản, có giá trị như nhau. Mỗi bên giữ 01 bản ./.</div>' +
       
-      /* Bảng chữ ký chuẩn theo ảnh mẫu mới */
       '<table class="bbbg-sign-tbl">' +
         '<thead>' +
           '<tr><th colspan="2">BÊN GIAO</th><th colspan="2">BÊN NHẬN</th></tr>' +
@@ -1280,12 +1277,12 @@
       }
       if (BBBG) {
         var idx;
-        if ((idx = t.dataset.bbiCode) !== undefined) { if (D && D.items[+idx]) D.items[+idx].code = t.value; return; }
-        if ((idx = t.dataset.bbiName) !== undefined) { if (D && D.items[+idx]) D.items[+idx].name = t.value; return; }
-        if ((idx = t.dataset.bbiSerial) !== undefined) { if (D && D.items[+idx]) D.items[+idx].serial = t.value; return; }
-        if ((idx = t.dataset.bbiUnit) !== undefined) { if (D && D.items[+idx]) D.items[+idx].unit = t.value; return; }
-        if ((idx = t.dataset.bbiQty) !== undefined) { if (D && D.items[+idx]) D.items[+idx].qty = t.value; return; }
-        if ((idx = t.dataset.bbiNote) !== undefined) { if (D && D.items[+idx]) D.items[+idx].note = t.value; return; }
+        if (t.dataset.bbiCode !== undefined) { idx = +t.dataset.bbiCode; if (D && D.items[idx]) D.items[idx].code = t.value; return; }
+        if (t.dataset.bbiName !== undefined) { idx = +t.dataset.bbiName; if (D && D.items[idx]) D.items[idx].name = t.value; return; }
+        if (t.dataset.bbiSerial !== undefined) { idx = +t.dataset.bbiSerial; if (D && D.items[idx]) D.items[idx].serial = t.value; return; }
+        if (t.dataset.bbiUnit !== undefined) { idx = +t.dataset.bbiUnit; if (D && D.items[idx]) D.items[idx].unit = t.value; return; }
+        if (t.dataset.bbiQty !== undefined) { idx = +t.dataset.bbiQty; if (D && D.items[idx]) D.items[idx].qty = t.value; return; }
+        if (t.dataset.bbiNote !== undefined) { idx = +t.dataset.bbiNote; if (D && D.items[idx]) D.items[idx].note = t.value; return; }
       }
       if (!D) return;
       if (t.dataset.fld !== undefined) { D.f[t.dataset.fld] = t.value; D.dirty = true; }
@@ -1336,7 +1333,7 @@
       if (t.closest('[data-open-bbbg]')) { openBBBGModal(); return; }
       if (t.closest('[data-bb-close]')) { closeBBBGModal(); return; }
       if (t.closest('[data-bb-add-item]')) {
-        if (D) { D.items.push({ code: '', name: '', serial: '', unit: 'Cái', qty: 1, note: '' }); renderBBBGModal(); }
+        if (D) { if(!D.items) D.items = []; D.items.push({ code: '', name: '', serial: '', unit: 'Cái', qty: 1, note: '' }); renderBBBGModal(); }
         return;
       }
       if ((b = t.closest('[data-bb-del-item]'))) {
