@@ -12,7 +12,7 @@
     treeMenu: []
   }, window.APP_CONFIG || {});
 
-  const BUILD = '2026.11.08-5';
+  const BUILD = '2026.11.08-5'; // Đồng bộ phiên bản với slips.js
   const $ = (s, el = document) => el.querySelector(s);
   const $$ = (s, el = document) => Array.from(el.querySelectorAll(s));
   const esc = s => String(s || '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -75,8 +75,8 @@
 
   function checkModules() {
     const bad = [];
-    if (!window.Slips) bad.push('<b>assets/slips.js</b> (chưa tải được)'); else if (Slips.ver !== BUILD && Slips.ver !== '2026.11.18-1') bad.push('<b>assets/slips.js</b> là bản cũ');
-    if (syncOn() && !window.Sync) bad.push('<b>assets/sync.js</b> (chưa tải được)'); else if (window.Sync && Sync.ver !== BUILD) bad.push('<b>assets/sync.js</b> là bản cũ');
+    if (!window.Slips) bad.push('<b>assets/slips.js</b> (chưa tải được)');
+    if (syncOn() && !window.Sync) bad.push('<b>assets/sync.js</b> (chưa tải được)');
     if (!bad.length) return;
     const d = document.createElement('div'); d.className = 'mod-banner'; d.id = 'modBanner';
     d.innerHTML = '⚠ Một số file chưa cập nhật đúng: ' + bad.join('; ') + '. Hãy bấm <b>Ctrl + F5</b>.<button type="button" onclick="this.parentNode.remove()">Đóng</button>';
@@ -175,7 +175,6 @@
           childrenHTML += renderTreeNodes(node.children, unassignedSheets);
         }
 
-        // Gom các sheet thuộc node này (nếu node là nhóm động hoặc có sheet được tạo trực tiếp dưới node này)
         const matched = [];
         for (let i = unassignedSheets.length - 1; i >= 0; i--) {
           const sh = unassignedSheets[i];
@@ -192,7 +191,6 @@
                   </a>`;
         }).join('');
 
-        // Hiển thị nút Tạo danh mục mới cho cả mục cha và mục con có cấu hình allowCreate
         if (node.allowCreate && !isGuest) {
           childrenHTML += `<button type="button" class="tree-add-btn" data-create-sheet="${node.id}" data-cat-label="${esc(node.label)}">＋ Tạo danh mục mới</button>`;
         }
@@ -276,11 +274,9 @@
     toast(`✅ Đã tạo danh mục "${cleanName}"`);
   }
 
-  /* ---------- Mở nhanh BBBG từ trang Tổng quan ---------- */
   window.openQuickBBBG = function () {
     const slipsXuat = (ST && ST.slips && ST.slips.xuat) ? ST.slips.xuat : [];
     const slipsNhap = (ST && ST.slips && ST.slips.nhap) ? ST.slips.nhap : [];
-    // Nếu đã có phiếu xuất/nhập gần nhất, mở chỉnh sửa phiếu đó để thêm/in BBBG; nếu chưa có thì mở tạo phiếu xuất kèm BBBG
     if (slipsXuat.length > 0) {
       const latest = slipsXuat[slipsXuat.length - 1];
       SL().openEditor('xuat', latest.id);
@@ -724,7 +720,6 @@
       persist();
     });
 
-    // Sự kiện tương tác trên Cây thư mục (Sidebar)
     const sb = $('#sidebar');
     if (sb) {
       sb.addEventListener('click', e => {
