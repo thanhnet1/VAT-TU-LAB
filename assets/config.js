@@ -18,7 +18,7 @@ window.APP_CONFIG = {
     'Vật tư rời / không rõ nguồn / đo kiểm'
   ],
 
-  // ====== CÂU HÌNH CÂY THƯ MỤC ĐA CẤP (Theo sơ đồ mẫu) ======
+  // ====== CẤU HÌNH CÂY THƯ MỤC ĐA CẤP (Đã bật nút tạo danh mục mới cho các nhóm) ======
   treeMenu: [
     {
       id: 'kho',
@@ -34,11 +34,13 @@ window.APP_CONFIG = {
       id: 'truyen-dan',
       label: 'Truyền dẫn',
       icon: '📡',
+      allowCreate: true,
       children: [
         {
           id: 'td-he-thong',
           label: 'Thiết bị theo hệ thống',
           isDynamicGroup: true,
+          allowCreate: true,
           matchKeywords: ['xtc', 'mtc', 'ciena', 'ome', 'nokia', 'bb1', 'pss', 'hw', '3500', '7520', '6800', '8800', 'alu', '1850', '1830', '1660', '1662', '9800', 'ericson', 'ericsson'],
           defaultGroup: 0
         }
@@ -48,6 +50,7 @@ window.APP_CONFIG = {
       id: 'thiet-bi-ip',
       label: 'Thiết bị IP',
       icon: '🌐',
+      allowCreate: true,
       children: [
         {
           id: 'ip-he-thong',
@@ -71,6 +74,7 @@ window.APP_CONFIG = {
       label: 'Thiết bị VSAT',
       icon: '🛰️',
       isDynamicGroup: true,
+      allowCreate: true,
       matchKeywords: ['vsat', 've tinh', 'vệ tinh']
     },
     {
@@ -78,6 +82,7 @@ window.APP_CONFIG = {
       label: 'Vật tư đo kiểm',
       icon: '🛠️',
       isDynamicGroup: true,
+      allowCreate: true,
       matchKeywords: ['do kiem', 'đo kiểm', 'may do', 'máy đo', 'otdr', 'exfo', 'anritsu', 'viavi', 'vat tu roi', 'vật tư rời'],
       defaultGroup: 1
     },
@@ -93,6 +98,7 @@ window.APP_CONFIG = {
       label: 'Tài sản',
       icon: '🏢',
       isDynamicGroup: true,
+      allowCreate: true,
       matchKeywords: ['tai san', 'tài sản', 'ccdc', 'tscd']
     }
   ],
@@ -125,14 +131,14 @@ window.APP_CONFIG = {
     provider: 'firebase',
     workspace: 'lab-xvt',
     firebase: {
-    apiKey: "AIzaSyAzE8Eb7Jd2j2FTt6nVw3gJ57ENBV-soeA",
-    authDomain: "minigame-8a94c.firebaseapp.com",
-    databaseURL: "https://minigame-8a94c-default-rtdb.asia-southeast1.firebasedatabase.app",
-    projectId: "minigame-8a94c",
-    storageBucket: "minigame-8a94c.firebasestorage.app",
-    messagingSenderId: "604735984087",
-    appId: "1:604735984087:web:83b5926e168efb02c6bb92",
-    measurementId: "G-4FXBFBE74T"
+      apiKey: "AIzaSyAzE8Eb7Jd2j2FTt6nVw3gJ57ENBV-soeA",
+      authDomain: "minigame-8a94c.firebaseapp.com",
+      databaseURL: "https://minigame-8a94c-default-rtdb.asia-southeast1.firebasedatabase.app",
+      projectId: "minigame-8a94c",
+      storageBucket: "minigame-8a94c.firebasestorage.app",
+      messagingSenderId: "604735984087",
+      appId: "1:604735984087:web:83b5926e168efb02c6bb92",
+      measurementId: "G-4FXBFBE74T"
     }
   },
 
