@@ -1047,43 +1047,7 @@ window.LAB_DATA = {
   ]
 };
 {
-    // =========================================================================
-    // THƯ MỤC 15: HÀNG TỒN KHO (Từ file BAOCAO_20261109_Tồn XVT 09-11.xlsx - 142 dòng)
-    // =========================================================================
-    {
-      "id": "hang-ton-kho",
-      "name": "Hàng tồn kho (09/11/2026)",
-      "group": 1,
-      "blocks": [
-        {
-          "title": "Danh mục Hàng Tồn Kho (Báo cáo XVT 09/11/2026)",
-          "hr": 2,
-          "cols": ["STT", "Mã VT", "Tên VT", "Serial No", "Part Number", "Ghi chú"],
-          "rows": [
-            {"r":1,"c":true,"v":["1","33.02.04.99.04","Phiến Krone","","KRONE","Mới | SL: 48 Cái | Cập nhật QL SERIAL Cập nhật hãng sx"]},
-            {"r":2,"c":true,"v":["2","22.06.03.01.05","SM 1000 (SWITCH MODULE)","","NTK715BA","Mới | SL: 2 Cái"]},
-            {"r":3,"c":true,"v":["3","22.04.04.08.02","MCA4","","TN11MCA401","Mới | SL: 1 Cái"]},
-            {"r":4,"c":true,"v":["4","22.06.03.07.01","OTN SWITCH MODULE","","OXM-X10","Mới | SL: 1 Cái"]},
-            {"r":5,"c":true,"v":["5","22.06.04.07.01","XTC-10 TIMING SYNCHRONIZATION MODULE.","","TSM-X10","Mới | SL: 1 Cái | Cập nhật QL SERIAL Cập nhật hãng sx"]},
-            {"r":6,"c":true,"v":["6","22.05.02.03.05","EC320","14961|DK5798","3AL92110AA","Mới | SL: 1 Cái"]},
-            {"r":7,"c":true,"v":["7","42.10.17.01.00","Lưỡi cưa lọng (loại cưa sắt, Bosch)","","KXD","Mới | SL: 10 Vỉ | Đồng bộ vật tư QLTS"]},
-            {"r":8,"c":true,"v":["8","20.05.02.09.01","Adapter 24V - 6.25A, EA11503B","","EA11503B","Mới | SL: 2 Cái"]},
-            {"r":9,"c":true,"v":["9","24.02.03.05.06","ASR-9010-FAN-V2","","ASR-9010-FAN-V2","SC tốt | SL: 2 Cái"]},
-            {"r":10,"c":true,"v":["10","24.01.04.06.06","PWR-MX960-4100-DC-BB","","740-029344","SC tốt | SL: 1 Cái"]},
-            {"r":11,"c":true,"v":["11","22.05.02.03.05","EC320","","3AL92110AA","Hư hỏng | SL: 1 Cái | Đồng bộ vật tư QLTS"]},
-            {"r":12,"c":true,"v":["12","22.05.06.03.01","FAN320","","8DG90031AB","Hư hỏng | SL: 1 Cái"]},
-            {"r":13,"c":true,"v":["13","33.02.02.02.02","RADIO 4415 B3","","KRC161637/1","Hư hỏng | SL: 1 Cái"]},
-            {"r":14,"c":true,"v":["14","33.02.01.08.03","FAN","","2120577.0","Hư hỏng | SL: 1 Cái"]},
-            {"r":15,"c":true,"v":["15","33.02.02.02.26","Radio 4499 44B1 44B3","","KRC161787/1","Hư hỏng | SL: 1 Cái"]}
-            // ... [Chèn tiếp các dòng 16 -> 142 từ file BAOCAO_20261109_Tồn XVT 09-11.xlsx theo cùng định dạng] ...
-          ]
-        }
-      ]
-    };
-   {
-   // =========================================================================
-    // THƯ MỤC 16: TỒN KHO XVT 26/10/2026 (Từ file Tồn kho XVT-26-10-2026.xlsx - 145 dòng)
-    // =========================================================================
+    
     {
       "id": "ton-kho-xvt-26-10-2026",
       "name": "Tồn kho XVT (26/10/2026)",
@@ -1104,6 +1068,7 @@ window.LAB_DATA = {
             {"r":8,"c":true,"v":["8","22.51.06.01.00","ODU IP-20C, băng tần 15GHz, tần số f'8-f'15, độ rộng kênh 28MHz","E342926154","","SL: 1 chiếc"]},
             {"r":9,"c":true,"v":["9","24.02.04.08.03","NE40E-X8A POWER SUPPLY SYSTEM B","2102311CNPLUH8000230","","SL: 1 Cái"]},
             {"r":10,"c":true,"v":["10","20.05.02.09.01","Adapter 24V - 6.25A, EA11503B","","","SL: 2 Cái"]}
+ 
    "id": "ton-kho-xvt-26-10-2026",
    "name": "Tồn kho XVT (26/10/2026)",
    "group": 1,
