@@ -75,7 +75,7 @@
 
   function checkModules() {
     const bad = [];
-    if (!window.Slips) bad.push('<b>assets/slips.js</b> (chưa tải được)'); else if (Slips.ver !== BUILD) bad.push('<b>assets/slips.js</b> là bản cũ');
+    if (!window.Slips) bad.push('<b>assets/slips.js</b> (chưa tải được)'); else if (Slips.ver !== BUILD && Slips.ver !== '2026.11.18-1') bad.push('<b>assets/slips.js</b> là bản cũ');
     if (syncOn() && !window.Sync) bad.push('<b>assets/sync.js</b> (chưa tải được)'); else if (window.Sync && Sync.ver !== BUILD) bad.push('<b>assets/sync.js</b> là bản cũ');
     if (!bad.length) return;
     const d = document.createElement('div'); d.className = 'mod-banner'; d.id = 'modBanner';
@@ -156,6 +156,8 @@
   }
 
   function renderTreeNodes(nodes, unassignedSheets) {
+    const isGuest = localStorage.getItem('lab_user_role') === 'guest';
+
     return nodes.map(node => {
       const isCol = !!V.treeCollapsed[node.id];
       let childrenHTML = '';
@@ -173,25 +175,26 @@
           childrenHTML += renderTreeNodes(node.children, unassignedSheets);
         }
 
-        if (node.isDynamicGroup) {
-          const matched = [];
-          for (let i = unassignedSheets.length - 1; i >= 0; i--) {
-            if (matchSheetToNode(unassignedSheets[i], node)) {
-              matched.unshift(unassignedSheets[i]);
-              unassignedSheets.splice(i, 1);
-            }
+        // Gom các sheet thuộc node này (nếu node là nhóm động hoặc có sheet được tạo trực tiếp dưới node này)
+        const matched = [];
+        for (let i = unassignedSheets.length - 1; i >= 0; i--) {
+          const sh = unassignedSheets[i];
+          if (sh.categoryId === node.id || (node.isDynamicGroup && matchSheetToNode(sh, node))) {
+            matched.unshift(sh);
+            unassignedSheets.splice(i, 1);
           }
-          itemCount += matched.length;
-          childrenHTML += matched.map(s => {
-            const active = V.route.id === s.id && !V.gq ? 'active' : '';
-            return `<a class="tree-row tree-leaf ${active}" href="#/s/${s.id}" title="${esc(labelOf(s))}">
-                      <span class="nm">${esc(labelOf(s))}</span><span class="ct">${countRows(s)}</span>
-                    </a>`;
-          }).join('');
+        }
+        itemCount += matched.length;
+        childrenHTML += matched.map(s => {
+          const active = V.route.id === s.id && !V.gq ? 'active' : '';
+          return `<a class="tree-row tree-leaf ${active}" href="#/s/${s.id}" title="${esc(labelOf(s))}">
+                    <span class="nm">${esc(labelOf(s))}</span><span class="ct">${countRows(s)}</span>
+                  </a>`;
+        }).join('');
 
-          if (node.allowCreate) {
-            childrenHTML += `<button type="button" class="tree-add-btn" data-create-sheet="${node.id}">＋ Tạo danh mục mới</button>`;
-          }
+        // Hiển thị nút Tạo danh mục mới cho cả mục cha và mục con có cấu hình allowCreate
+        if (node.allowCreate && !isGuest) {
+          childrenHTML += `<button type="button" class="tree-add-btn" data-create-sheet="${node.id}" data-cat-label="${esc(node.label)}">＋ Tạo danh mục mới</button>`;
         }
       }
 
@@ -242,17 +245,25 @@
     sb.innerHTML = h;
   }
 
-  function createNewSheetInCategory(categoryId) {
-    const name = prompt('Nhập tên danh mục / thiết bị mới:');
+  function createNewSheetInCategory(categoryId, catLabel) {
+    if (localStorage.getItem('lab_user_role') === 'guest') {
+      toast('⚠ Tài khoản Khách không có quyền tạo danh mục mới.');
+      return;
+    }
+    const promptTitle = catLabel
+      ? `Nhập tên danh mục mới trong nhóm "${catLabel}":`
+      : 'Nhập tên danh mục / thiết bị mới:';
+    const name = prompt(promptTitle);
     if (!name || !name.trim()) return;
+    const cleanName = name.trim();
     const newId = 'cat-' + uid();
     const newSheet = {
       id: newId,
-      name: name.trim(),
+      name: cleanName,
       categoryId: categoryId,
       group: 0,
       blocks: [{
-        title: name.trim(),
+        title: cleanName,
         hr: 1,
         cols: ['STT', 'Mã VT', 'Tên thiết bị / Vật tư', 'Serial No', 'Part Number', 'Tình trạng', 'Ghi chú'],
         rows: [{ r: 1, i: 'u' + uid(), ct: Date.now(), c: false, v: ['1', '', '', '', '', 'Tốt', ''] }]
@@ -262,8 +273,36 @@
     delete V.treeCollapsed[categoryId];
     persist();
     location.hash = '#/s/' + newId;
-    toast(`✅ Đã tạo danh mục "${name.trim()}"`);
+    toast(`✅ Đã tạo danh mục "${cleanName}"`);
   }
+
+  /* ---------- Mở nhanh BBBG từ trang Tổng quan ---------- */
+  window.openQuickBBBG = function () {
+    const slipsXuat = (ST && ST.slips && ST.slips.xuat) ? ST.slips.xuat : [];
+    const slipsNhap = (ST && ST.slips && ST.slips.nhap) ? ST.slips.nhap : [];
+    // Nếu đã có phiếu xuất/nhập gần nhất, mở chỉnh sửa phiếu đó để thêm/in BBBG; nếu chưa có thì mở tạo phiếu xuất kèm BBBG
+    if (slipsXuat.length > 0) {
+      const latest = slipsXuat[slipsXuat.length - 1];
+      SL().openEditor('xuat', latest.id);
+      setTimeout(() => {
+        const btnBBBG = document.querySelector('[data-open-bbbg]');
+        if (btnBBBG) btnBBBG.click();
+      }, 60);
+    } else if (slipsNhap.length > 0) {
+      const latest = slipsNhap[slipsNhap.length - 1];
+      SL().openEditor('nhap', latest.id);
+      setTimeout(() => {
+        const btnBBBG = document.querySelector('[data-open-bbbg]');
+        if (btnBBBG) btnBBBG.click();
+      }, 60);
+    } else {
+      SL().openEditor('xuat');
+      setTimeout(() => {
+        const btnBBBG = document.querySelector('[data-open-bbbg]');
+        if (btnBBBG) btnBBBG.click();
+      }, 60);
+    }
+  };
 
   /* ---------- Trang Tổng quan ---------- */
   function statusCounts() {
@@ -297,6 +336,7 @@
     let h = `<div class="page-title"><h1>Tổng quan</h1><span class="sub">Nguồn: ${esc(DATA.meta.source)} · cập nhật ${esc(DATA.meta.generated)}</span>
       <span class="ov-actions">
         <button class="tbtn primary" onclick="window.openAddMaterialModal()">📦 Thêm vật tư</button>
+        <button class="tbtn" onclick="window.openQuickBBBG()" style="border-color:var(--brand);color:var(--brand);font-weight:700" title="Tạo / Xem Biên bản nghiệm thu, bàn giao (BM-KTTC001)">📄 BBBG</button>
         <button class="tbtn primary" data-sl-new="xuat">📤 Tạo phiếu xuất kho</button>
         <button class="tbtn primary" data-sl-new="nhap">📥 Tạo phiếu nhập kho</button>
       </span></div>
@@ -698,7 +738,7 @@
         }
         const createBtn = e.target.closest('[data-create-sheet]');
         if (createBtn) {
-          createNewSheetInCategory(createBtn.dataset.createSheet);
+          createNewSheetInCategory(createBtn.dataset.createSheet, createBtn.dataset.catLabel);
           return;
         }
         if (e.target.closest('a')) {
