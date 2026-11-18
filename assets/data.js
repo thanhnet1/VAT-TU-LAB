@@ -1047,15 +1047,15 @@ window.LAB_DATA = {
   ]
 };
 {
-      "id": "ton-kho-xvt-26-10-2026",
-      "name": "Tồn kho XVT (26/10/2026)",
-      "group": 1,
-      "blocks": [
-        {
-          "title": "Danh mục Tồn kho Xưởng Viễn thông (26/10/2026)",
-          "hr": 3,
-          "cols": ["STT", "Mã VT", "Tên VT", "Serial No", "Ghi chú"],
-          "rows": [
+   "id": "ton-kho-xvt-26-10-2026",
+   "name": "Tồn kho XVT (26/10/2026)",
+   "group": 1,
+    "blocks": [
+      {
+         "title": "Danh mục Tồn kho Xưởng Viễn thông (26/10/2026)",
+         "hr": 3,
+         "cols": ["STT", "Mã VT", "Tên VT", "Serial No", "Ghi chú"],
+         "rows": [
             {"r":1,"c":true,"v":["1", "22.06.11.01.01", "MODULE, OSLM-1-WL3 (1X100G W/ INTEGRATED DWDM OTN - PREMIUM - WL3)", "M7555739", "SL: 1 Cái"]},
             {"r":2,"c":true,"v":["2", "22.06.11.01.01", "MODULE, OSLM-1-WL3 (1X100G W/ INTEGRATED DWDM OTN - PREMIUM - WL3)", "M7555872", "SL: 1 Cái"]},
             {"r":3,"c":true,"v":["3", "22.04.02.03.05", "FAN", "EZ1009M1021", "SL: 1 Cái"]},
