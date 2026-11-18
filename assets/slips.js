@@ -1,6 +1,6 @@
 /* =====================================================================
-   slips.js – PHIẾU XUẤT KHO (Mẫu số 02 VT-DN) & PHIẾU NHẬP KHO (Mẫu số 1 VT-DN) kèm mã QR
-   Bố cục, cột, trường thông tin và khối chữ ký làm theo phiếu mẫu của Tổng Công ty Hạ tầng mạng.
+   slips.js – PHIẾU XUẤT KHO (Mẫu số 02 VT-DN), PHIẾU NHẬP KHO (Mẫu số 1 VT-DN)
+   & BIÊN BẢN NGHIỆM THU, BÀN GIAO (BM-KTTC001) kèm mã QR
    ===================================================================== */
 (function () {
   'use strict';
@@ -23,8 +23,8 @@
   var BUILD = '2026.11.08-5';
 
   var PAPER_CSS = `/* --- GIẤY IN (dùng chung cho xem trước & in) --- */
-.paper{position:relative;background:#fff;color:#000;font-family:"Times New Roman",Times,"Liberation Serif",serif;font-size:11pt;line-height:1.3;
-  width:210mm;min-height:297mm;padding:10mm;margin:0 auto 14mm;box-shadow:0 2px 12px rgba(0,0,0,.3);box-sizing:border-box}
+.paper{position:relative;background:#fff;color:#000;font-family:"Times New Roman",Times,"Liberation Serif",serif;font-size:11pt;line-height:1.35;
+  width:210mm;min-height:297mm;padding:12mm 14mm;margin:0 auto 14mm;box-shadow:0 2px 12px rgba(0,0,0,.3);box-sizing:border-box}
 .paper *{box-sizing:border-box}
 .paper .p-top{display:flex;justify-content:space-between;gap:12px;font-weight:700;font-size:10.5pt}
 .paper .p-org div{line-height:1.35} .paper .p-form{white-space:nowrap;font-size:10pt}
@@ -49,6 +49,26 @@
 .paper .p-sign{display:grid;grid-template-columns:repeat(5,1fr);gap:4px;text-align:center;font-size:10.5pt}
 .paper .p-sign .small{font-style:italic;font-size:9pt;font-weight:400} .paper .p-sign .sname{margin-top:34mm;font-weight:700;min-height:1em}
 .paper .p-page{position:absolute;right:10mm;bottom:8mm;font-size:11pt}
+
+/* --- STYLE RIÊNG CHO BIÊN BẢN BÀN GIAO (BM-KTTC001) --- */
+.bbbg-form-code{text-align:right;font-weight:700;font-size:11pt;margin-bottom:4px}
+.bbbg-header{display:grid;grid-template-columns:48% 52%;text-align:center;margin-bottom:14px}
+.bbbg-header .left{font-weight:700;font-size:11pt;line-height:1.4}
+.bbbg-header .right{font-weight:700;font-size:11pt;line-height:1.4}
+.bbbg-header .right .sub-motto{font-size:11.5pt;border-bottom:1px solid #000;display:inline-block;padding-bottom:2px}
+.bbbg-header .right .date-line{font-weight:400;font-style:italic;margin-top:6px;font-size:11pt}
+.bbbg-title{text-align:center;margin:12px 0 10px}
+.bbbg-title h1{margin:0;font-size:14pt;font-weight:700;text-transform:uppercase}
+.bbbg-title .sub{font-size:12pt;font-weight:700;margin-top:2px}
+.bbbg-p{margin:5px 0;font-size:11.5pt;line-height:1.45;text-align:justify}
+.bbbg-sec{font-weight:700;text-transform:uppercase;margin:10px 0 4px;font-size:11.5pt}
+.bbbg-rep{display:grid;grid-template-columns:52% 48%;margin:3px 0 3px 10px;font-size:11.5pt}
+.bbbg-tbl{width:100%;border-collapse:collapse;margin:10px 0;font-size:11pt}
+.bbbg-tbl th,.bbbg-tbl td{border:1px solid #000;padding:6px 5px;vertical-align:middle}
+.bbbg-tbl th{font-weight:700;text-align:center;text-transform:uppercase;font-size:10.5pt}
+.bbbg-tbl td.c{text-align:center}
+.bbbg-sign{display:grid;grid-template-columns:1fr 1fr;text-align:center;margin-top:18px;font-weight:700;font-size:11.5pt}
+.bbbg-sign .space{height:28mm}
 
 @media print{
   body.print-slip>*:not(#printRoot){display:none !important}
@@ -226,7 +246,7 @@
     return root.QR;
   })({});
 
-  var D = null, PK = null, VIEW = null;
+  var D = null, PK = null, VIEW = null, BBBG = null;
   var LQ = { xuat: '', nhap: '' };
   var qrCache = {}, qrWarned = false, printing = false;
 
@@ -249,7 +269,6 @@
     }, (A && A.CFG && A.CFG.slip) || {});
   }
   
-  // Đảm bảo an toàn chống lỗi null ST
   function slips(t) { 
     if (!A || !A.ST) return [];
     if (!A.ST.slips) A.ST.slips = { xuat: [], nhap: [] }; 
@@ -498,6 +517,210 @@
     }).join('');
   }
 
+  /* =====================================================================
+     BIÊN BẢN NGHIỆM THU, BÀN GIAO VẬT TƯ, THIẾT BỊ LẮP ĐẶT HOÀN THÀNH (BM-KTTC001)
+     ===================================================================== */
+  function defaultBBBG() {
+    var today = todayISO().split('-');
+    return {
+      formCode: 'BM-KTTC001',
+      donViChuQuan: 'TRUNG TÂM HẠ TẦNG MẠNG MIỀN BẮC',
+      donViCon: 'ĐƠN VỊ : XƯỞNG VIỄN THÔNG',
+      diaDanh: 'Hà nội',
+      ngay: '',
+      thang: '',
+      nam: today[0],
+      soToTrinh: '6178/TTr-KT',
+      ngayToTrinh: '20/8/' + today[0],
+      veViec: 'lắp đặt kết nối antenna GPS thiết bị IPCLK 3000, đo kiểm tín hiệu',
+      taiDonVi: 'Đài VT HNI',
+      benGiaoTitle: 'I - ĐẠI DIỆN BÊN GIAO: XVT',
+      giao1Ten: 'Thân Phụng Trí',
+      giao1ChucVu: 'Phó Trưởng Xưởng VT',
+      giao2Ten: 'Nguyễn Chí Thanh',
+      giao2ChucVu: 'CBKT Xưởng VT',
+      benNhanTitle: 'II- ĐẠI DIỆN BÊN NHẬN: ĐÀI VT HNI',
+      nhan1Ten: 'Nguyễn Minh Trường',
+      nhan1ChucVu: 'Trưởng Đài VT HNI',
+      nhan2Ten: 'Nguyễn Thị Vân Anh',
+      nhan2ChucVu: 'Trạm VT Phạm Hùng',
+      diaDiemLapDat: 'Rack H2-2 Phòng máy tầng 5 Trạm PHG- 30 Đường Phạm Hùng- HNI',
+      soHieuCongTrinh: '26.00717.BBHT.13002'
+    };
+  }
+
+  function bbbgPaperHTML(bb, items) {
+    var rows = (items || []).map(function (it, idx) {
+      return '<tr>' +
+        '<td class="c">' + (idx + 1) + '.</td>' +
+        '<td class="c">' + esc(it.code || '') + '</td>' +
+        '<td class="c">' + esc(it.name || '') + '</td>' +
+        '<td class="c">' + esc(it.serial || 'N/A') + '</td>' +
+        '<td class="c">' + esc(it.unit || 'Cái') + '</td>' +
+        '<td class="c">' + esc(it.qty || '1') + '</td>' +
+        '<td>' + esc(it.note || '') + '</td>' +
+      '</tr>';
+    }).join('');
+
+    if (!rows) {
+      rows = '<tr><td colspan="7" class="c" style="font-style:italic;color:#666">Chưa có vật tư nào trong danh sách</td></tr>';
+    }
+
+    return '<div class="paper">' +
+      '<div class="bbbg-form-code">' + esc(bb.formCode || 'BM-KTTC001') + '</div>' +
+      '<div class="bbbg-header">' +
+        '<div class="left"><div>' + esc(bb.donViChuQuan) + '</div><div>' + esc(bb.donViCon) + '</div></div>' +
+        '<div class="right">' +
+          '<div>CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM</div>' +
+          '<div class="sub-motto">Độc lập - Tự do - Hạnh phúc</div>' +
+          '<div class="date-line">' + esc(bb.diaDanh) + ', ngày ' + (bb.ngay ? esc(bb.ngay) : '&nbsp;&nbsp;&nbsp;&nbsp;') + ' tháng ' + (bb.thang ? esc(bb.thang) : '&nbsp;&nbsp;&nbsp;&nbsp;') + ' năm ' + esc(bb.nam) + '</div>' +
+        '</div>' +
+      '</div>' +
+      '<div class="bbbg-title">' +
+        '<h1>BIÊN BẢN NGHIỆM THU, BÀN GIAO</h1>' +
+        '<div class="sub">Vật tư, thiết bị lắp đặt hoàn thành</div>' +
+      '</div>' +
+      '<div class="bbbg-p" style="text-indent:12mm">Căn cứ tờ trình (Công văn) số: ' + esc(bb.soToTrinh) + ' ngày ' + esc(bb.ngayToTrinh) + ' Về việc “' + esc(bb.veViec) + '”.</div>' +
+      '<div class="bbbg-p" style="text-indent:12mm">Tại: ' + esc(bb.taiDonVi) + ' &nbsp;&nbsp;&nbsp;&nbsp;, chúng tôi gồm :</div>' +
+      '<div class="bbbg-sec">' + esc(bb.benGiaoTitle) + '</div>' +
+      '<div class="bbbg-rep"><div>Ông ( Bà ): <b>' + esc(bb.giao1Ten) + '</b></div><div>Đơn vị : ' + esc(bb.giao1ChucVu) + '</div></div>' +
+      '<div class="bbbg-rep"><div>Ông ( Bà ): <b>' + esc(bb.giao2Ten) + '</b></div><div>Đơn vị : ' + esc(bb.giao2ChucVu) + '</div></div>' +
+      '<div class="bbbg-sec">' + esc(bb.benNhanTitle) + '</div>' +
+      '<div class="bbbg-rep"><div>Ông ( Bà ): <b>' + esc(bb.nhan1Ten) + '</b></div><div>Đơn vị : ' + esc(bb.nhan1ChucVu) + '</div></div>' +
+      '<div class="bbbg-rep"><div>Ông ( Bà ): <b>' + esc(bb.nhan2Ten) + '</b></div><div>Đơn vị : ' + esc(bb.nhan2ChucVu) + '</div></div>' +
+      '<div class="bbbg-p" style="margin-top:10px;text-indent:12mm">Tại ' + esc(bb.taiDonVi) + ' tiến hành nghiệm thu bàn giao, nội dung cụ thể như sau:</div>' +
+      '<div class="bbbg-p" style="text-indent:12mm">Địa điểm lắp đặt: <b>' + esc(bb.diaDiemLapDat) + '</b></div>' +
+      '<table class="bbbg-tbl">' +
+        '<thead><tr>' +
+          '<th style="width:6%">TT</th>' +
+          '<th style="width:17%">MÃ VẬT TƯ</th>' +
+          '<th style="width:27%">TÊN VẬT TƯ</th>' +
+          '<th style="width:15%">SERIAL</th>' +
+          '<th style="width:9%">Đ/V</th>' +
+          '<th style="width:8%">SL</th>' +
+          '<th style="width:18%">Ghi chú</th>' +
+        '</tr></thead>' +
+        '<tbody>' + rows + '</tbody>' +
+      '</table>' +
+      '<div class="bbbg-p" style="text-indent:12mm"><b>(Số hiệu công trình): ' + esc(bb.soHieuCongTrinh) + '</b></div>' +
+      '<div class="bbbg-p" style="margin-top:10px;text-indent:12mm">Toàn bộ vật tư, thiết bị trên đã được lắp đặt hoàn thành và đưa vào sử dụng. Biên bản được lập thành 2 bản, có giá trị như nhau. Mỗi bên giữ 01 bản ./.</div>' +
+      '<div class="bbbg-sign">' +
+        '<div>ĐẠI DIỆN BÊN GIAO<div class="space"></div></div>' +
+        '<div>ĐẠI DIỆN BÊN NHẬN<div class="space"></div></div>' +
+      '</div>' +
+    '</div>';
+  }
+
+  function openBBBGModal() {
+    if (!D) return;
+    if (!D.bbbg) D.bbbg = defaultBBBG();
+    BBBG = clone(D.bbbg);
+    var md = $('#mdBBBG');
+    if (!md) {
+      md = document.createElement('div');
+      md.id = 'mdBBBG';
+      $('#modalRoot').appendChild(md);
+    }
+    renderBBBGModal();
+    lock();
+  }
+
+  function renderBBBGModal() {
+    var bb = BBBG;
+    var md = $('#mdBBBG');
+    if (!md) return;
+
+    function bInp(k, label, wide) {
+      return '<label class="fld' + (wide ? ' wide' : '') + '"><span>' + label + '</span>' +
+        '<input type="text" data-bb="' + k + '" value="' + esc(bb[k] || '') + '" autocomplete="off"></label>';
+    }
+
+    md.innerHTML =
+      '<div class="modal-back pk-back"><div class="modal" role="dialog" aria-modal="true" aria-label="Biên bản nghiệm thu bàn giao">' +
+      '<div class="modal-head"><h2>📄 Biên bản nghiệm thu, bàn giao (BM-KTTC001)</h2><button class="modal-x" data-bb-close aria-label="Đóng">✕</button></div>' +
+      '<div class="modal-body">' +
+        '<div class="sl-form">' +
+          bInp('formCode', 'Mã biểu mẫu') +
+          bInp('donViChuQuan', 'Đơn vị chủ quản') +
+          bInp('donViCon', 'Đơn vị trực thuộc') +
+          bInp('diaDanh', 'Địa danh (Hà nội...)') +
+          bInp('ngay', 'Ngày (để trống nếu điền tay)') +
+          bInp('thang', 'Tháng (để trống nếu điền tay)') +
+          bInp('nam', 'Năm') +
+          bInp('soToTrinh', 'Căn cứ tờ trình số') +
+          bInp('ngayToTrinh', 'Ngày tờ trình') +
+          bInp('taiDonVi', 'Tại đơn vị (VD: Đài VT HNI)') +
+          bInp('veViec', 'Về việc (nội dung công việc)', true) +
+          bInp('diaDiemLapDat', 'Địa điểm lắp đặt chi tiết', true) +
+          bInp('soHieuCongTrinh', 'Số hiệu công trình', true) +
+        '</div>' +
+        '<h4 style="margin:10px 0 6px;color:var(--brand)">I. Đại diện Bên giao</h4>' +
+        '<div class="sl-form">' +
+          bInp('benGiaoTitle', 'Tiêu đề bên giao', true) +
+          bInp('giao1Ten', 'Ông (Bà) 1 - Họ tên') +
+          bInp('giao1ChucVu', 'Ông (Bà) 1 - Đơn vị / Chức vụ') +
+          bInp('giao2Ten', 'Ông (Bà) 2 - Họ tên') +
+          bInp('giao2ChucVu', 'Ông (Bà) 2 - Đơn vị / Chức vụ') +
+        '</div>' +
+        '<h4 style="margin:10px 0 6px;color:var(--brand)">II. Đại diện Bên nhận</h4>' +
+        '<div class="sl-form">' +
+          bInp('benNhanTitle', 'Tiêu đề bên nhận', true) +
+          bInp('nhan1Ten', 'Ông (Bà) 1 - Họ tên') +
+          bInp('nhan1ChucVu', 'Ông (Bà) 1 - Đơn vị / Chức vụ') +
+          bInp('nhan2Ten', 'Ông (Bà) 2 - Họ tên') +
+          bInp('nhan2ChucVu', 'Ông (Bà) 2 - Đơn vị / Chức vụ') +
+        '</div>' +
+        '<p class="src" style="margin-top:8px">* Bảng vật tư trong Biên bản bàn giao sẽ tự động lấy toàn bộ <b>' + (D.items ? D.items.length : 0) + ' vật tư</b> đang có trong phiếu này.</p>' +
+      '</div>' +
+      '<div class="modal-foot">' +
+        '<button class="tbtn" data-bb-preview>👁 Xem trước & In BBBG</button>' +
+        '<span class="sp"></span>' +
+        '<button class="tbtn primary" data-bb-save>💾 Lưu nội dung BBBG</button>' +
+        '<button class="tbtn" data-bb-close>Đóng</button>' +
+      '</div>' +
+      '</div></div>';
+  }
+
+  function closeBBBGModal() {
+    BBBG = null;
+    var md = $('#mdBBBG');
+    if (md) md.innerHTML = '';
+    lock();
+  }
+
+  function previewBBBG(bbData) {
+    var html = bbbgPaperHTML(bbData, D ? D.items : []);
+    $('#mdView').innerHTML =
+      '<div class="modal-back view-back"><div class="modal modal-view" role="dialog" aria-modal="true" aria-label="Xem trước BBBG">' +
+      '<div class="modal-head"><h2>📄 Xem trước Biên bản nghiệm thu, bàn giao</h2><button class="modal-x" data-vclose aria-label="Đóng">✕</button></div>' +
+      '<div class="view-tools">' +
+        '<button class="tbtn primary" data-bb-print>🖨 In / Lưu PDF BBBG</button>' +
+        '<button class="tbtn" data-vclose>Đóng</button>' +
+      '</div>' +
+      '<div class="paper-wrap" id="paperWrap"><div id="paperZoom">' + html + '</div></div>' +
+      '</div></div>';
+    VIEW = { isBBBG: true, html: html };
+    lock();
+    fitPaper();
+  }
+
+  function printRawHTML(html) {
+    if (printing) return;
+    var root = $('#printRoot'), st = null, finished = false;
+    function done() {
+      if (finished) return; finished = true; printing = false;
+      document.body.classList.remove('print-slip'); if (st) st.remove(); if (root) root.innerHTML = ''; window.removeEventListener('afterprint', done);
+    }
+    try {
+      printing = true;
+      if (root) root.innerHTML = html;
+      st = document.createElement('style'); st.id = 'pgStyle'; st.textContent = '@page{size:A4 portrait;margin:10mm}'; document.head.appendChild(st);
+      document.body.classList.add('print-slip'); window.addEventListener('afterprint', done);
+      setTimeout(function () { try { window.print(); } catch (e) { done(); } }, 80);
+      setTimeout(done, 120000);
+    } catch (e) { done(); }
+  }
+
   function removeRow(idx, rid) {
     var e = idx.get(rid); if (!e) return;
     var k = e.b.rows.indexOf(e.row); if (k >= 0) e.b.rows.splice(k, 1); idx.delete(rid);
@@ -567,7 +790,15 @@
     }
     err = type === 'xuat' ? saveXuat(d, old) : saveNhap(d, old);
     if (err) return err;
-    var now = new Date().toISOString(), slip = { id: d.id, type: type, date: d.date, f: clone(d.f), items: clone(d.items), createdAt: old ? old.createdAt : now, updatedAt: now };
+    var now = new Date().toISOString();
+    var slip = {
+      id: d.id, type: type, date: d.date,
+      f: clone(d.f),
+      items: clone(d.items),
+      bbbg: d.bbbg ? clone(d.bbbg) : null,
+      createdAt: old ? old.createdAt : now,
+      updatedAt: now
+    };
     var arr = slips(type); if (old) arr.splice(arr.indexOf(old), 1);
     arr.push(slip); saveDefs(d.f); if (A) { A.persist(); } return '';
   }
@@ -585,7 +816,7 @@
     if (A) { A.persist(); A.render(); A.toast('Đã xoá phiếu ' + id); }
   }
 
-  function lock() { document.body.classList.toggle('modal-open', !!(D || PK || VIEW)); }
+  function lock() { document.body.classList.toggle('modal-open', !!(D || PK || VIEW || BBBG)); }
   function inp(attr, key, val, type, extra) { return '<input ' + attr + '="' + key + '" type="' + (type || 'text') + '" value="' + esc(val) + '" autocomplete="off"' + (extra || '') + '>'; }
   
   function newItem(base) {
@@ -596,9 +827,13 @@
 
   function openEditor(type, id) {
     var slip = id ? findSlip(type, id) : null, C = cfg(), df = defs();
-    D = { type: type, origId: slip ? slip.id : null, id: slip ? slip.id : nextId(type, todayISO()), date: slip ? slip.date : todayISO(), idTouched: false,
-          f: slip ? clone(slip.f) : { kho: df.kho || C.kho, lien: df.lien || C.lien, nguoiLap: df.nguoiLap || C.nguoiLap, thuKho: df.thuKho || C.thuKho, ketToan: df.ketToan || C.ketToan, thuTruong: df.thuTruong || C.thuTruong, thue: '0' },
-          items: slip ? clone(slip.items).map(function (i) { var o = Object.assign(newItem(), i); if (type === 'nhap' && o.bt) { var s0 = A ? A.sheetById(o.sid) : null; if (s0 && s0.blocks) s0.blocks.forEach(function (b, k) { if (b.title === o.bt) o.bi = k; }); } return o; }) : [], newBlocks: [], dirty: false };
+    D = {
+      type: type, origId: slip ? slip.id : null, id: slip ? slip.id : nextId(type, todayISO()), date: slip ? slip.date : todayISO(), idTouched: false,
+      f: slip ? clone(slip.f) : { kho: df.kho || C.kho, lien: df.lien || C.lien, nguoiLap: df.nguoiLap || C.nguoiLap, thuKho: df.thuKho || C.thuKho, ketToan: df.ketToan || C.ketToan, thuTruong: df.thuTruong || C.thuTruong, thue: '0' },
+      bbbg: slip && slip.bbbg ? clone(slip.bbbg) : null,
+      items: slip ? clone(slip.items).map(function (i) { var o = Object.assign(newItem(), i); if (type === 'nhap' && o.bt) { var s0 = A ? A.sheetById(o.sid) : null; if (s0 && s0.blocks) s0.blocks.forEach(function (b, k) { if (b.title === o.bt) o.bi = k; }); } return o; }) : [],
+      newBlocks: [], dirty: false
+    };
     if (!slip && type === 'nhap') addLine();
     renderEditor(); lock();
     if (!slip) setTimeout(function () { var f = $('#mdEditor [data-fld="donVi"]'), ae = document.activeElement; if (f && window.innerWidth > 760 && (!ae || ae === document.body || !ae.closest || !ae.closest('#mdEditor'))) f.focus(); }, 60);
@@ -624,8 +859,9 @@
         '<label class="fld wide"><span>Ghi chú' + (imp ? ' (in dưới bảng vật tư)' : '') + '</span><textarea data-fld="ghiChu" rows="2">' + esc(f.ghiChu || '') + '</textarea></label>' +
         '<details class="fld wide sl-sign"><summary>Họ tên in dưới chữ ký</summary><div class="sl-form" style="margin-top:8px">' + signs + '</div></details>' +
       '</div>' +
-      '<div class="sl-items-head"><h3>Vật tư trong phiếu <span class="badge" id="slCnt"></span></h3><div class="sl-items-btns">' +
+      '<div class="sl-items-head"><h3>Vật tư trong phiếu <span class="badge" id="slCnt"></span></h3><div class="sl-items-btns" style="display:flex;gap:8px;flex-wrap:wrap">' +
         (imp ? '<button class="tbtn primary" data-addline>＋ Thêm dòng vật tư</button>' : '<button class="tbtn primary" data-pick>＋ Chọn vật tư từ danh mục</button>') +
+        '<button class="tbtn" data-open-bbbg style="border-color:var(--brand);color:var(--brand);font-weight:700" title="Tạo hoặc chỉnh sửa Biên bản nghiệm thu, bàn giao (BM-KTTC001)">📄 BBBG</button>' +
       '</div></div>' +
       '<div id="slItems"></div>' +
       '<datalist id="dlQ"><option value="Tốt"><option value="Hỏng"><option value="Lỗi"><option value="Kém chất lượng"><option value="Đã sửa chữa"></datalist>' +
@@ -693,7 +929,7 @@
     D = null; $('#mdEditor').innerHTML = ''; lock();
   }
   
-  function draftSlip() { return { id: D.id, type: D.type, date: D.date, f: clone(D.f), items: clone(D.items), updatedAt: 'draft' + Date.now() }; }
+  function draftSlip() { return { id: D.id, type: D.type, date: D.date, f: clone(D.f), items: clone(D.items), bbbg: D.bbbg ? clone(D.bbbg) : null, updatedAt: 'draft' + Date.now() }; }
   
   function doSave() {
     if (window.Sync && window.Sync.active && window.Sync.active() && !D.origId && !D.idTouched) {
@@ -808,10 +1044,13 @@
     var t = TYPES[type], paper;
     try { paper = paperHTML(slip); }
     catch (err) { paper = '<div class="empty" style="background:#fff;color:#b91c1c;padding:24px"><b>Không dựng được phiếu để xem.</b><br>' + esc(err && err.message || err) + '<br><small>Dữ liệu phiếu vẫn được lưu. Hãy tải lại trang (Ctrl+F5) rồi mở lại; nếu vẫn lỗi hãy chụp màn hình này gửi người hỗ trợ.</small></div>'; }
+    var hasBBBG = !!(slip.bbbg);
     $('#mdView').innerHTML =
       '<div class="modal-back view-back"><div class="modal modal-view" role="dialog" aria-modal="true" aria-label="' + t.title + '">' +
       '<div class="modal-head"><h2>' + t.icon + ' ' + t.plural + ' <small>' + esc(slip.id) + (tmp ? ' · bản xem trước (chưa lưu)' : '') + '</small></h2><button class="modal-x" data-vclose aria-label="Đóng">✕</button></div>' +
-      '<div class="view-tools"><button class="tbtn primary" data-v="print">🖨 In / Lưu PDF</button><button class="tbtn" data-v="win" title="Mở bản in trong tab mới – dùng khi nút In không phản hồi">↗ In bằng tab mới</button><button class="tbtn" data-v="html" title="Tải phiếu thành file .html, mở ra và in được ở bất kỳ máy nào">⬇ Tải phiếu (.html)</button>' + (tmp ? '' : '<button class="tbtn" data-v="edit">✏️ Sửa phiếu</button>') +
+      '<div class="view-tools"><button class="tbtn primary" data-v="print">🖨 In / Lưu PDF</button><button class="tbtn" data-v="win" title="Mở bản in trong tab mới – dùng khi nút In không phản hồi">↗ In bằng tab mới</button><button class="tbtn" data-v="html" title="Tải phiếu thành file .html, mở ra và in được ở bất kỳ máy nào">⬇ Tải phiếu (.html)</button>' +
+      (hasBBBG ? '<button class="tbtn" data-v="bbbg" style="border-color:var(--brand);color:var(--brand);font-weight:700">📄 Xem / In BBBG</button>' : '') +
+      (tmp ? '' : '<button class="tbtn" data-v="edit">✏️ Sửa phiếu</button>') +
       '<button class="tbtn" data-v="xlsx">📗 Excel</button><button class="tbtn" data-v="qr">▦ Tải mã QR (PNG)</button>' + (tmp ? '' : '<button class="tbtn danger" data-v="del">🗑 Xoá phiếu</button>') + '</div>' +
       '<div class="paper-wrap" id="paperWrap"><div id="paperZoom">' + paper + '</div></div><div class="ver-note">Mã nguồn phiên bản ' + BUILD + ' · mã QR: tích hợp sẵn</div></div></div>';
     lock(); fitPaper();
@@ -920,7 +1159,7 @@
     if (!arr.length) return '<tr><td colspan="8" class="empty">' + (slips(type).length ? 'Không có phiếu nào khớp.' : 'Chưa có phiếu nào. Bấm “＋ Tạo ' + TYPES[type].plural.toLowerCase() + '” để bắt đầu.') + '</td></tr>';
     return arr.map(function (s) {
       var f = s.f || {}, why = type === 'xuat' ? f.dungCho : f.hopDong;
-      return '<tr data-sl="' + esc(s.id) + '" data-t="' + type + '"><td data-label="Số phiếu"><b>' + esc(s.id) + '</b></td><td data-label="Ngày">' + fmtDate(s.date) + '</td>' +
+      return '<tr data-sl="' + esc(s.id) + '" data-t="' + type + '"><td data-label="Số phiếu"><b>' + esc(s.id) + '</b>' + (s.bbbg ? ' <span class="badge" style="color:var(--brand);border-color:var(--brand)">BBBG</span>' : '') + '</td><td data-label="Ngày">' + fmtDate(s.date) + '</td>' +
         '<td data-label="' + TYPES[type].fromTo + '">' + esc(f.donVi || '—') + (f.kho ? '<div class="src">' + esc(f.kho) + '</div>' : '') + '</td>' +
         '<td data-label="' + (type === 'xuat' ? 'Xuất dùng cho' : 'Theo hợp đồng') + '" class="reason">' + esc(why || '') + '</td>' +
         '<td class="num" data-label="Số dòng">' + (s.items ? s.items.length : 0) + '</td><td class="num" data-label="Tổng SL">' + sumQty(s.items) + '</td>' +
@@ -963,6 +1202,10 @@
     root.addEventListener('input', function (e) {
       var t = e.target;
       if (t.id === 'pkq' && PK) { clearTimeout(pt); pt = setTimeout(function () { PK.q = t.value; renderPickerList(); }, 150); return; }
+      if (BBBG && t.dataset.bb !== undefined) {
+        BBBG[t.dataset.bb] = t.value;
+        return;
+      }
       if (!D) return;
       if (t.dataset.fld !== undefined) { D.f[t.dataset.fld] = t.value; D.dirty = true; }
       else if (t.dataset.top !== undefined) {
@@ -1009,6 +1252,25 @@
       if (t.closest('[data-pk-selall]')) { pkMatches().forEach(function (it) { PK.sel.add(it.rid); }); renderPickerList(); return; }
       if (t.closest('[data-pk-clear]')) { PK.sel.clear(); renderPickerList(); return; }
       if (t.closest('[data-pick]')) { openPicker(); return; }
+      if (t.closest('[data-open-bbbg]')) { openBBBGModal(); return; }
+      if (t.closest('[data-bb-close]')) { closeBBBGModal(); return; }
+      if (t.closest('[data-bb-save]')) {
+        if (D && BBBG) {
+          D.bbbg = clone(BBBG);
+          D.dirty = true;
+          if (A && A.toast) A.toast('✔ Đã lưu thông tin Biên bản bàn giao vào phiếu', 2500);
+        }
+        closeBBBGModal();
+        return;
+      }
+      if (t.closest('[data-bb-preview]')) {
+        if (BBBG) previewBBBG(BBBG);
+        return;
+      }
+      if (t.closest('[data-bb-print]')) {
+        if (VIEW && VIEW.html) printRawHTML(VIEW.html);
+        return;
+      }
       if (t.closest('[data-addline]')) { addLine(); D.dirty = true; renderItems(); var rows = $$('#slItems tbody tr'); var lr = rows[rows.length - 1]; if (lr) { var f = $('input[data-it="code"]', lr); if (f && window.innerWidth > 760) f.focus(); lr.scrollIntoView({ block: 'nearest' }); } return; }
       if ((b = t.closest('[data-dup]'))) { var src = D.items[+b.dataset.dup], c = newItem(src); c.rid = null; c.sid = src.sid; c.bi = src.bi; c.serial = ''; c.lot = src.lot; c.qtyReq = src.qtyReq; D.items.splice(+b.dataset.dup + 1, 0, c); D.dirty = true; renderItems(); return; }
       if ((b = t.closest('[data-rm]'))) { D.items.splice(+b.dataset.rm, 1); D.dirty = true; renderItems(); return; }
@@ -1018,6 +1280,7 @@
         var slip = VIEW.slip;
         switch (b.dataset.v) {
           case 'print': printSlip(slip); break; case 'win': printWindow(slip); break; case 'html': downloadHTML(slip); break; case 'xlsx': exportSlip(slip); break; case 'qr': dlQR(slip); break;
+          case 'bbbg': if (slip && slip.bbbg) { D = { items: slip.items }; previewBBBG(slip.bbbg); } break;
           case 'edit': closeView(); openEditor(slip.type, slip.id); break;
           case 'del': var ty = slip.type, id = slip.id; closeView(); deleteSlip(ty, id); break;
         }
@@ -1026,7 +1289,10 @@
     
     document.addEventListener('keydown', function (e) {
       if (e.key !== 'Escape') return;
-      if (PK) { closePicker(); e.stopPropagation(); } else if (VIEW) { closeView(); } else if (D) { closeEditor(); }
+      if (VIEW) { closeView(); e.stopPropagation(); }
+      else if (BBBG) { closeBBBGModal(); e.stopPropagation(); }
+      else if (PK) { closePicker(); e.stopPropagation(); }
+      else if (D) { closeEditor(); }
     });
     
     window.addEventListener('resize', fitPaper);
@@ -1044,7 +1310,7 @@
       st.textContent = PAPER_CSS; 
       document.head.appendChild(st); 
       var modalRoot = $('#modalRoot');
-      if (modalRoot) modalRoot.innerHTML = '<div id="mdEditor"></div><div id="mdPicker"></div><div id="mdView"></div>'; 
+      if (modalRoot) modalRoot.innerHTML = '<div id="mdEditor"></div><div id="mdPicker"></div><div id="mdBBBG"></div><div id="mdView"></div>'; 
       bind(); 
     },
     listHTML: listHTML, openEditor: openEditor, view: openView, extraSheets: extraSheets, docSo: docSo, _paperHTML: paperHTML, _qrPayload: qrPayload
