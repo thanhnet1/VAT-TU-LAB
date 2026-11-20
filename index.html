@@ -1,79 +1,283 @@
 <!DOCTYPE html>
 <html lang="vi">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#0b3a5b">
-<title>Tài sản – Vật tư Truyền dẫn LAB</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E📡%3C/text%3E%3C/svg%3E">
-<link rel="stylesheet" href="assets/style.css?v=2026.11.08-5">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Quản lý Vật tư & Tài sản LAB</title>
+  <style>
+    :root {
+      --bg: #f4f6f9;
+      --card: #ffffff;
+      --primary: #1d4ed8;
+      --primary-hover: #1e40af;
+      --border: #e2e8f0;
+      --text: #0f172a;
+      --muted: #64748b;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
+    .layout {
+      display: grid;
+      grid-template-columns: 270px 1fr;
+      min-height: 100vh;
+    }
+    .sidebar {
+      background: var(--card);
+      border-right: 1px solid var(--border);
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .brand {
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--primary);
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--border);
+    }
+    .sync-status {
+      font-size: 12px;
+      color: var(--muted);
+      background: #f8fafc;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 8px 10px;
+    }
+    .tree-group-title {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin: 10px 0 6px;
+      letter-spacing: 0.04em;
+    }
+    .tree-item {
+      width: 100%;
+      text-align: left;
+      background: transparent;
+      border: 1px solid transparent;
+      border-radius: 8px;
+      padding: 8px 10px;
+      font-size: 13px;
+      color: var(--text);
+      cursor: pointer;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 4px;
+    }
+    .tree-item:hover { background: #f1f5f9; }
+    .tree-item.active {
+      background: #eff6ff;
+      color: var(--primary);
+      border-color: #bfdbfe;
+      font-weight: 600;
+    }
+    .badge {
+      font-size: 11px;
+      background: #e2e8f0;
+      color: #334155;
+      padding: 2px 7px;
+      border-radius: 999px;
+    }
+    .main {
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      overflow-x: hidden;
+    }
+    .toolbar {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 14px 16px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .toolbar-left, .toolbar-right {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+    }
+    input[type="text"], select {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 7px 10px;
+      font-size: 13px;
+      background: #fff;
+      color: var(--text);
+    }
+    .btn {
+      border: 1px solid var(--border);
+      background: #fff;
+      color: var(--text);
+      border-radius: 8px;
+      padding: 7px 12px;
+      font-size: 13px;
+      cursor: pointer;
+      font-weight: 500;
+    }
+    .btn:hover { background: #f8fafc; }
+    .btn-primary {
+      background: var(--primary);
+      border-color: var(--primary);
+      color: #fff;
+    }
+    .btn-primary:hover { background: var(--primary-hover); }
+    .table-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: auto;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+    th, td {
+      border-bottom: 1px solid var(--border);
+      padding: 9px 10px;
+      text-align: left;
+      vertical-align: middle;
+    }
+    th {
+      background: #f8fafc;
+      font-weight: 700;
+      position: sticky;
+      top: 0;
+      z-index: 1;
+      white-space: nowrap;
+    }
+    .source-select {
+      min-width: 132px;
+      padding: 5px 8px;
+      font-size: 12px;
+      border-radius: 6px;
+    }
+    .move-btn {
+      border: 1px solid #cbd5e1;
+      background: #f8fafc;
+      color: #0f172a;
+      border-radius: 6px;
+      padding: 5px 9px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .move-btn:hover {
+      background: #dbeafe;
+      border-color: #93c5fd;
+      color: #1d4ed8;
+    }
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(15, 23, 42, 0.45);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 50;
+      padding: 16px;
+    }
+    .modal-backdrop.open { display: flex; }
+    .modal {
+      background: #fff;
+      border-radius: 12px;
+      width: 100%;
+      max-width: 420px;
+      padding: 18px;
+      border: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .modal h3 { margin: 0; font-size: 16px; }
+    .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 6px; }
+    @media (max-width: 820px) {
+      .layout { grid-template-columns: 1fr; }
+      .sidebar { border-right: none; border-bottom: 1px solid var(--border); }
+    }
+  </style>
 </head>
 <body>
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="brand">QUẢN LÝ VẬT TƯ & TÀI SẢN LAB</div>
+      <div id="sync-status" class="sync-status">Đang khởi tạo đồng bộ...</div>
+      <div id="folder-tree"></div>
+    </aside>
 
-<div id="boot" class="boot"><div class="spinner"></div><p>Đang tải dữ liệu…</p></div>
-
-<header class="topbar" id="topbar" hidden>
-  <button id="btnMenu" class="icon-btn only-mobile" aria-label="Mở menu">☰</button>
-  <a class="brand" href="#/" title="Về trang Tổng quan">
-    <span class="logo">📡</span>
-    <span class="brand-text"><b id="appTitle"></b><small id="appSub"></small></span>
-  </a>
-  <label class="search">
-    <span aria-hidden="true">🔍</span>
-    <input id="gq" type="search" title="Phím tắt: /" placeholder="Tìm serial, part number, tên vật tư…" autocomplete="off" spellcheck="false">
-    <button id="gqClear" type="button" class="search-clear" hidden aria-label="Xoá tìm kiếm">✕</button>
-  </label>
-  <div class="actions">
-    <span id="dirty" class="dirty" hidden title="Bạn đã chỉnh sửa dữ liệu – chỉ lưu trên trình duyệt này">● Đã chỉnh sửa</span>
-    <button id="btnSync" class="btn ghost sync-off" type="button" title="Đồng bộ nhiều thiết bị"><i>☁</i> <span>Chỉ trên máy</span></button>
-    <button id="btnPXK" class="btn accent" type="button" title="Tạo phiếu xuất kho">📤 <span>Phiếu xuất</span></button>
-    <button id="btnPNK" class="btn accent" type="button" title="Tạo phiếu nhập kho">📥 <span>Phiếu nhập</span></button>
-    <button id="btnEdit" class="btn" type="button" aria-pressed="false">✏️ <span>Chỉnh sửa</span></button>
-    <details class="menu" id="menuExport">
-      <summary class="btn">⬇ <span>Xuất / Sao lưu</span></summary>
-      <div class="menu-pop">
-        <button type="button" data-act="xlsx-all">📗 Excel – toàn bộ các sheet</button>
-        <button type="button" data-act="xlsx-cur">📗 Excel – sheet đang xem</button>
-        <button type="button" data-act="csv-cur">📄 CSV – sheet đang xem</button>
-        <hr>
-        <button type="button" onclick="document.getElementById('importFileInput').click()">📂 Cập nhật nguồn (Excel, Word, PDF)…</button>
-        <hr>
-        <button type="button" data-act="json-out">💾 Sao lưu JSON (kèm chỉnh sửa)</button>
-        <button type="button" data-act="json-in">📂 Nhập sao lưu JSON…</button>
-        <hr>
-        <button type="button" data-act="reset" class="danger">↩ Khôi phục dữ liệu gốc</button>
+    <main class="main">
+      <div class="toolbar">
+        <div class="toolbar-left">
+          <h2 id="current-sheet-title" style="margin:0;font-size:18px;">Đang tải...</h2>
+          <span id="item-count-badge" class="badge">0 mục</span>
+        </div>
+        <div class="toolbar-right">
+          <input id="search-input" type="text" placeholder="Tìm tên, Serial, Mã VT, Part No..." />
+          <select id="filter-source">
+            <option value="ALL">Tất cả nguồn</option>
+            <option value="Vật tư">Vật tư</option>
+            <option value="Tài sản">Tài sản</option>
+            <option value="Đo kiểm">Đo kiểm</option>
+            <option value="Sửa chữa">Sửa chữa</option>
+            <option value="Không rõ nguồn">Không rõ nguồn</option>
+          </select>
+          <button id="add-row-btn" class="btn btn-primary">+ Thêm dòng</button>
+        </div>
       </div>
-    </details>
-    <button id="btnPrint" class="btn ghost" type="button" title="In trang đang xem (A4 ngang)">🖨</button>
-    <button id="btnTheme" class="btn ghost" type="button" title="Đổi giao diện sáng / tối">🌓</button>
+
+      <div class="table-card">
+        <table>
+          <thead>
+            <tr>
+              <th>Nguồn</th>
+              <th>STT</th>
+              <th>Tên Vật Tư</th>
+              <th>Serial</th>
+              <th>Mã VT</th>
+              <th>Part number</th>
+              <th>Ghi chú</th>
+              <th>Chuyển</th>
+            </tr>
+          </thead>
+          <tbody id="inventory-tbody"></tbody>
+        </table>
+      </div>
+    </main>
   </div>
-</header>
 
-<div id="editbar" class="editbar" hidden>
-  ✏️ <b>Đang ở chế độ chỉnh sửa.</b> Bấm vào ô để sửa, tích ô <b>Đã kiểm</b>, thêm/xoá dòng.
-  Thay đổi <u>chỉ lưu trên trình duyệt này</u> – dùng <b>Xuất / Sao lưu</b> để giữ hoặc chia sẻ.
-</div>
+  <!-- Modal chuyển dòng sang thư mục khác -->
+  <div id="move-modal" class="modal-backdrop">
+    <div class="modal">
+      <h3>Chuyển mục sang thư mục khác</h3>
+      <div id="move-item-summary" style="font-size:13px;color:#334155;"></div>
+      <label for="target-folder-select" style="font-size:13px;font-weight:600;">Chọn thư mục đích:</label>
+      <select id="target-folder-select"></select>
+      <div class="modal-actions">
+        <button id="cancel-move-btn" class="btn">Hủy</button>
+        <button id="confirm-move-btn" class="btn btn-primary">Xác nhận chuyển</button>
+      </div>
+    </div>
+  </div>
 
-<div class="layout" id="layout" hidden>
-  <aside id="sidebar" class="sidebar" aria-label="Danh sách sheet"></aside>
-  <div id="overlay" class="overlay"></div>
-  <main id="main" class="main"></main>
-</div>
-
-<input type="file" id="fileIn" accept="application/json,.json" hidden>
-<input type="file" id="importFileInput" accept=".xlsx,.xls,.docx,.pdf" hidden>
-<div id="modalRoot"></div>
-<div id="printRoot"></div>
-<div id="toast" class="toast" role="status" aria-live="polite"></div>
-
-<script src="assets/config.js?v=2026.11.08-5"></script>
-<script src="assets/data.js"></script>
-<!-- Thư viện phụ trợ đọc tệp trực tiếp trên Web -->
-<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js" defer></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js" defer></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/pdfjs-dist/3.11.174/pdf.min.js" defer></script>
-<script src="assets/app.js?v=2026.11.08-5" defer></script>
-<script src="assets/slips.js?v=2026.11.08-5" defer></script>
-<script src="assets/sync.js?v=2026.11.08-5" defer></script>
+  <script src="data.js"></script>
+  <script src="config.js"></script>
+  <script src="sync.js"></script>
+  <script src="slips.js"></script>
+  <script src="app.js"></script>
 </body>
 </html>
