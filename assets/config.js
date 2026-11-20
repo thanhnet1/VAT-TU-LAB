@@ -6,8 +6,27 @@ window.APP_CONFIG = {
   title: 'Tài sản – Vật tư Truyền dẫn LAB',
   subtitle: 'LAB XVT',
 
-  // Tên cột tích chọn (ô ☑ ở cột A của file Excel gốc)
-  checkLabel: 'Đã kiểm',
+  // Cột Nguồn thay thế tick "Đã kiểm"
+  sourceLabel: 'Nguồn',
+  sourceOptions: [
+    'Vật tư',
+    'Tài sản',
+    'Đo kiểm',
+    'Sửa chữa',
+    'Không rõ nguồn'
+  ],
+  defaultSource: 'Không rõ nguồn',
+
+  // Cấu trúc chuẩn các bảng thống kê vật tư / tài sản
+  tableColumns: [
+    'Nguồn',
+    'STT',
+    'Tên Vật Tư',
+    'Serial',
+    'Mã VT',
+    'Part number',
+    'Ghi chú'
+  ],
 
   // Khoá lưu chỉnh sửa trong trình duyệt
   storageKey: 'lab-xvt-v1',
@@ -18,31 +37,165 @@ window.APP_CONFIG = {
     'Vật tư rời / không rõ nguồn / đo kiểm'
   ],
 
-  // ====== CẤU HÌNH CÂY THƯ MỤC ĐA CẤP (Đã bật nút tạo danh mục mới cho các nhóm) ======
+  // ====== CẤU HÌNH CÂY THƯ MỤC ĐA CẤP THEO SƠ ĐỒ ======
   treeMenu: [
     {
-      id: 'kho',
-      label: 'Kho vật tư',
-      icon: '📦',
-      type: 'slips',
-      children: [
-        { id: 'xuat', label: 'Phiếu xuất', href: '#/xuat' },
-        { id: 'nhap', label: 'Phiếu nhập', href: '#/nhap' }
-      ]
-    },
-    {
-      id: 'truyen-dan',
-      label: 'Truyền dẫn',
+      id: 'thiet-bi-truyen-dan',
+      label: 'Thiết bị Truyền dẫn',
       icon: '📡',
+      isDynamicGroup: true,
       allowCreate: true,
+      matchKeywords: [
+        'truyen dan', 'truyền dẫn', 'infinera', 'xtc10', 'mtc-9', 'mtc9',
+        'ciena', '5430', 'ome', 'nokia', 'bb1', 'huawei', 'hw', '6800', '8800',
+        '7500', '3500', '9500', 'alcatel', 'alu', '1850', '1830', '1660', '1662',
+        'ericson', 'ericsson'
+      ],
+      defaultGroup: 0,
       children: [
         {
-          id: 'td-he-thong',
-          label: 'Thiết bị theo hệ thống',
+          id: 'td-infinera',
+          label: 'Infinera',
+          icon: '📁',
           isDynamicGroup: true,
           allowCreate: true,
-          matchKeywords: ['xtc', 'mtc', 'ciena', 'ome', 'nokia', 'bb1', 'pss', 'hw', '3500', '7520', '6800', '8800', 'alu', '1850', '1830', '1660', '1662', '9800', 'ericson', 'ericsson'],
-          defaultGroup: 0
+          matchKeywords: ['infinera', 'xtc10', 'mtc-9', 'mtc9'],
+          children: [
+            {
+              id: 'td-infinera-xtc10',
+              label: 'XTC10',
+              icon: '📄',
+              isDynamicGroup: true,
+              allowCreate: true,
+              matchKeywords: ['xtc10']
+            },
+            {
+              id: 'td-infinera-mtc9',
+              label: 'MTC-9',
+              icon: '📄',
+              isDynamicGroup: true,
+              allowCreate: true,
+              matchKeywords: ['mtc-9', 'mtc9']
+            }
+          ]
+        },
+        {
+          id: 'td-ciena',
+          label: 'Ciena',
+          icon: '📁',
+          isDynamicGroup: true,
+          allowCreate: true,
+          matchKeywords: ['ciena', '5430', 'ome'],
+          children: [
+            {
+              id: 'td-ciena-5430',
+              label: '5430',
+              icon: '📄',
+              isDynamicGroup: true,
+              allowCreate: true,
+              matchKeywords: ['5430']
+            },
+            {
+              id: 'td-ciena-ome',
+              label: 'OME 32 slot, OME 19 slot',
+              icon: '📄',
+              isDynamicGroup: true,
+              allowCreate: true,
+              matchKeywords: ['ome', '32 slot', '19 slot']
+            }
+          ]
+        },
+        {
+          id: 'td-nokia-bb1',
+          label: 'Nokia - BB1',
+          icon: '📁',
+          isDynamicGroup: true,
+          allowCreate: true,
+          matchKeywords: ['nokia', 'bb1']
+        },
+        {
+          id: 'td-huawei',
+          label: 'HuaWei',
+          icon: '📁',
+          isDynamicGroup: true,
+          allowCreate: true,
+          matchKeywords: ['huawei', 'hw', '6800', '8800', '7500', '3500', '9500'],
+          children: [
+            {
+              id: 'td-hw-6800-8800',
+              label: 'HW 6800 - 8800',
+              icon: '📄',
+              isDynamicGroup: true,
+              allowCreate: true,
+              matchKeywords: ['6800', '8800']
+            },
+            {
+              id: 'td-hw-7500-3500',
+              label: 'HW 7500 - 3500',
+              icon: '📄',
+              isDynamicGroup: true,
+              allowCreate: true,
+              matchKeywords: ['7500', '3500']
+            },
+            {
+              id: 'td-hw-9500-b1',
+              label: 'HW 9500 - B1',
+              icon: '📄',
+              isDynamicGroup: true,
+              allowCreate: true,
+              matchKeywords: ['9500', 'b1']
+            }
+          ]
+        },
+        {
+          id: 'td-alcatel',
+          label: 'Alcatel',
+          icon: '📁',
+          isDynamicGroup: true,
+          allowCreate: true,
+          matchKeywords: ['alcatel', 'alu', '1850', '1830', '1660', '1662'],
+          children: [
+            {
+              id: 'td-alu-1850-1830',
+              label: 'Alu - 1850 - 1830',
+              icon: '📄',
+              isDynamicGroup: true,
+              allowCreate: true,
+              matchKeywords: ['1850', '1830']
+            },
+            {
+              id: 'td-alu-bb',
+              label: 'Alu - BB',
+              icon: '📄',
+              isDynamicGroup: true,
+              allowCreate: true,
+              matchKeywords: ['alu - bb', 'alcatel bb']
+            },
+            {
+              id: 'td-alu-1660-1662',
+              label: 'Alu - 1660 - 1662',
+              icon: '📄',
+              isDynamicGroup: true,
+              allowCreate: true,
+              matchKeywords: ['1660', '1662']
+            }
+          ]
+        },
+        {
+          id: 'td-ericson',
+          label: 'Ericson',
+          icon: '📁',
+          isDynamicGroup: true,
+          allowCreate: true,
+          matchKeywords: ['ericson', 'ericsson']
+        },
+        {
+          id: 'td-them',
+          label: 'Thêm',
+          icon: '➕',
+          isDynamicGroup: true,
+          allowCreate: true,
+          matchKeywords: ['them', 'thêm', 'khac', 'khác']
         }
       ]
     },
@@ -50,19 +203,12 @@ window.APP_CONFIG = {
       id: 'thiet-bi-ip',
       label: 'Thiết bị IP',
       icon: '🌐',
+      isDynamicGroup: true,
       allowCreate: true,
-      children: [
-        {
-          id: 'ip-he-thong',
-          label: 'Thiết bị theo hệ thống',
-          isDynamicGroup: true,
-          allowCreate: true,
-          matchKeywords: ['ip', 'router', 'switch', 'cisco', 'juniper', 'asr', 'mx', 'ne40']
-        }
-      ]
+      matchKeywords: ['ip', 'router', 'switch', 'cisco', 'juniper', 'asr', 'mx', 'ne40']
     },
     {
-      id: 'vo-tuyen',
+      id: 'thiet-bi-vo-tuyen',
       label: 'Thiết bị vô tuyến',
       icon: '📻',
       isDynamicGroup: true,
@@ -70,28 +216,12 @@ window.APP_CONFIG = {
       matchKeywords: ['vo tuyen', 'vô tuyến', 'radio', 'bts', 'nodeb', 'rru', 'bbu', 'viba']
     },
     {
-      id: 'vsat',
+      id: 'thiet-bi-vsat',
       label: 'Thiết bị VSAT',
       icon: '🛰️',
       isDynamicGroup: true,
       allowCreate: true,
       matchKeywords: ['vsat', 've tinh', 'vệ tinh']
-    },
-    {
-      id: 'do-kiem',
-      label: 'Vật tư đo kiểm',
-      icon: '🛠️',
-      isDynamicGroup: true,
-      allowCreate: true,
-      matchKeywords: ['do kiem', 'đo kiểm', 'may do', 'máy đo', 'otdr', 'exfo', 'anritsu', 'viavi', 'vat tu roi', 'vật tư rời'],
-      defaultGroup: 1
-    },
-    {
-      id: 'khong-ro-nguon',
-      label: 'Vật tư không rõ nguồn gốc',
-      icon: '❓',
-      isDynamicGroup: true,
-      matchKeywords: ['khong ro', 'không rõ', 'nguon goc', 'nguồn gốc', 'ton khac', 'tồn khác']
     },
     {
       id: 'tai-san',
@@ -100,6 +230,15 @@ window.APP_CONFIG = {
       isDynamicGroup: true,
       allowCreate: true,
       matchKeywords: ['tai san', 'tài sản', 'ccdc', 'tscd']
+    },
+    {
+      id: 'khong-ro-nguon-goc',
+      label: 'Không rõ nguồn gốc',
+      icon: '❓',
+      isDynamicGroup: true,
+      allowCreate: true,
+      matchKeywords: ['khong ro', 'không rõ', 'nguon goc', 'nguồn gốc', 'ton khac', 'tồn khác'],
+      defaultGroup: 1
     }
   ],
 
@@ -116,12 +255,12 @@ window.APP_CONFIG = {
   authUsers: {
     'admin': {
       email: 'admin@lab-xvt.local',
-      role: 'admin', // Quyền cao nhất: toàn quyền chỉnh sửa, thêm xóa, duyệt
+      role: 'admin',
       name: 'Quản trị viên'
     },
     'khach': {
       email: 'khach@lab-xvt.local',
-      role: 'guest', // Khách: chỉ xem phiếu xuất kho và xác nhận đã nhận
+      role: 'guest',
       name: 'Khách xem kho'
     }
   },
@@ -140,24 +279,5 @@ window.APP_CONFIG = {
       appId: "1:604735984087:web:83b5926e168efb02c6bb92",
       measurementId: "G-4FXBFBE74T"
     }
-  },
-
-  // ====== PHIẾU XUẤT KHO / NHẬP KHO ======
-  slip: {
-    orgLine1: 'Tổng Công Ty Hạ tầng mạng',
-    orgLine2: 'Trung Tâm Hạ Tầng Mạng Miền Bắc - CN Tổng công ty Hạ tầng mạng',
-    formNoXuat: 'Mẫu số: 02  VT-DN',
-    formNoNhap: 'Mẫu số 1 VT -DN',
-    kho: 'Kho-X.VT-28-PHAM-HUNG-NTL_HNI',
-    numSuffix: 'X.VT-28PHG-KH01',
-    startSeq: 1,
-    unit: 'Cái',
-    quality: 'Tốt',
-    lien: '',
-    thuTruong: '',
-    ketToan: '',
-    nguoiLap: '',
-    thuKho: '',
-    qrLink: true
   }
 };
