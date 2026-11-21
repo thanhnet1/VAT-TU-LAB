@@ -1,6 +1,6 @@
 /* =====================================================================
    assets/app.js – WEB APP: TÀI SẢN – VẬT TƯ TRUYỀN DẪN LAB
-   Phiên bản: 2026.11.20-1
+   Phiên bản: 2026.11.21-1
    ===================================================================== */
 (function () {
   'use strict';
@@ -26,7 +26,7 @@
     ? CFG.sourceOptions
     : SOURCE_OPTIONS;
 
-  const BUILD = '2026.11.20-1';
+  const BUILD = '2026.11.21-1';
   const $ = (s, el = document) => el.querySelector(s);
   const $$ = (s, el = document) => Array.from(el.querySelectorAll(s));
   const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({
@@ -196,6 +196,7 @@
   const clone = o => JSON.parse(JSON.stringify(o));
   const syncOn = () => {
     const c = CFG.sync || {};
+    if (c.provider === 'off') return false;
     return !!((c.provider === 'firebase' && c.firebase && c.firebase.projectId) || (c.provider === 'server' && c.server && c.server.url));
   };
 
@@ -204,9 +205,9 @@
     if (syncOn() && (!window.Sync || typeof window.Sync.init !== 'function')) {
       bad.push('<b>assets/sync.js</b> (chưa tải được)');
     }
-    if (!bad.length) return;
     const old = $('#modBanner');
     if (old) old.remove();
+    if (!bad.length) return;
     const d = document.createElement('div'); d.className = 'mod-banner'; d.id = 'modBanner';
     d.innerHTML = '⚠ Một số file chưa cập nhật đúng: ' + bad.join('; ') + '. Hãy bấm <b>Ctrl + F5</b>.<button type="button" onclick="this.parentNode.remove()">Đóng</button>';
     document.body.insertBefore(d, document.body.firstChild);
@@ -496,7 +497,7 @@
     const opts = SRC_LIST.map(opt =>
       `<option value="${esc(opt)}" ${opt === curSrc ? 'selected' : ''}>${esc(opt)}</option>`
     ).join('');
-    return `<select class="src-sel" aria-label="${esc(CFG.sourceLabel)}">${opts}</select>`;
+    return `<select class="src-sel" data-row-source="1" aria-label="${esc(CFG.sourceLabel)}">${opts}</select>`;
   }
 
   function rowHTML(s, bi, b, ri, row, tokens) {
