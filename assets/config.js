@@ -46,10 +46,10 @@ window.APP_CONFIG = {
       isDynamicGroup: true,
       allowCreate: true,
       matchKeywords: [
-        'truyen dan', 'truyền dẫn', 'infinera', 'xtc10', 'mtc-9', 'mtc9',
+        'truyen dan', 'truyền dẫn', 'infinera', 'xtc10', 'mtc-9', 'mtc9', 'otc5', 'otc 5',
         'ciena', '5430', 'ome', 'nokia', 'bb1', 'huawei', 'hw', '6800', '8800',
-        '7500', '3500', '9500', 'alcatel', 'alu', '1850', '1830', '1660', '1662',
-        'ericson', 'ericsson'
+        '7500', '3500', '9500', '3900', 'alcatel', 'alu', '1850', '1830', '1660', '1662',
+        'ericson', 'ericsson', 'ribbon'
       ],
       defaultGroup: 0,
       children: [
@@ -59,7 +59,7 @@ window.APP_CONFIG = {
           icon: '📁',
           isDynamicGroup: true,
           allowCreate: true,
-          matchKeywords: ['infinera', 'xtc10', 'mtc-9', 'mtc9'],
+          matchKeywords: ['infinera', 'xtc10', 'mtc-9', 'mtc9', 'otc5', 'otc 5'],
           children: [
             {
               id: 'td-infinera-xtc10',
@@ -71,11 +71,19 @@ window.APP_CONFIG = {
             },
             {
               id: 'td-infinera-mtc9',
-              label: 'MTC-9',
+              label: 'MTC 9',
               icon: '📄',
               isDynamicGroup: true,
               allowCreate: true,
-              matchKeywords: ['mtc-9', 'mtc9']
+              matchKeywords: ['mtc-9', 'mtc9', 'mtc 9']
+            },
+            {
+              id: 'td-infinera-otc5',
+              label: 'OTC 5',
+              icon: '📄',
+              isDynamicGroup: true,
+              allowCreate: true,
+              matchKeywords: ['otc5', 'otc 5']
             }
           ]
         },
@@ -97,7 +105,7 @@ window.APP_CONFIG = {
             },
             {
               id: 'td-ciena-ome',
-              label: 'OME 32 slot, OME 16 slot',
+              label: 'OME',
               icon: '📄',
               isDynamicGroup: true,
               allowCreate: true,
@@ -111,15 +119,15 @@ window.APP_CONFIG = {
           icon: '📁',
           isDynamicGroup: true,
           allowCreate: true,
-          matchKeywords: ['nokia', 'BB1']
+          matchKeywords: ['nokia', 'bb1']
         },
         {
           id: 'td-huawei',
-          label: 'HuaWei',
+          label: 'Hua wei',
           icon: '📁',
           isDynamicGroup: true,
           allowCreate: true,
-          matchKeywords: ['huawei', 'hw', '6800', '8800', '7500', '3500', '9500'],
+          matchKeywords: ['huawei', 'hw', '6800', '8800', '7500', '3500', '9500', '3900'],
           children: [
             {
               id: 'td-hw-6800-8800',
@@ -157,11 +165,19 @@ window.APP_CONFIG = {
           children: [
             {
               id: 'td-alu-1850-1830',
-              label: 'Alu - 1850 - 1830',
+              label: 'Alu 1850 - 1830',
               icon: '📄',
               isDynamicGroup: true,
               allowCreate: true,
               matchKeywords: ['1850', '1830']
+            },
+            {
+              id: 'td-alu-1660-1662',
+              label: 'Alu 1660 - 1662',
+              icon: '📄',
+              isDynamicGroup: true,
+              allowCreate: true,
+              matchKeywords: ['1660', '1662']
             },
             {
               id: 'td-alu-bb',
@@ -169,33 +185,17 @@ window.APP_CONFIG = {
               icon: '📄',
               isDynamicGroup: true,
               allowCreate: true,
-              matchKeywords: ['alu - bb', 'alcatel bb']
-            },
-            {
-              id: 'td-alu-1660-1662',
-              label: 'Alu - 1660 - 1662',
-              icon: '📄',
-              isDynamicGroup: true,
-              allowCreate: true,
-              matchKeywords: ['1660', '1662']
+              matchKeywords: ['alu - bb', 'alu bb', 'alcatel bb']
             }
           ]
         },
         {
-          id: 'td-ericson',
-          label: 'Ericson',
+          id: 'td-ericson-ribbon',
+          label: 'EricSon - Ribbon',
           icon: '📁',
           isDynamicGroup: true,
           allowCreate: true,
-          matchKeywords: ['ericson', 'ericsson']
-        },
-        {
-          id: 'td-them',
-          label: 'Thêm',
-          icon: '➕',
-          isDynamicGroup: true,
-          allowCreate: true,
-          matchKeywords: ['them', 'thêm', 'khac', 'khác']
+          matchKeywords: ['ericson', 'ericsson', 'ribbon']
         }
       ]
     },
@@ -208,14 +208,6 @@ window.APP_CONFIG = {
       matchKeywords: ['ip', 'router', 'switch', 'cisco', 'juniper', 'asr', 'mx', 'ne40']
     },
     {
-      id: 'thiet-bi-vo-tuyen',
-      label: 'Thiết bị vô tuyến',
-      icon: '📻',
-      isDynamicGroup: true,
-      allowCreate: true,
-      matchKeywords: ['vo tuyen', 'vô tuyến', 'radio', 'bts', 'nodeb', 'rru', 'bbu', 'viba']
-    },
-    {
       id: 'thiet-bi-vsat',
       label: 'Thiết bị VSAT',
       icon: '🛰️',
@@ -224,21 +216,55 @@ window.APP_CONFIG = {
       matchKeywords: ['vsat', 've tinh', 'vệ tinh']
     },
     {
-      id: 'tai-san',
-      label: 'Tài sản',
-      icon: '🏢',
+      id: 'thiet-bi-vo-tuyen',
+      label: 'Thiết bị vô tuyến',
+      icon: '📻',
       isDynamicGroup: true,
       allowCreate: true,
-      matchKeywords: ['tai san', 'tài sản', 'ccdc', 'tscd']
+      matchKeywords: ['vo tuyen', 'vô tuyến', 'radio', 'bts', 'nodeb', 'rru', 'bbu', 'viba']
     },
     {
-      id: 'khong-ro-nguon-goc',
-      label: 'Không rõ nguồn gốc',
+      id: 'vat-tu-do-kiem',
+      label: 'Vật tư đo kiểm',
+      icon: '📏',
+      isDynamicGroup: true,
+      allowCreate: true,
+      matchKeywords: ['do kiem', 'đo kiểm', 'may do', 'máy đo']
+    },
+    {
+      id: 'vat-tu-sua-chua',
+      label: 'Vật tư sửa chữa',
+      icon: '🛠️',
+      isDynamicGroup: true,
+      allowCreate: true,
+      matchKeywords: ['sua chua', 'sửa chữa', 'linh kien', 'linh kiện']
+    },
+    {
+      id: 'vat-tu-khong-ro-nguon-goc',
+      label: 'Vật tư - không rõ nguồn gốc',
       icon: '❓',
       isDynamicGroup: true,
       allowCreate: true,
       matchKeywords: ['khong ro', 'không rõ', 'nguon goc', 'nguồn gốc', 'ton khac', 'tồn khác'],
       defaultGroup: 1
+    },
+    {
+      id: 'tai-san',
+      label: 'Tài sản',
+      icon: '🏢',
+      isDynamicGroup: true,
+      allowCreate: true,
+      matchKeywords: ['tai san', 'tài sản', 'ccdc', 'tscd'],
+      children: [
+        {
+          id: 'tai-san-khong-ro-nguon-goc',
+          label: 'Không rõ nguồn gốc',
+          icon: '❓',
+          isDynamicGroup: true,
+          allowCreate: true,
+          matchKeywords: ['tai san khong ro', 'tài sản không rõ', 'khong ro nguon goc']
+        }
+      ]
     }
   ],
 
