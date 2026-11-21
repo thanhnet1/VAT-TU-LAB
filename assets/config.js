@@ -28,6 +28,10 @@ window.APP_CONFIG = {
     'Ghi chú'
   ],
 
+  // Kiểu hiển thị bảng thống kê ngang và tách mỗi mục thành 1 sheet khi xuất Excel
+  tableLayout: 'horizontal',
+  exportEachItemAsSheet: true,
+
   // Khoá lưu chỉnh sửa trong trình duyệt
   storageKey: 'lab-xvt-v1',
 
@@ -37,20 +41,20 @@ window.APP_CONFIG = {
     'Vật tư rời / không rõ nguồn / đo kiểm'
   ],
 
-  // ====== CẤU HÌNH CÂY THƯ MỤC ĐA CẤP THEO SƠ ĐỒ ======
+  // ====== CẤU HÌNH CÂY THƯ MỤC RÚT GỌN THEO ẢNH MẪU ======
   treeMenu: [
     {
-      id: 'thiet-bi-truyen-dan',
-      label: 'Thiết bị Truyền dẫn',
+      id: 'truyen-dan-thiet-bi',
+      label: 'Truyền dẫn Thiết bị',
       icon: '📡',
       isDynamicGroup: true,
       allowCreate: true,
       matchKeywords: [
         'truyen dan', 'truyền dẫn', 'infinera', 'xtc10', 'xtc-10', 'xtc 10',
-        'mtc-9', 'mtc9', 'mtc 9', 'otc9', 'otc-9', 'otc 9', 'otc5', 'otc-5', 'otc 5',
-        'ciena', '5430', 'ome', 'nokia', 'bb1', 'huawei', 'hw', '6800', '8800',
-        '7500', '3500', '9500', '3900', 'alcatel', 'alu', '1850', '1830', '1660', '1662',
-        'ericson', 'ericsson', 'ribbon'
+        'mtc9', 'mtc-9', 'mtc 9', 'otc9', 'otc-9', 'otc 9',
+        'ciena', '5430', 'ome', 'bb',
+        'huawei', 'hw', '6800', '8800', '7500', '3500', '3900',
+        'nokia', 'bb1', 'ribbon', 'ericson', 'ericsson'
       ],
       defaultGroup: 0,
       children: [
@@ -76,7 +80,7 @@ window.APP_CONFIG = {
               icon: '📄',
               isDynamicGroup: true,
               allowCreate: true,
-              matchKeywords: ['mtc-9', 'mtc9', 'mtc 9']
+              matchKeywords: ['mtc9', 'mtc-9', 'mtc 9']
             },
             {
               id: 'otc9',
@@ -84,7 +88,7 @@ window.APP_CONFIG = {
               icon: '📄',
               isDynamicGroup: true,
               allowCreate: true,
-              matchKeywords: ['otc9', 'otc-9', 'otc 9', 'otc5', 'otc-5', 'otc 5']
+              matchKeywords: ['otc9', 'otc-9', 'otc 9']
             }
           ]
         },
@@ -97,7 +101,7 @@ window.APP_CONFIG = {
           matchKeywords: ['ciena'],
           children: [
             {
-              id: '5430',
+              id: 'ciena-5430',
               label: '5430',
               icon: '📄',
               isDynamicGroup: true,
@@ -105,12 +109,70 @@ window.APP_CONFIG = {
               matchKeywords: ['5430', 'ciena 5430']
             },
             {
-              id: 'ome',
+              id: 'ciena-ome',
               label: 'OME',
               icon: '📄',
               isDynamicGroup: true,
               allowCreate: true,
-              matchKeywords: ['ome', '32 slot', '16 slot', 'ciena ome']
+              matchKeywords: ['ome', 'ciena ome']
+            },
+            {
+              id: 'ciena-bb',
+              label: 'BB',
+              icon: '📄',
+              isDynamicGroup: true,
+              allowCreate: true,
+              matchKeywords: ['ciena bb', 'bb']
+            }
+          ]
+        },
+        {
+          id: 'td-huawei',
+          label: 'Huawei',
+          icon: '📁',
+          isDynamicGroup: true,
+          allowCreate: true,
+          matchKeywords: ['huawei', 'hua wei', 'hw'],
+          children: [
+            {
+              id: 'hw-6800',
+              label: 'HW 6800',
+              icon: '📄',
+              isDynamicGroup: true,
+              allowCreate: true,
+              matchKeywords: ['hw 6800', 'hw6800', 'hw-6800', '6800']
+            },
+            {
+              id: 'hw-8800',
+              label: 'HW 8800',
+              icon: '📄',
+              isDynamicGroup: true,
+              allowCreate: true,
+              matchKeywords: ['hw 8800', 'hw8800', 'hw-8800', '8800']
+            },
+            {
+              id: 'hw-7500',
+              label: 'HW 7500',
+              icon: '📄',
+              isDynamicGroup: true,
+              allowCreate: true,
+              matchKeywords: ['hw 7500', 'hw7500', 'hw-7500', '7500']
+            },
+            {
+              id: 'hw-3500',
+              label: 'HW 3500',
+              icon: '📄',
+              isDynamicGroup: true,
+              allowCreate: true,
+              matchKeywords: ['hw 3500', 'hw3500', 'hw-3500', '3500']
+            },
+            {
+              id: 'hw-3900',
+              label: 'HW 3900',
+              icon: '📄',
+              isDynamicGroup: true,
+              allowCreate: true,
+              matchKeywords: ['hw 3900', 'hw3900', 'hw-3900', '3900']
             }
           ]
         },
@@ -123,80 +185,12 @@ window.APP_CONFIG = {
           matchKeywords: ['nokia', 'bb1', 'nokia - bb1', 'nokia bb1']
         },
         {
-          id: 'td-huawei',
-          label: 'Hua wei',
+          id: 'ribbon-ericson',
+          label: 'Ribbon - Ericson',
           icon: '📁',
           isDynamicGroup: true,
           allowCreate: true,
-          matchKeywords: ['huawei', 'hua wei'],
-          children: [
-            {
-              id: 'hw-6800-8800',
-              label: 'HW 6800 - 8800',
-              icon: '📄',
-              isDynamicGroup: true,
-              allowCreate: true,
-              matchKeywords: ['6800', '8800', 'hw 6800', 'hw 8800', 'hw-6800', 'hw-8800']
-            },
-            {
-              id: 'hw-7500-3500',
-              label: 'HW 7500 - 3500',
-              icon: '📄',
-              isDynamicGroup: true,
-              allowCreate: true,
-              matchKeywords: ['7500', '3500', 'hw 7500', 'hw 3500', 'hw-7500', 'hw-3500']
-            },
-            {
-              id: 'hw-9500-3900',
-              label: 'HW 9500 - 3900',
-              icon: '📄',
-              isDynamicGroup: true,
-              allowCreate: true,
-              matchKeywords: ['9500', '3900', 'hw 9500', 'hw 3900', 'hw-9500', 'hw-3900']
-            }
-          ]
-        },
-        {
-          id: 'td-alcatel',
-          label: 'Alcatel',
-          icon: '📁',
-          isDynamicGroup: true,
-          allowCreate: true,
-          matchKeywords: ['alcatel'],
-          children: [
-            {
-              id: 'alu-1850-1830',
-              label: 'Alu 1850 - 1830',
-              icon: '📄',
-              isDynamicGroup: true,
-              allowCreate: true,
-              matchKeywords: ['1850', '1830', 'alu 1850', 'alu 1830', 'alu-1850', 'alu-1830']
-            },
-            {
-              id: 'alu-1660-1662',
-              label: 'Alu 1660 - 1662',
-              icon: '📄',
-              isDynamicGroup: true,
-              allowCreate: true,
-              matchKeywords: ['1660', '1662', 'alu 1660', 'alu 1662', 'alu-1660', 'alu-1662']
-            },
-            {
-              id: 'alu-bb',
-              label: 'Alu - BB',
-              icon: '📄',
-              isDynamicGroup: true,
-              allowCreate: true,
-              matchKeywords: ['alu - bb', 'alu bb', 'alu-bb', 'alcatel bb']
-            }
-          ]
-        },
-        {
-          id: 'ericson-ribbon',
-          label: 'EricSon - Ribbon',
-          icon: '📁',
-          isDynamicGroup: true,
-          allowCreate: true,
-          matchKeywords: ['ericson', 'ericsson', 'ribbon']
+          matchKeywords: ['ribbon', 'ericson', 'ericsson', 'ribbon - ericson', 'ribbon - ericsson']
         }
       ]
     },
@@ -206,7 +200,7 @@ window.APP_CONFIG = {
       icon: '🌐',
       isDynamicGroup: true,
       allowCreate: true,
-      matchKeywords: ['ip', 'router', 'switch', 'cisco', 'juniper', 'asr', 'mx', 'ne40']
+      matchKeywords: ['ip', 'thiet bi ip', 'thiết bị ip', 'router', 'switch']
     },
     {
       id: 'thiet-bi-vsat',
@@ -214,7 +208,7 @@ window.APP_CONFIG = {
       icon: '🛰️',
       isDynamicGroup: true,
       allowCreate: true,
-      matchKeywords: ['vsat', 've tinh', 'vệ tinh']
+      matchKeywords: ['vsat', 'thiet bi vsat', 'thiết bị vsat', 've tinh', 'vệ tinh']
     },
     {
       id: 'thiet-bi-vo-tuyen',
@@ -222,15 +216,15 @@ window.APP_CONFIG = {
       icon: '📻',
       isDynamicGroup: true,
       allowCreate: true,
-      matchKeywords: ['vo tuyen', 'vô tuyến', 'radio', 'bts', 'nodeb', 'rru', 'bbu', 'viba']
+      matchKeywords: ['vo tuyen', 'vô tuyến', 'thiet bi vo tuyen', 'thiết bị vô tuyến', 'radio']
     },
     {
-      id: 'vat-tu-do-kiem',
-      label: 'Vật tư đo kiểm',
+      id: 'vat-tu-do-luong',
+      label: 'Vật tư đo lường',
       icon: '📏',
       isDynamicGroup: true,
       allowCreate: true,
-      matchKeywords: ['do kiem', 'đo kiểm', 'may do', 'máy đo']
+      matchKeywords: ['do luong', 'đo lường', 'vat tu do luong', 'vật tư đo lường']
     },
     {
       id: 'vat-tu-sua-chua',
@@ -238,15 +232,15 @@ window.APP_CONFIG = {
       icon: '🛠️',
       isDynamicGroup: true,
       allowCreate: true,
-      matchKeywords: ['sua chua', 'sửa chữa', 'linh kien', 'linh kiện']
+      matchKeywords: ['sua chua', 'sửa chữa', 'vat tu sua chua', 'vật tư sửa chữa']
     },
     {
       id: 'vat-tu-khong-ro-nguon-goc',
-      label: 'Vật tư - không rõ nguồn gốc',
+      label: 'Vật tư không rõ nguồn gốc',
       icon: '❓',
       isDynamicGroup: true,
       allowCreate: true,
-      matchKeywords: ['khong ro', 'không rõ', 'nguon goc', 'nguồn gốc', 'ton khac', 'tồn khác'],
+      matchKeywords: ['khong ro nguon goc', 'không rõ nguồn gốc', 'khong ro', 'không rõ'],
       defaultGroup: 1
     },
     {
@@ -255,17 +249,7 @@ window.APP_CONFIG = {
       icon: '🏢',
       isDynamicGroup: true,
       allowCreate: true,
-      matchKeywords: ['tai san', 'tài sản', 'ccdc', 'tscd'],
-      children: [
-        {
-          id: 'tai-san-khong-ro-nguon-goc',
-          label: 'Không rõ nguồn gốc',
-          icon: '❓',
-          isDynamicGroup: true,
-          allowCreate: true,
-          matchKeywords: ['tai san khong ro', 'tài sản không rõ', 'khong ro nguon goc']
-        }
-      ]
+      matchKeywords: ['tai san', 'tài sản']
     }
   ],
 
@@ -280,33 +264,31 @@ window.APP_CONFIG = {
     'otc9': 'otc9',
     'otc-9': 'otc9',
     'otc 9': 'otc9',
-    'otc5': 'otc9',
-    'otc-5': 'otc9',
-    'otc 5': 'otc9',
-    '5430': '5430',
-    'ciena-5430': '5430',
-    'ome': 'ome',
-    'ciena-ome': 'ome',
+    'ciena-5430': 'ciena-5430',
+    '5430': 'ciena-5430',
+    'ciena-ome': 'ciena-ome',
+    'ome': 'ciena-ome',
+    'ciena-bb': 'ciena-bb',
+    'bb': 'ciena-bb',
+    'hw-6800': 'hw-6800',
+    'hw-8800': 'hw-8800',
+    'hw-7500': 'hw-7500',
+    'hw-3500': 'hw-3500',
+    'hw-3900': 'hw-3900',
     'nokia-bb1': 'nokia-bb1',
     'nokia': 'nokia-bb1',
     'bb1': 'nokia-bb1',
-    'hw-6800-8800': 'hw-6800-8800',
-    'hw-7500-3500': 'hw-7500-3500',
-    'hw-9500-3900': 'hw-9500-3900',
-    'alu-1850-1830': 'alu-1850-1830',
-    'alu-1660-1662': 'alu-1660-1662',
-    'alu-bb': 'alu-bb',
-    'ericson-ribbon': 'ericson-ribbon',
-    'ericsson': 'ericson-ribbon',
-    'ribbon': 'ericson-ribbon',
+    'ribbon-ericson': 'ribbon-ericson',
+    'ribbon': 'ribbon-ericson',
+    'ericson': 'ribbon-ericson',
+    'ericsson': 'ribbon-ericson',
     'thiet-bi-ip': 'thiet-bi-ip',
     'thiet-bi-vsat': 'thiet-bi-vsat',
     'thiet-bi-vo-tuyen': 'thiet-bi-vo-tuyen',
-    'vat-tu-do-kiem': 'vat-tu-do-kiem',
+    'vat-tu-do-luong': 'vat-tu-do-luong',
     'vat-tu-sua-chua': 'vat-tu-sua-chua',
     'vat-tu-khong-ro-nguon-goc': 'vat-tu-khong-ro-nguon-goc',
-    'tai-san': 'tai-san',
-    'tai-san-khong-ro-nguon-goc': 'tai-san-khong-ro-nguon-goc'
+    'tai-san': 'tai-san'
   },
 
   // ====== TÁCH BẢNG / MỤC CON THEO TÊN BLOCK VÀ ĐƯA VỀ ĐÚNG THƯ MỤC ======
@@ -321,47 +303,48 @@ window.APP_CONFIG = {
     'otc9': 'otc9',
     'otc-9': 'otc9',
     'otc 9': 'otc9',
-    'otc5': 'otc9',
-    'otc-5': 'otc9',
-    'otc 5': 'otc9',
-    '5430': '5430',
-    'ome': 'ome',
-    'ome 32 slot': 'ome',
-    'ome 16 slot': 'ome',
+    '5430': 'ciena-5430',
+    'ome': 'ciena-ome',
+    'bb': 'ciena-bb',
+    'hw 6800': 'hw-6800',
+    'hw 8800': 'hw-8800',
+    'hw 7500': 'hw-7500',
+    'hw 3500': 'hw-3500',
+    'hw 3900': 'hw-3900',
     'nokia - bb1': 'nokia-bb1',
     'nokia bb1': 'nokia-bb1',
-    'hw 6800 - 8800': 'hw-6800-8800',
-    'hw 7500 - 3500': 'hw-7500-3500',
-    'hw 9500 - 3900': 'hw-9500-3900',
-    'alu 1850 - 1830': 'alu-1850-1830',
-    'alu 1660 - 1662': 'alu-1660-1662',
-    'alu - bb': 'alu-bb',
-    'ericson - ribbon': 'ericson-ribbon',
-    'ericsson - ribbon': 'ericson-ribbon'
+    'ribbon - ericson': 'ribbon-ericson',
+    'ribbon - ericsson': 'ribbon-ericson',
+    'thiet bi ip': 'thiet-bi-ip',
+    'thiet bi vsat': 'thiet-bi-vsat',
+    'thiet bi vo tuyen': 'thiet-bi-vo-tuyen',
+    'vat tu do luong': 'vat-tu-do-luong',
+    'vat tu sua chua': 'vat-tu-sua-chua',
+    'vat tu khong ro nguon goc': 'vat-tu-khong-ro-nguon-goc',
+    'tai san': 'tai-san'
   },
 
   sheetLabels: {
     'xtc10': 'XTC10',
     'mtc9': 'MTC 9',
     'otc9': 'OTC 9',
-    '5430': '5430',
-    'ome': 'OME',
+    'ciena-5430': '5430',
+    'ciena-ome': 'OME',
+    'ciena-bb': 'BB',
+    'hw-6800': 'HW 6800',
+    'hw-8800': 'HW 8800',
+    'hw-7500': 'HW 7500',
+    'hw-3500': 'HW 3500',
+    'hw-3900': 'HW 3900',
     'nokia-bb1': 'Nokia - BB1',
-    'hw-6800-8800': 'HW 6800 - 8800',
-    'hw-7500-3500': 'HW 7500 - 3500',
-    'hw-9500-3900': 'HW 9500 - 3900',
-    'alu-1850-1830': 'Alu 1850 - 1830',
-    'alu-1660-1662': 'Alu 1660 - 1662',
-    'alu-bb': 'Alu - BB',
-    'ericson-ribbon': 'EricSon - Ribbon',
+    'ribbon-ericson': 'Ribbon - Ericson',
     'thiet-bi-ip': 'Thiết bị IP',
     'thiet-bi-vsat': 'Thiết bị VSAT',
     'thiet-bi-vo-tuyen': 'Thiết bị vô tuyến',
-    'vat-tu-do-kiem': 'Vật tư đo kiểm',
+    'vat-tu-do-luong': 'Vật tư đo lường',
     'vat-tu-sua-chua': 'Vật tư sửa chữa',
-    'vat-tu-khong-ro-nguon-goc': 'Vật tư - không rõ nguồn gốc',
-    'tai-san': 'Tài sản',
-    'tai-san-khong-ro-nguon-goc': 'Không rõ nguồn gốc'
+    'vat-tu-khong-ro-nguon-goc': 'Vật tư không rõ nguồn gốc',
+    'tai-san': 'Tài sản'
   },
 
   colorMeaning: {
