@@ -142,6 +142,133 @@
     });
   }
 
+  function collectTreeTargets(nodes, out = []) {
+    if (!Array.isArray(nodes)) return out;
+    nodes.forEach(node => {
+      if (!node || !node.id) return;
+      out.push(node);
+      if (Array.isArray(node.children) && node.children.length) {
+        collectTreeTargets(node.children, out);
+      }
+    });
+    return out;
+  }
+
+  function ensureTargetSheet(sheetMap, targetId, titleFallback, defaultGroup = 0, categoryId = null) {
+    if (sheetMap.has(targetId)) return sheetMap.get(targetId);
+    const label = (CFG.sheetLabels && CFG.sheetLabels[targetId]) || titleFallback || targetId;
+    const created = {
+      id: targetId,
+      name: label,
+      categoryId: categoryId || targetId,
+      group: defaultGroup,
+      blocks: []
+    };
+    sheetMap.set(targetId, created);
+    return created;
+  }
+
+  function resolveBlockTargetId(blockTitle, sheetId, allNodes) {
+    const fTitle = fold(blockTitle || '').replace(/\s+/g, ' ').trim();
+    const blockMap = CFG.blockRouteMap || {};
+    if (fTitle) {
+      if (blockMap[fTitle]) return blockMap[fTitle];
+      for (const [k, v] of Object.entries(blockMap)) {
+        const fk = fold(k).replace(/\s+/g, ' ').trim();
+        if (fk && (fTitle === fk || fTitle.includes(fk))) return v;
+      }
+      const candidates = allNodes.filter(n => n.id !== sheetId && Array.isArray(n.matchKeywords));
+      for (const n of candidates) {
+        if (n.matchKeywords.some(kw => {
+          const fkw = fold(kw).replace(/\s+/g, ' ').trim();
+          return fkw.length >= 3 && (fTitle === fkw || fTitle.includes(fkw));
+        })) {
+          const hasMoreSpecificChild = allNodes.some(child =>
+            child.id !== n.id &&
+            Array.isArray(child.matchKeywords) &&
+            child.matchKeywords.some(ckw => {
+              const fckw = fold(ckw).replace(/\s+/g, ' ').trim();
+              return fckw.length >= 3 && (fTitle === fckw || fTitle.includes(fckw));
+            })
+          );
+          if (!hasMoreSpecificChild) return n.id;
+        }
+      }
+    }
+    const routeMap = CFG.sheetRouteMap || {};
+    const fSheet = fold(sheetId || '');
+    if (routeMap[sheetId]) return routeMap[sheetId];
+    if (routeMap[fSheet]) return routeMap[fSheet];
+    return sheetId;
+  }
+
+  function distributeSheetsByConfig(sheets) {
+    const normalized = normalizeSheetsData(sheets);
+    if (!Array.isArray(normalized) || !normalized.length) return [];
+
+    const allNodes = collectTreeTargets(CFG.treeMenu || []);
+    const nodeById = new Map(allNodes.map(n => [n.id, n]));
+    const sheetMap = new Map();
+
+    normalized.forEach(s => {
+      const mappedId = (CFG.sheetRouteMap && (CFG.sheetRouteMap[s.id] || CFG.sheetRouteMap[fold(s.id)])) || s.id;
+      const existing = sheetMap.get(mappedId);
+      if (!existing) {
+        const cloneSheet = Object.assign({}, s, {
+          id: mappedId,
+          blocks: Array.isArray(s.blocks)
+            ? s.blocks.map(b => Object.assign({}, b, { rows: Array.isArray(b.rows) ? b.rows.slice() : [] }))
+            : []
+        });
+        sheetMap.set(mappedId, cloneSheet);
+      } else {
+        const extraBlocks = Array.isArray(s.blocks) ? s.blocks : [];
+        extraBlocks.forEach(b => existing.blocks.push(Object.assign({}, b, { rows: Array.isArray(b.rows) ? b.rows.slice() : [] })));
+      }
+    });
+
+    if (CFG.splitTablesByTitle !== false) {
+      const currentList = Array.from(sheetMap.values());
+      currentList.forEach(s => {
+        const keptBlocks = [];
+        (s.blocks || []).forEach(b => {
+          const destId = resolveBlockTargetId(b.title, s.id, allNodes);
+          if (destId && destId !== s.id && sheetMap.has(destId)) {
+            const destSheet = sheetMap.get(destId);
+            destSheet.blocks.push(Object.assign({}, b, {
+              cols: STANDARD_COLS.slice(),
+              rows: Array.isArray(b.rows) ? b.rows.slice() : []
+            }));
+          } else if (destId && destId !== s.id && (nodeById.has(destId) || Object.values(CFG.blockRouteMap || {}).includes(destId))) {
+            const nodeInfo = nodeById.get(destId);
+            const destSheet = ensureTargetSheet(
+              sheetMap,
+              destId,
+              (nodeInfo && nodeInfo.label) || b.title,
+              (nodeInfo && nodeInfo.defaultGroup) || 0,
+              destId
+            );
+            destSheet.blocks.push(Object.assign({}, b, {
+              cols: STANDARD_COLS.slice(),
+              rows: Array.isArray(b.rows) ? b.rows.slice() : []
+            }));
+          } else {
+            keptBlocks.push(b);
+          }
+        });
+        if (keptBlocks.length !== (s.blocks || []).length) {
+          s.blocks = keptBlocks;
+        }
+      });
+    }
+
+    const result = Array.from(sheetMap.values());
+    result.forEach(s => {
+      (s.blocks || []).forEach(b => reindexBlock(b));
+    });
+    return result;
+  }
+
   function hl(text, tokens) {
     const t = disp(text);
     if (!tokens || !tokens.length) return esc(t);
@@ -244,15 +371,15 @@
       if (saved && Array.isArray(saved.sheets)) {
         const metaVer = (DATA && DATA.meta && DATA.meta.version) || '';
         if (!metaVer || saved.ver === metaVer) {
-          st = { sheets: normalizeSheetsData(saved.sheets), dirty: true };
+          st = { sheets: distributeSheetsByConfig(saved.sheets), dirty: true };
         } else {
           const useNew = syncOn() || confirm('Dữ liệu gốc trên website vừa được cập nhật.\n\nOK = dùng dữ liệu MỚI\nHủy = giữ chỉnh sửa cũ');
           if (useNew) localStorage.removeItem(LS('state'));
-          else st = { sheets: normalizeSheetsData(saved.sheets), dirty: true };
+          else st = { sheets: distributeSheetsByConfig(saved.sheets), dirty: true };
         }
       }
     } catch (e) { }
-    if (!st) st = { sheets: normalizeSheetsData(clone((DATA && DATA.sheets) || [])), dirty: false };
+    if (!st) st = { sheets: distributeSheetsByConfig(clone((DATA && DATA.sheets) || [])), dirty: false };
     ensureIds(st.sheets);
     return st;
   }
@@ -272,7 +399,7 @@
   }
   function saveLocal() { clearTimeout(saveT); writeLocal(); }
   function resetToBaseline() {
-    ST = { sheets: normalizeSheetsData(clone((DATA && DATA.sheets) || [])), dirty: false };
+    ST = { sheets: distributeSheetsByConfig(clone((DATA && DATA.sheets) || [])), dirty: false };
     ensureIds(ST.sheets);
   }
 
@@ -1146,7 +1273,7 @@
       try {
         const j = JSON.parse(rd.result);
         if (!j || !Array.isArray(j.sheets)) throw new Error('sai định dạng');
-        ST = { sheets: normalizeSheetsData(j.sheets), dirty: true };
+        ST = { sheets: distributeSheetsByConfig(j.sheets), dirty: true };
         ensureIds(ST.sheets);
         persist();
         render();
@@ -1209,7 +1336,7 @@
     get DATA() { return DATA; },
     fold, tokensOf, toast, download, toCSV, ymd, uid,
     sheetById, labelOf, persist, render, keepScroll, isStock, stockRows,
-    normalizeSource, normalizeRow, normalizeSheetsData, SOURCE_OPTIONS: SRC_LIST, STANDARD_COLS,
+    normalizeSource, normalizeRow, normalizeSheetsData, distributeSheetsByConfig, SOURCE_OPTIONS: SRC_LIST, STANDARD_COLS,
     get ST() { return ST; }, get V() { return V; }, touch: r => hayCache.delete(r)
   };
 
