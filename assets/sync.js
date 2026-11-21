@@ -1,5 +1,5 @@
 /* =====================================================================
-   sync.js – ĐỒNG BỘ DỮ LIỆU ĐA THIẾT BỊ & PHÂN QUYỀN (Admin vs Guest)
+   assets/sync.js – ĐỒNG BỘ DỮ LIỆU ĐA THIẾT BỊ & PHÂN QUYỀN (Admin vs Guest)
    Phiên bản: 2026.11.20-1
    ===================================================================== */
 (function () {
@@ -654,8 +654,9 @@
           }, onErr));
         });
       },
-      pollNow: function () {
-        if (!db) return;
+      pollNow: function (onDocsCb) {
+        var handler = typeof onDocsCb === 'function' ? onDocsCb : onDocs;
+        if (!db || typeof handler !== 'function') return;
         COLS.forEach(function (name) {
           var sinceMs = S.since[name] || 0;
           var colRef = FS.collection(db, 'workspaces', ws(), name);
@@ -669,7 +670,7 @@
               var u = data.upd && data.upd.toMillis ? data.upd.toMillis() : Date.now();
               docs.push({ id: d.id, data: data, upd: u });
             });
-            if (docs.length) onDocs(name, docs);
+            if (docs.length) handler(name, docs);
           }).catch(function () { });
         });
       },
@@ -785,7 +786,7 @@
       else if (a === 'now') {
         S.err = '';
         S.retry = 0;
-        if (ad && ad.pollNow) ad.pollNow();
+        if (ad && ad.pollNow) ad.pollNow(onDocs);
         push();
       } else if (a === 'out') {
         if (confirm('Đăng xuất khỏi đồng bộ?')) ad.signOut();
@@ -838,7 +839,7 @@
           S.err = '';
           S.retry = 0;
           schedule(200);
-          if (ad.pollNow) ad.pollNow();
+          if (ad.pollNow) ad.pollNow(onDocs);
         }
       });
       window.addEventListener('offline', function () {
@@ -847,7 +848,7 @@
       document.addEventListener('visibilitychange', function () {
         if (!document.hidden && ad && S.user) {
           schedule(200);
-          if (ad.pollNow) ad.pollNow();
+          if (ad.pollNow) ad.pollNow(onDocs);
         }
       });
 
