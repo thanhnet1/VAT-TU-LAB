@@ -1,10 +1,11 @@
 /* =====================================================================
-   sync.js – ĐỒNG BỘ DỮ LIỆU ĐA THIẾT BỊ & PHÂN QUYỀN (Admin vs Guest)
+   assets/sync.js – ĐỒNG BỘ DỮ LIỆU ĐA THIẾT BỊ & PHÂN QUYỀN (Admin vs Guest)
+   Phiên bản: 2026.11.21-1
    ===================================================================== */
 (function () {
   'use strict';
 
-  var BUILD = '2026.11.20-1';
+  var BUILD = '2026.11.21-1';
   var SOURCE_OPTIONS = ['Vật tư', 'Tài sản', 'Đo kiểm', 'Sửa chữa', 'Không rõ nguồn'];
   var DEFAULT_SOURCE = 'Không rõ nguồn';
   var STANDARD_COLS = ['Nguồn', 'STT', 'Tên Vật Tư', 'Serial', 'Mã VT', 'Part number', 'Ghi chú'];
@@ -131,6 +132,7 @@
 
   function enabled() {
     var c = (A && A.CFG && A.CFG.sync) || {};
+    if (c.provider === 'off') return false;
     return !!((c.provider === 'firebase' && c.firebase && c.firebase.projectId) ||
               (c.provider === 'server' && c.server && c.server.url));
   }
