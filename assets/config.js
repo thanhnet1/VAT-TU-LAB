@@ -97,11 +97,11 @@ window.APP_CONFIG = {
             },
             {
               id: 'td-ciena-ome',
-              label: 'OME 32 slot, OME 19 slot',
+              label: 'OME 32 slot, OME 16 slot',
               icon: '📄',
               isDynamicGroup: true,
               allowCreate: true,
-              matchKeywords: ['ome', '32 slot', '19 slot']
+              matchKeywords: ['ome', '32 slot', '16 slot']
             }
           ]
         },
@@ -111,7 +111,7 @@ window.APP_CONFIG = {
           icon: '📁',
           isDynamicGroup: true,
           allowCreate: true,
-          matchKeywords: ['nokia', 'bb1']
+          matchKeywords: ['nokia', 'BB1']
         },
         {
           id: 'td-huawei',
@@ -138,12 +138,12 @@ window.APP_CONFIG = {
               matchKeywords: ['7500', '3500']
             },
             {
-              id: 'td-hw-9500-b1',
-              label: 'HW 9500 - B1',
+              id: 'td-hw-9500-3900',
+              label: 'HW 9500 - 3900',
               icon: '📄',
               isDynamicGroup: true,
               allowCreate: true,
-              matchKeywords: ['9500', 'b1']
+              matchKeywords: ['9500', '3900']
             }
           ]
         },
