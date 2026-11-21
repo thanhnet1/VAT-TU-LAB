@@ -1,6 +1,5 @@
 /* =====================================================================
-   assets/sync.js – ĐỒNG BỘ DỮ LIỆU ĐA THIẾT BỊ & PHÂN QUYỀN (Admin vs Guest)
-   Phiên bản: 2026.11.20-1
+   sync.js – ĐỒNG BỘ DỮ LIỆU ĐA THIẾT BỊ & PHÂN QUYỀN (Admin vs Guest)
    ===================================================================== */
 (function () {
   'use strict';
