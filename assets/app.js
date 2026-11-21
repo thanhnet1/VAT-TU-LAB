@@ -1,11 +1,10 @@
 /* =====================================================================
-   WEB APP: Tài sản – Vật tư Truyền dẫn LAB (Cây thư mục đa cấp + Full Logic)
-   Dữ liệu: assets/data.js  ·  Cấu hình: assets/config.js  ·  Giao diện: assets/style.css
+   assets/app.js – WEB APP: TÀI SẢN – VẬT TƯ TRUYỀN DẪN LAB
+   Phiên bản: 2026.11.20-1
    ===================================================================== */
 (function () {
   'use strict';
 
-  /* ---------- Cấu hình & tiện ích ---------- */
   const SOURCE_OPTIONS = ['Vật tư', 'Tài sản', 'Đo kiểm', 'Sửa chữa', 'Không rõ nguồn'];
   const DEFAULT_SOURCE = 'Không rõ nguồn';
   const STANDARD_COLS = ['Nguồn', 'STT', 'Tên Vật Tư', 'Serial', 'Mã VT', 'Part number', 'Ghi chú'];
@@ -189,7 +188,6 @@
     clearTimeout(toastT); toastT = setTimeout(() => el.classList.remove('show'), ms);
   }
 
-  /* ---------- Trạng thái ---------- */
   let DATA = null;
   let ST = null;
   const newF = () => ({ q: '', src: 'all', color: 'all' });
@@ -203,8 +201,12 @@
 
   function checkModules() {
     const bad = [];
-    if (syncOn() && !window.Sync) bad.push('<b>assets/sync.js</b> (chưa tải được)');
+    if (syncOn() && (!window.Sync || typeof window.Sync.init !== 'function')) {
+      bad.push('<b>assets/sync.js</b> (chưa tải được)');
+    }
     if (!bad.length) return;
+    const old = $('#modBanner');
+    if (old) old.remove();
     const d = document.createElement('div'); d.className = 'mod-banner'; d.id = 'modBanner';
     d.innerHTML = '⚠ Một số file chưa cập nhật đúng: ' + bad.join('; ') + '. Hãy bấm <b>Ctrl + F5</b>.<button type="button" onclick="this.parentNode.remove()">Đóng</button>';
     document.body.insertBefore(d, document.body.firstChild);
@@ -248,7 +250,7 @@
           else st = { sheets: normalizeSheetsData(saved.sheets), dirty: true };
         }
       }
-    } catch (e) { /* bỏ qua */ }
+    } catch (e) { }
     if (!st) st = { sheets: normalizeSheetsData(clone((DATA && DATA.sheets) || [])), dirty: false };
     ensureIds(st.sheets);
     return st;
@@ -265,7 +267,7 @@
   function persist() {
     ST.dirty = true; const d = $('#dirty'); if (d) d.hidden = false;
     clearTimeout(saveT); saveT = setTimeout(writeLocal, 250);
-    if (window.Sync) Sync.schedule();
+    if (window.Sync && typeof Sync.schedule === 'function') Sync.schedule();
   }
   function saveLocal() { clearTimeout(saveT); writeLocal(); }
   function resetToBaseline() {
@@ -273,14 +275,12 @@
     ensureIds(ST.sheets);
   }
 
-  /* ---------- Định tuyến (Hash Router) ---------- */
   function parseHash() {
     const m = location.hash.match(/^#\/s\/([\w-]+)/);
     if (m && sheetById(m[1])) { V.route = { page: 'sheet', id: m[1] }; return; }
     V.route = { page: 'overview', id: null };
   }
 
-  /* ---------- Thanh bên: Cây thư mục phân cấp (Sidebar Tree) ---------- */
   function matchSheetToNode(sheet, node) {
     if (sheet.categoryId) return sheet.categoryId === node.id;
     const nameFold = fold(labelOf(sheet));
@@ -406,7 +406,6 @@
     toast(`✅ Đã tạo danh mục "${cleanName}"`);
   }
 
-  /* ---------- Trang Tổng quan ---------- */
   function sourceStats() {
     const counts = {};
     SRC_LIST.forEach(s => { counts[s] = 0; });
@@ -476,7 +475,6 @@
     return h + '</tbody></table></div></div>';
   }
 
-  /* ---------- Bảng dữ liệu ---------- */
   function passRow(row, tokens, f) {
     const curSrc = normalizeSource(row.src || (row.v && row.v[0]));
     if (f.src && f.src !== 'all' && curSrc !== f.src) return false;
@@ -596,7 +594,6 @@
     if (fc) fc.textContent = shown === total ? `${total} dòng` : `Hiển thị ${shown} / ${total} dòng`;
   }
 
-  /* ---------- Tìm kiếm toàn bộ ---------- */
   function viewSearch() {
     const tokens = tokensOf(V.gq), budget = { left: CFG.maxSearchResults };
     let found = 0, html = '', sheetsHit = 0;
@@ -616,7 +613,6 @@
       (found ? html : '<div class="card"><div class="empty">Không tìm thấy. Thử từ khoá ngắn hơn.</div></div>');
   }
 
-  /* ---------- Chuyển dòng sang thư mục khác ---------- */
   function reindexBlock(block) {
     (block.rows || []).forEach((r, idx) => {
       r.r = idx + 1;
@@ -695,7 +691,6 @@
     });
   }
 
-  /* ---------- Thêm vật tư / tài sản mới ---------- */
   window.openAddMaterialModal = function () {
     const currentRole = localStorage.getItem('lab_user_role');
     if (currentRole === 'guest') {
@@ -860,7 +855,6 @@
     }
   };
 
-  /* ---------- Vẽ trang ---------- */
   function render() {
     removeBootScreen();
     try {
@@ -879,7 +873,6 @@
   }
   const keepScroll = fn => { const y = window.scrollY; fn(); window.scrollTo(0, y); };
 
-  /* ---------- Sự kiện ---------- */
   function locate(el) {
     const tr = el.closest('tr[data-s]'); if (!tr) return null;
     const s = sheetById(tr.dataset.s); if (!s) return null;
@@ -1083,7 +1076,6 @@
     keepScroll(render);
   }
 
-  /* ---------- Xuất / Sao lưu ---------- */
   const ymd = () => new Date().toISOString().slice(0, 10);
   function download(name, type, content) {
     const a = document.createElement('a');
@@ -1165,7 +1157,6 @@
     rd.readAsText(f, 'utf-8');
   }
 
-  /* ---------- Khởi động ứng dụng ---------- */
   function start(data) {
     removeBootScreen();
     try {
@@ -1176,8 +1167,8 @@
       const dirty = $('#dirty'); if (dirty) dirty.hidden = !ST.dirty;
 
       checkModules();
-      try { if (window.Slips && typeof Slips.init === 'function') Slips.init(window.LabApp); } catch (e) { /* bỏ qua */ }
-      try { if (window.Sync && typeof Sync.init === 'function') Sync.init(window.LabApp); } catch (e) { /* bỏ qua */ }
+      try { if (window.Slips && typeof Slips.init === 'function') Slips.init(window.LabApp); } catch (e) { }
+      try { if (window.Sync && typeof Sync.init === 'function') Sync.init(window.LabApp); } catch (e) { }
       parseHash();
       bind();
       render();
