@@ -1,6 +1,6 @@
 /* =====================================================================
-   slips.js – MODULE TIỆN ÍCH VẬT TƯ / TÀI SẢN LAB
-   (Đã bỏ phiếu xuất/nhập kho, BBBG, mã QR; chuẩn hóa Nguồn & 7 cột)
+   assets/slips.js – MODULE TIỆN ÍCH VẬT TƯ / TÀI SẢN LAB
+   Phiên bản: 2026.11.20-1
    ===================================================================== */
 (function () {
   'use strict';
@@ -13,9 +13,18 @@
   var STANDARD_COLS = ['Nguồn', 'STT', 'Tên Vật Tư', 'Serial', 'Mã VT', 'Part number', 'Ghi chú'];
 
   function $(s, el) { return (el || document).querySelector(s); }
-  function $$(s, el) { return Array.prototype.slice.call((el || document).querySelectorAll(s)); }
-  function esc(s) { return A && A.esc ? A.esc(s == null ? '' : s) : String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
-  function fold(s) { return A && A.fold ? A.fold(s) : String(s || '').toLowerCase(); }
+  function esc(s) {
+    return A && typeof A.esc === 'function'
+      ? A.esc(s == null ? '' : s)
+      : String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+          return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+        });
+  }
+  function fold(s) {
+    return A && typeof A.fold === 'function'
+      ? A.fold(s)
+      : String(s || '').toLowerCase();
+  }
 
   function getSources() {
     if (A && Array.isArray(A.SOURCE_OPTIONS) && A.SOURCE_OPTIONS.length) return A.SOURCE_OPTIONS;
@@ -236,10 +245,14 @@
     moveRowToSheet: moveRowToSheet,
     openMovePicker: openMovePicker,
     init: function (app) {
-      if (A) return;
-      A = app;
-      normalizeAllState();
-      bindGlobal();
+      try {
+        if (A) return;
+        A = app;
+        normalizeAllState();
+        bindGlobal();
+      } catch (e) {
+        /* bỏ qua lỗi phụ trợ */
+      }
     }
   };
 })();
