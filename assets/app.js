@@ -1,21 +1,30 @@
 /* =====================================================================
-   app.js – VẬT TƯ – TÀI SẢN (Tích hợp Sync Firebase, Nhập file & Cây thư mục ngang)
+   assets/app.js – VẬT TƯ – TÀI SẢN
+   - Tải dữ liệu từ window.LAB_DATA / LAB_DATA_ENC / localStorage
+   - Phân loại chuẩn theo từng sheet, block và nội dung dòng trong data.js
+   - Rút gọn cây thư mục + hiển thị thư mục ngang (VD: XTC10 - MTC9 - OTC9)
+   - Bảng chuẩn: Nguồn | STT | Tên Vật Tư | Serial | Mã VT | Part number | Ghi chú | Thao tác
+   - Xuất Excel tách từng mục thành các sheet riêng biệt
    ===================================================================== */
 (function () {
   'use strict';
 
-  const DEFAULT_SOURCES = ['Vật tư', 'Tài sản', 'Đo kiểm', 'Sửa chữa', 'Không rõ nguồn'];
+  const BUILD = '2026.11.21-1';
+  const SOURCE_OPTIONS = ['Vật tư', 'Tài sản', 'Đo kiểm', 'Sửa chữa', 'Không rõ nguồn'];
   const DEFAULT_SOURCE = 'Không rõ nguồn';
   const STANDARD_COLS = ['Nguồn', 'STT', 'Tên Vật Tư', 'Serial', 'Mã VT', 'Part number', 'Ghi chú'];
 
   const CFG = Object.assign({
-    title: 'Vật tư – Tài sản',
+    title: 'Tài sản – Vật tư Truyền dẫn LAB',
     subtitle: '',
     sourceLabel: 'Nguồn',
-    sourceOptions: DEFAULT_SOURCES,
+    sourceOptions: SOURCE_OPTIONS,
     defaultSource: DEFAULT_SOURCE,
     tableColumns: STANDARD_COLS,
-    storageKey: 'vat-tu-tai-san-v2',
+    storageKey: 'vat-tu-tai-san-lab-v2',
+    groupNames: ['Truyền dẫn & Thiết bị', 'Vật tư & Tài sản khác'],
+    sheetRouteMap: {},
+    blockRouteMap: {},
     sheetLabels: {},
     colorMeaning: {},
     maxSearchResults: 400,
@@ -24,11 +33,11 @@
 
   const SRC_LIST = Array.isArray(CFG.sourceOptions) && CFG.sourceOptions.length
     ? CFG.sourceOptions
-    : DEFAULT_SOURCES;
+    : SOURCE_OPTIONS;
 
-  const $ = (sel, root = document) => root.querySelector(sel);
-  const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
-  const LS = key => `${CFG.storageKey}:${key}`;
+  const $ = (s, el = document) => el.querySelector(s);
+  const $$ = (s, el = document) => Array.from(el.querySelectorAll(s));
+  const LS = k => `${CFG.storageKey}:${k}`;
   const clone = o => JSON.parse(JSON.stringify(o));
 
   const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, ch => ({
@@ -71,38 +80,80 @@
     return candidate;
   }
 
+  function inferSourceFromRow(rawText, fallback = CFG.defaultSource || DEFAULT_SOURCE) {
+    const f = fold(rawText);
+    if (!f) return fallback;
+    if (/\bts\b|tai san|tài sản/.test(f)) return SRC_LIST.find(x => fold(x).includes('tai san')) || 'Tài sản';
+    if (/do kiem|đo kiểm|do luong|đo lường/.test(f)) return SRC_LIST.find(x => fold(x).includes('do kiem')) || 'Đo kiểm';
+    if (/sua chua|sửa chữa|hu hong|hư hỏng|\bhong\b|\bhỏng\b|\bloi\b|\blỗi\b/.test(f)) return SRC_LIST.find(x => fold(x).includes('sua chua')) || 'Sửa chữa';
+    if (/khong ro|không rõ|ko ro/.test(f)) return SRC_LIST.find(x => fold(x).includes('khong ro')) || 'Không rõ nguồn';
+    if (/\bvt\b|vat tu|vật tư/.test(f)) return SRC_LIST.find(x => fold(x).includes('vat tu')) || 'Vật tư';
+    return fallback;
+  }
+
   function normalizeSource(val, fallback = CFG.defaultSource || DEFAULT_SOURCE) {
     if (!val) return fallback;
     const raw = String(val).trim();
     const exact = SRC_LIST.find(x => x.toLowerCase() === raw.toLowerCase());
     if (exact) return exact;
-    const f = fold(raw);
-    if (f.includes('tai san')) return SRC_LIST.find(x => fold(x).includes('tai san')) || 'Tài sản';
-    if (f.includes('do luong') || f.includes('do kiem')) return SRC_LIST.find(x => fold(x).includes('do kiem')) || 'Đo kiểm';
-    if (f.includes('sua chua')) return SRC_LIST.find(x => fold(x).includes('sua chua')) || 'Sửa chữa';
-    if (f.includes('vat tu')) return SRC_LIST.find(x => fold(x).includes('vat tu')) || 'Vật tư';
-    if (f.includes('khong ro')) return SRC_LIST.find(x => fold(x).includes('khong ro')) || 'Không rõ nguồn';
-    return fallback;
+    return inferSourceFromRow(raw, fallback);
   }
 
-  let uidSeq = 1;
-  function uid() {
-    return 'r_' + Date.now().toString(36) + '_' + (uidSeq++).toString(36);
-  }
+  let uidN = 0;
+  const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6) + (uidN++).toString(36);
 
-  function normalizeRow(row, index, defaultSrc = DEFAULT_SOURCE) {
+  function normalizeRow(row, index, defaultSrc = DEFAULT_SOURCE, oldCols = null, sheetId = '') {
     const r = row && typeof row === 'object' ? row : {};
     const v = Array.isArray(r.v) ? r.v.slice() : [];
-    const src = normalizeSource(r.src || v[0], defaultSrc);
-    const stt = String(v[1] ?? (index + 1));
-    const tenVT = String(v[2] ?? '');
-    const serial = String(v[3] ?? '');
-    const maVT = String(v[4] ?? '');
-    const partNo = String(v[5] ?? '');
-    const ghiChu = String(v[6] ?? '');
+    const fallbackSrc = normalizeSource(r.src, defaultSrc);
+    const hasSrcFirst = v.length >= 7 && SRC_LIST.some(opt => fold(opt) === fold(v[0]));
+
+    let src, stt, tenVT, serial, maVT, partNo, ghiChu;
+    if (hasSrcFirst) {
+      src = normalizeSource(v[0], fallbackSrc);
+      stt = String(v[1] ?? (index + 1));
+      tenVT = String(v[2] ?? '');
+      serial = String(v[3] ?? '');
+      maVT = String(v[4] ?? '');
+      partNo = String(v[5] ?? '');
+      ghiChu = String(v[6] ?? '');
+    } else if (Array.isArray(oldCols) && oldCols.length > 0) {
+      const idxOf = re => oldCols.findIndex(c => re.test(fold(c)));
+      const iStt = idxOf(/^stt$/);
+      const iMa = idxOf(/ma vt|ma vat tu|^ma$|ma card/);
+      const iTen = idxOf(/^ten|hien vat|thiet bi|vat tu/);
+      const iSer = idxOf(/serial|s\/n/);
+      const iPart = idxOf(/part|pasnumber/);
+      const iNote = idxOf(/ghi chu|tinh trang|nhap kho/);
+
+      stt = String((iStt >= 0 ? v[iStt] : v[0]) ?? (index + 1));
+      tenVT = String((iTen >= 0 ? v[iTen] : v[2]) ?? '');
+      serial = String((iSer >= 0 ? v[iSer] : v[3]) ?? '');
+      maVT = String((iMa >= 0 ? v[iMa] : v[1]) ?? '');
+      partNo = String((iPart >= 0 ? v[iPart] : v[4]) ?? '');
+
+      const extraNotes = [];
+      if (iNote >= 0 && v[iNote]) extraNotes.push(String(v[iNote]).trim());
+      for (let k = 0; k < v.length; k++) {
+        if (k === iStt || k === iMa || k === iTen || k === iSer || k === iPart || k === iNote) continue;
+        const cell = String(v[k] ?? '').trim();
+        if (cell) extraNotes.push(cell);
+      }
+      ghiChu = extraNotes.join(' | ');
+
+      const rowContext = `${tenVT} ${ghiChu} ${sheetId === 'vt-do-kiem' ? 'do kiem' : ''} ${sheetId === 'khong-ro-ng' ? 'khong ro' : ''}`;
+      src = r.src ? normalizeSource(r.src, fallbackSrc) : inferSourceFromRow(rowContext, fallbackSrc);
+    } else {
+      stt = String(v[0] ?? (index + 1));
+      tenVT = String(v[2] ?? '');
+      serial = String(v[3] ?? '');
+      maVT = String(v[1] ?? '');
+      partNo = String(v[4] ?? '');
+      ghiChu = String(v[5] ?? '');
+      src = r.src ? normalizeSource(r.src, fallbackSrc) : inferSourceFromRow(`${tenVT} ${ghiChu}`, fallbackSrc);
+    }
+
     return Object.assign({}, r, {
-      i: r.i || uid(),
-      r: Number(r.r) || (index + 1),
       src,
       v: [src, stt, tenVT, serial, maVT, partNo, ghiChu]
     });
@@ -133,31 +184,104 @@
   const flatNodes = flattenTree(CFG.treeMenu || []);
   const nodeById = new Map(flatNodes.map(item => [item.node.id, item]));
 
-  function matchNodeIdByText(text) {
-    const fText = fold(text || '');
-    if (!fText) return null;
+  function resolveTargetNodeId(textOrId) {
+    if (!textOrId) return null;
+    const raw = String(textOrId).trim();
+    if (nodeById.has(raw)) return raw;
+    if (CFG.sheetRouteMap && CFG.sheetRouteMap[raw] && nodeById.has(CFG.sheetRouteMap[raw])) {
+      return CFG.sheetRouteMap[raw];
+    }
+    const f = fold(raw);
+    if (CFG.blockRouteMap) {
+      for (const [k, targetId] of Object.entries(CFG.blockRouteMap)) {
+        if (f === fold(k) || f.includes(fold(k))) {
+          if (nodeById.has(targetId)) return targetId;
+        }
+      }
+    }
     for (const item of flatNodes) {
       const n = item.node;
-      if (Array.isArray(n.children) && n.children.length > 0) continue;
-      if (fold(n.label) === fText || fText.includes(fold(n.label))) return n.id;
-      if (Array.isArray(n.matchKeywords) && n.matchKeywords.some(kw => fText.includes(fold(kw)))) {
+      if (fold(n.label) === f) return n.id;
+      if (Array.isArray(n.matchKeywords) && n.matchKeywords.some(kw => fold(kw) === f)) {
         return n.id;
       }
     }
     return null;
   }
 
+  function classifyRowTarget(sheetId, blockTitle, rowNorm, fallbackNodeId) {
+    const bt = fold(blockTitle);
+    const v = rowNorm.v || [];
+    const blob = fold(`${blockTitle} ${v[2] || ''} ${v[3] || ''} ${v[4] || ''} ${v[5] || ''} ${v[6] || ''}`);
+
+    if (bt === 'xtc10') return 'xtc10';
+    if (bt === 'mtc9') return 'mtc9';
+    if (bt === 'otc9') return 'otc9';
+    if (bt.includes('5430') || bt.includes('6500t')) return 'ciena-5430';
+    if (bt.includes('ome')) return 'ciena-ome';
+    if (bt.includes('nokia')) return 'nokia-bb';
+    if (bt.includes('hw6800') || bt.includes('hw 6800')) return 'hw-6800';
+    if (bt.includes('hw8800') || bt.includes('hw 8800')) return 'hw-8800';
+    if (bt.includes('hw7500') || bt.includes('hw 7500')) return 'hw-7500';
+    if (bt.includes('hw3500') || bt.includes('hw 3500')) return 'hw-3500';
+    if (bt.includes('hw3900') || bt.includes('hw 3900')) return 'hw-3900';
+    if (bt.includes('mhl3000') || bt.includes('oms3255') || bt.includes('ericson') || bt.includes('ericsson') || bt.includes('ribbon')) return 'ribbon-ericson';
+    if (bt.includes('vt do kiem')) return 'vat-tu-do-luong';
+    if (bt.includes('khong ro')) return 'vat-tu-khong-ro-nguon-goc';
+
+    if (blob.includes('xtc-10') || blob.includes('xtc10')) return 'xtc10';
+    if (blob.includes('mtc-9') || blob.includes('mtc9')) return 'mtc9';
+    if (blob.includes('otc-') || blob.includes('otc9')) return 'otc9';
+    if (blob.includes('5430') || blob.includes('6500')) return 'ciena-5430';
+    if (blob.includes('ome')) return 'ciena-ome';
+    if (blob.includes('nokia') || blob.includes('bb1') || blob.includes('3kc')) return 'nokia-bb';
+    if (blob.includes('6800') || blob.includes('pss16') || blob.includes('pss-16') || blob.includes('pss_64') || blob.includes('pss-64')) {
+      return blob.includes('8800') ? 'hw-8800' : 'hw-6800';
+    }
+    if (blob.includes('8800') || blob.includes('osn8800')) return 'hw-8800';
+    if (blob.includes('7500')) return 'hw-7500';
+    if (blob.includes('3500')) return 'hw-3500';
+    if (blob.includes('3900')) return 'hw-3900';
+    if (blob.includes('ericson') || blob.includes('ericsson') || blob.includes('ribbon') || blob.includes('3255') || blob.includes('mhl3000')) {
+      return 'ribbon-ericson';
+    }
+    if (blob.includes('vsat') || blob.includes('skyedge') || blob.includes('lnb') || blob.includes('buc') || blob.includes('soundwin')) {
+      return 'thiet-bi-vsat';
+    }
+    if (blob.includes('radio') || blob.includes('rrus') || blob.includes('baseband') || blob.includes('vo tuyen')) {
+      return 'thiet-bi-vo-tuyen';
+    }
+    if (blob.includes('asr9010') || blob.includes('asr 9010') || blob.includes('mx2008') || blob.includes('mx2000') || blob.includes('mx960') || blob.includes('ne40e') || blob.includes('a9k-') || blob.includes('a99-') || blob.includes('router') || blob.includes('switch')) {
+      return 'thiet-bi-ip';
+    }
+    if (blob.includes('ko ro nguon') || blob.includes('khong ro nguon')) {
+      return 'vat-tu-khong-ro-nguon-goc';
+    }
+
+    if (fallbackNodeId && nodeById.has(fallbackNodeId)) return fallbackNodeId;
+    if (sheetId === 'trang-tinh14') return 'vat-tu-sua-chua';
+    if (sheetId === 'vt-do-kiem') return 'vat-tu-do-luong';
+    if (sheetId === 'khong-ro-ng' || sheetId === 'hang-ton-kho' || sheetId === 'ton-kho-xvt-26-10-2026') {
+      return 'vat-tu-khong-ro-nguon-goc';
+    }
+    return 'truyen-dan-thiet-bi';
+  }
+
   function buildSheetsFromStore(storeMap) {
-    return flatNodes.map((entry, sIdx) => {
+    return flatNodes.map((entry, idx) => {
       const n = entry.node;
       const rows = (Array.isArray(storeMap[n.id]) ? storeMap[n.id] : []).map((r, i) =>
-        normalizeRow(r, i, CFG.defaultSource)
+        normalizeRow(r, i, CFG.defaultSource, STANDARD_COLS, n.id)
       );
+      rows.forEach((r, i) => {
+        r.r = i + 1;
+        r.v[1] = String(i + 1);
+      });
       return {
         id: n.id,
         name: CFG.sheetLabels[n.id] || n.label,
         categoryId: n.id,
-        group: n.defaultGroup || (entry.parentId ? 0 : sIdx),
+        group: n.defaultGroup != null ? n.defaultGroup : (entry.parentId ? 0 : idx),
         blocks: [
           {
             title: n.label,
@@ -175,57 +299,47 @@
     const store = {};
     for (const item of flatNodes) store[item.node.id] = [];
 
-    if (!Array.isArray(sheets)) return store;
-
-    for (const sh of sheets) {
-      const matchedNodeId =
-        (nodeById.has(sh.id) ? sh.id : null) ||
-        matchNodeIdByText(sh.name) ||
-        matchNodeIdByText(sh.id);
-
-      const blocks = Array.isArray(sh.blocks) ? sh.blocks : [];
-      for (const blk of blocks) {
-        const blkTarget =
-          matchNodeIdByText(blk.title) ||
-          matchedNodeId ||
-          (flatNodes[0] && flatNodes[0].node.id);
-        if (!blkTarget || !store[blkTarget]) continue;
-        const rows = Array.isArray(blk.rows) ? blk.rows : [];
-        rows.forEach((r, idx) => {
-          store[blkTarget].push(normalizeRow(r, idx, CFG.defaultSource));
-        });
+    if (Array.isArray(sheets)) {
+      for (const sh of sheets) {
+        const shTarget = resolveTargetNodeId(sh.id) || resolveTargetNodeId(sh.name);
+        const blocks = Array.isArray(sh.blocks) ? sh.blocks : [];
+        for (const blk of blocks) {
+          const blkTarget = (CFG.splitTablesByTitle ? resolveTargetNodeId(blk.title) : null) || shTarget;
+          const rows = Array.isArray(blk.rows) ? blk.rows : [];
+          rows.forEach((r, idx) => {
+            const norm = normalizeRow(r, idx, CFG.defaultSource, blk.cols, sh.id);
+            const destId = classifyRowTarget(sh.id, blk.title, norm, blkTarget);
+            if (store[destId]) {
+              store[destId].push(norm);
+            }
+          });
+        }
       }
     }
 
     for (const id of Object.keys(store)) {
       store[id].forEach((r, idx) => {
+        if (!r.i) r.i = `${id}:0:${idx + 1}`;
         r.r = idx + 1;
-        if (Array.isArray(r.v)) r.v[1] = String(idx + 1);
+        r.v[1] = String(idx + 1);
       });
     }
     return store;
   }
 
-  const DATA = Object.assign(
-    { meta: { source: 'LAB', generated: '', version: '2026.11.21' }, sheets: buildSheetsFromStore({}) },
-    window.LAB_DATA || {}
-  );
-
-  const ST = {
-    sheets: buildSheetsFromStore({}),
-    slips: { xuat: [], nhap: [] },
-    dirty: false
+  let DATA = { meta: { source: 'LAB', generated: '', version: '' }, sheets: [] };
+  let storeData = {};
+  let ST = { sheets: [], slips: { xuat: [], nhap: [] }, dirty: false };
+  const V = {
+    route: { page: 'overview', id: null },
+    activeId: (flatNodes[0] && flatNodes[0].node.id) || null,
+    edit: false,
+    query: '',
+    sourceFilter: 'ALL',
+    treeCollapsed: {}
   };
 
-  let storeData = {};
-
   function syncSTFromStore() {
-    for (const id of Object.keys(storeData)) {
-      storeData[id].forEach((r, idx) => {
-        r.r = idx + 1;
-        if (Array.isArray(r.v)) r.v[1] = String(idx + 1);
-      });
-    }
     ST.sheets = buildSheetsFromStore(storeData);
   }
 
@@ -233,30 +347,42 @@
     storeData = buildStoreFromSheets(ST.sheets || []);
   }
 
-  function loadInitialState() {
+  function ensureIds(sheets) {
+    if (!Array.isArray(sheets)) return;
+    sheets.forEach(s => Array.isArray(s.blocks) && s.blocks.forEach((b, bi) => {
+      if (!Array.isArray(b.cols) || !b.cols.length) b.cols = STANDARD_COLS.slice();
+      (b.rows || []).forEach((r, ri) => {
+        if (!r.i) r.i = r.r ? `${s.id}:${bi}:${r.r}` : 'u' + uid();
+        const norm = normalizeRow(r, ri, CFG.defaultSource, b.cols, s.id);
+        Object.assign(r, norm);
+      });
+    }));
+  }
+
+  function loadState() {
     try {
-      const raw = localStorage.getItem(LS('state'));
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (parsed && Array.isArray(parsed.sheets)) {
-          ST.sheets = parsed.sheets;
-          ST.slips = parsed.slips && typeof parsed.slips === 'object'
-            ? Object.assign({ xuat: [], nhap: [] }, parsed.slips)
+      const saved = JSON.parse(localStorage.getItem(LS('state')) || 'null');
+      if (saved && Array.isArray(saved.sheets)) {
+        const metaVer = (DATA && DATA.meta && DATA.meta.version) || '';
+        if (!metaVer || saved.ver === metaVer) {
+          ensureIds(saved.sheets);
+          storeData = buildStoreFromSheets(saved.sheets);
+          syncSTFromStore();
+          ST.slips = saved.slips && typeof saved.slips === 'object'
+            ? Object.assign({ xuat: [], nhap: [] }, saved.slips)
             : { xuat: [], nhap: [] };
-          ST.dirty = !!parsed.dirty;
-          syncStoreFromST();
+          ST.dirty = !!saved.dirty;
           return;
         }
       }
     } catch (_) {}
 
-    if (window.LAB_DATA && Array.isArray(window.LAB_DATA.sheets) && window.LAB_DATA.sheets.length) {
-      ST.sheets = clone(window.LAB_DATA.sheets);
-      syncStoreFromST();
-    } else {
-      storeData = buildStoreFromSheets([]);
-      syncSTFromStore();
-    }
+    const rawSheets = (DATA && Array.isArray(DATA.sheets)) ? clone(DATA.sheets) : [];
+    ensureIds(rawSheets);
+    storeData = buildStoreFromSheets(rawSheets);
+    syncSTFromStore();
+    ST.slips = { xuat: [], nhap: [] };
+    ST.dirty = false;
   }
 
   function saveLocal() {
@@ -268,15 +394,15 @@
         slips: ST.slips,
         dirty: ST.dirty
       }));
-    } catch (_) {}
+    } catch (_) {
+      toast('⚠ Không lưu được vào trình duyệt.', 4000);
+    }
   }
 
-  function persist(markDirty = true) {
-    if (markDirty) {
-      ST.dirty = true;
-      const dirtyEl = $('#dirty');
-      if (dirtyEl) dirtyEl.hidden = false;
-    }
+  function persist() {
+    ST.dirty = true;
+    const d = $('#dirty');
+    if (d) d.hidden = false;
     saveLocal();
     if (window.Sync && typeof window.Sync.schedule === 'function') {
       window.Sync.schedule();
@@ -285,58 +411,62 @@
 
   function resetToBaseline() {
     localStorage.removeItem(LS('state'));
-    if (window.LAB_DATA && Array.isArray(window.LAB_DATA.sheets)) {
-      ST.sheets = clone(window.LAB_DATA.sheets);
-      syncStoreFromST();
-    } else {
-      storeData = buildStoreFromSheets([]);
-      syncSTFromStore();
-    }
+    const rawSheets = (DATA && Array.isArray(DATA.sheets)) ? clone(DATA.sheets) : [];
+    ensureIds(rawSheets);
+    storeData = buildStoreFromSheets(rawSheets);
+    syncSTFromStore();
     ST.slips = { xuat: [], nhap: [] };
     ST.dirty = false;
-    const dirtyEl = $('#dirty');
-    if (dirtyEl) dirtyEl.hidden = true;
+    const d = $('#dirty');
+    if (d) d.hidden = true;
     saveLocal();
   }
 
-  const state = {
-    activeId: (flatNodes[0] && flatNodes[0].node.id) || null,
-    editMode: false,
-    query: '',
-    sourceFilter: 'ALL'
-  };
+  const sheetById = id => (ST && ST.sheets ? ST.sheets.find(s => s.id === id) : null);
+  const labelOf = s => (s ? (CFG.sheetLabels[s.id] || s.name || s.id) : '');
+  const isStock = () => true;
+  const stockRows = b => (b && b.rows) || [];
 
   function getRowsForNode(nodeId) {
     if (!Array.isArray(storeData[nodeId])) storeData[nodeId] = [];
     return storeData[nodeId];
   }
 
-  function matchesRow(row, queryTokens, srcFilter) {
-    if (srcFilter && srcFilter !== 'ALL') {
-      if (normalizeSource(row.src || (row.v && row.v[0])) !== srcFilter) return false;
-    }
-    if (!queryTokens.length) return true;
+  function matchesRow(row, qTokens, srcFilter) {
+    const normSrc = normalizeSource(row.src || (row.v && row.v[0]), CFG.defaultSource);
+    if (srcFilter && srcFilter !== 'ALL' && normSrc !== srcFilter) return false;
+    if (!qTokens.length) return true;
     const hay = fold((row.v || []).join(' '));
-    return queryTokens.every(tok => hay.includes(tok));
+    return qTokens.every(tok => hay.includes(tok));
   }
 
   function getFilteredRows(nodeId) {
     const rows = getRowsForNode(nodeId);
-    const qToks = tokensOf(state.query);
+    const qTokens = tokensOf(V.query);
     return rows
-      .map((row, idx) => ({ row: normalizeRow(row, idx, CFG.defaultSource), idx }))
-      .filter(entry => matchesRow(entry.row, qToks, state.sourceFilter));
+      .map((row, idx) => ({ row: normalizeRow(row, idx, CFG.defaultSource, STANDARD_COLS, nodeId), idx }))
+      .filter(item => matchesRow(item.row, qTokens, V.sourceFilter));
+  }
+
+  function parseHash() {
+    const m = location.hash.match(/^#\/s\/([\w-]+)/);
+    if (m && nodeById.has(m[1])) {
+      V.route = { page: 'sheet', id: m[1] };
+      V.activeId = m[1];
+      return;
+    }
+    V.route = { page: 'overview', id: null };
   }
 
   function renderSidebar() {
-    const treeEl = $('#tree') || $('#sidebarTree') || $('.tree-menu') || $('#sidebar');
-    if (!treeEl) return;
+    const sb = $('#sidebar');
+    if (!sb) return;
 
     const renderNodes = (nodes, depth = 0) => {
       if (!Array.isArray(nodes) || !nodes.length) return '';
-      return `<ul class="tree-list depth-${depth}" style="list-style:none;margin:0;padding-left:${depth ? 14 : 0}px;">` +
+      return `<ul class="tree-list depth-${depth}" style="list-style:none;margin:0;padding-left:${depth ? 12 : 0}px;">` +
         nodes.map(node => {
-          const isActive = state.activeId === node.id;
+          const isActive = V.activeId === node.id;
           const count = getRowsForNode(node.id).length;
           const hasChildren = Array.isArray(node.children) && node.children.length > 0;
           return `
@@ -344,7 +474,7 @@
               <button type="button"
                 class="tree-link ${isActive ? 'active' : ''}"
                 data-node-id="${esc(node.id)}"
-                style="width:100%;display:flex;align-items:center;justify-content:space-between;gap:6px;padding:6px 8px;border:0;border-radius:6px;background:${isActive ? 'rgba(11,58,91,.12)' : 'transparent'};color:inherit;text-align:left;cursor:pointer;font-weight:${isActive ? '600' : '400'};">
+                style="width:100%;display:flex;align-items:center;justify-content:space-between;gap:6px;padding:6px 8px;border:0;border-radius:6px;background:${isActive ? 'rgba(11,58,91,.14)' : 'transparent'};color:inherit;text-align:left;cursor:pointer;font-weight:${isActive ? '600' : '400'};">
                 <span style="display:inline-flex;align-items:center;gap:6px;min-width:0;">
                   <span>${esc(node.icon || (hasChildren ? '📁' : '📄'))}</span>
                   <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(node.label)}</span>
@@ -358,14 +488,15 @@
       `</ul>`;
     };
 
-    treeEl.innerHTML = renderNodes(CFG.treeMenu || [], 0);
-
-    $$('[data-node-id]', treeEl).forEach(btn => {
-      btn.addEventListener('click', () => {
-        state.activeId = btn.getAttribute('data-node-id');
-        renderAll();
-      });
-    });
+    const ovActive = V.route.page === 'overview' && !V.query ? 'active' : '';
+    sb.innerHTML = `
+      <div class="tree-root">
+        <button type="button" class="tree-row ${ovActive}" data-go-overview="1" style="width:100%;margin-bottom:6px;border:0;background:${ovActive ? 'rgba(11,58,91,.14)' : 'transparent'};cursor:pointer;text-align:left;">
+          <span>🏠</span><span class="nm"><b>Tổng quan (Vật tư - Tài sản)</b></span>
+        </button>
+        ${renderNodes(CFG.treeMenu || [], 0)}
+      </div>
+    `;
   }
 
   function renderHorizontalBar(currentEntry) {
@@ -428,7 +559,7 @@
 
     return entries.map(({ row, idx }) => {
       const v = row.v;
-      if (!state.editMode) {
+      if (!V.edit) {
         return `
           <tr data-row-idx="${idx}">
             <td>${esc(v[0])}</td>
@@ -468,12 +599,12 @@
   }
 
   function renderMain() {
-    const mainEl = $('#main') || $('#appMain') || $('main');
+    const mainEl = $('#main');
     if (!mainEl) return;
 
-    const currentEntry = nodeById.get(state.activeId) || flatNodes[0];
+    const currentEntry = nodeById.get(V.activeId) || flatNodes[0];
     if (!currentEntry) return;
-    state.activeId = currentEntry.node.id;
+    V.activeId = currentEntry.node.id;
 
     const node = currentEntry.node;
     const breadcrumb = currentEntry.pathNodes.map(n => n.label).join(' / ');
@@ -481,7 +612,7 @@
 
     const srcFilterOpts = ['ALL', ...SRC_LIST].map(opt => {
       const label = opt === 'ALL' ? 'Tất cả nguồn' : opt;
-      return `<option value="${esc(opt)}" ${state.sourceFilter === opt ? 'selected' : ''}>${esc(label)}</option>`;
+      return `<option value="${esc(opt)}" ${V.sourceFilter === opt ? 'selected' : ''}>${esc(label)}</option>`;
     }).join('');
 
     mainEl.innerHTML = `
@@ -524,15 +655,16 @@
 
     $$('[data-h-node]', mainEl).forEach(btn => {
       btn.addEventListener('click', () => {
-        state.activeId = btn.getAttribute('data-h-node');
-        renderAll();
+        V.activeId = btn.getAttribute('data-h-node');
+        V.route = { page: 'sheet', id: V.activeId };
+        render();
       });
     });
 
     const filterEl = $('#filterSource', mainEl);
     if (filterEl) {
       filterEl.addEventListener('change', () => {
-        state.sourceFilter = filterEl.value;
+        V.sourceFilter = filterEl.value;
         renderMain();
       });
     }
@@ -541,14 +673,14 @@
     if (addBtn) {
       addBtn.addEventListener('click', () => {
         const rows = getRowsForNode(node.id);
-        const defaultSrc = state.sourceFilter !== 'ALL' ? state.sourceFilter : CFG.defaultSource;
+        const defaultSrc = V.sourceFilter !== 'ALL' ? V.sourceFilter : CFG.defaultSource;
         rows.push(normalizeRow({
-          i: uid(),
+          i: 'u' + uid(),
           src: defaultSrc,
           v: [defaultSrc, String(rows.length + 1), '', '', '', '', '']
-        }, rows.length, defaultSrc));
-        persist(true);
-        renderAll();
+        }, rows.length, defaultSrc, STANDARD_COLS, node.id));
+        persist();
+        render();
       });
     }
 
@@ -564,18 +696,18 @@
         const col = Number(inp.getAttribute('data-col'));
         const rows = getRowsForNode(node.id);
         if (!rows[idx]) return;
-        const norm = normalizeRow(rows[idx], idx, CFG.defaultSource);
+        const norm = normalizeRow(rows[idx], idx, CFG.defaultSource, STANDARD_COLS, node.id);
         norm.v[col] = inp.value;
         if (col === 0) norm.src = normalizeSource(inp.value, CFG.defaultSource);
         rows[idx] = norm;
-        persist(true);
+        persist();
         renderSidebar();
       });
     });
 
     $$('.btn-row-edit', mainEl).forEach(btn => {
       btn.addEventListener('click', () => {
-        state.editMode = true;
+        V.edit = true;
         const editBtn = $('#btnEdit');
         if (editBtn) editBtn.setAttribute('aria-pressed', 'true');
         renderMain();
@@ -588,15 +720,15 @@
         const rows = getRowsForNode(node.id);
         if (!rows[idx]) return;
         rows.splice(idx, 1);
-        persist(true);
-        renderAll();
+        persist();
+        render();
       });
     });
   }
 
   function exportExcelSeparateSheets(targetNode) {
     if (typeof XLSX === 'undefined') {
-      alert('Chưa tải thư viện SheetJS (XLSX) để xuất file Excel.');
+      toast('Chưa tải được thư viện Excel (XLSX).', 4000);
       return;
     }
 
@@ -604,16 +736,15 @@
     const sheetTargets = leaves.length ? leaves : [targetNode];
     const wb = XLSX.utils.book_new();
     const usedNames = new Set();
-    const header = ['Nguồn', 'STT', 'Tên Vật Tư', 'Serial', 'Mã VT', 'Part number', 'Ghi chú'];
 
     for (const itemNode of sheetTargets) {
       const rawTitle = CFG.sheetLabels[itemNode.id] || itemNode.label || itemNode.id;
       const sheetName = sanitizeSheetName(rawTitle, usedNames);
       const rows = getRowsForNode(itemNode.id);
 
-      const aoa = [header];
+      const aoa = [STANDARD_COLS.slice()];
       rows.forEach((r, idx) => {
-        const norm = normalizeRow(r, idx, CFG.defaultSource);
+        const norm = normalizeRow(r, idx, CFG.defaultSource, STANDARD_COLS, itemNode.id);
         aoa.push([
           norm.v[0],
           norm.v[1] || String(idx + 1),
@@ -628,8 +759,8 @@
       XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), sheetName);
     }
 
-    const fileSlug = fold(targetNode.label || 'thong-ke').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'thong-ke';
-    XLSX.writeFile(wb, `${fileSlug}-cac-sheet.xlsx`);
+    const slug = fold(targetNode.label || 'thong-ke').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'thong-ke';
+    XLSX.writeFile(wb, `${slug}-cac-sheet.xlsx`);
   }
 
   function handleImportFile(ev) {
@@ -638,7 +769,7 @@
     if (!file) return;
 
     if (typeof XLSX === 'undefined') {
-      toast('Chưa tải thư viện XLSX để đọc file.', 4000);
+      toast('Chưa tải được thư viện XLSX để đọc tệp.', 4000);
       return;
     }
 
@@ -653,14 +784,11 @@
           const aoa = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
           if (!Array.isArray(aoa) || !aoa.length) return;
 
-          const targetId =
-            matchNodeIdByText(sheetName) ||
-            matchNodeIdByText(aoa[0] && aoa[0][0]) ||
-            state.activeId ||
+          const fallbackTargetId =
+            resolveTargetNodeId(sheetName) ||
+            resolveTargetNodeId(aoa[0] && aoa[0][0]) ||
+            V.activeId ||
             (flatNodes[0] && flatNodes[0].node.id);
-
-          if (!targetId) return;
-          const destRows = getRowsForNode(targetId);
 
           for (let rIdx = 0; rIdx < aoa.length; rIdx++) {
             const rowArr = aoa[rIdx];
@@ -672,34 +800,40 @@
 
             const hasSourceCol = SRC_LIST.some(opt => fold(opt) === fold(rowArr[0]));
             const src = hasSourceCol ? normalizeSource(rowArr[0], CFG.defaultSource) : CFG.defaultSource;
-            const tenVT = String(hasSourceCol ? rowArr[2] : (rowArr[1] || rowArr[0] || '')).trim();
-            const serial = String(hasSourceCol ? rowArr[3] : (rowArr[2] || '')).trim();
-            const maVT = String(hasSourceCol ? rowArr[4] : (rowArr[3] || '')).trim();
+            const tenVT = String(hasSourceCol ? rowArr[2] : (rowArr[2] || rowArr[1] || rowArr[0] || '')).trim();
+            const serial = String(hasSourceCol ? rowArr[3] : (rowArr[3] || '')).trim();
+            const maVT = String(hasSourceCol ? rowArr[4] : (rowArr[1] || '')).trim();
             const partNo = String(hasSourceCol ? rowArr[5] : (rowArr[4] || '')).trim();
             const ghiChu = String(hasSourceCol ? rowArr[6] : (rowArr[5] || '')).trim();
 
             if (!tenVT && !serial && !maVT && !partNo) continue;
 
-            destRows.push(normalizeRow({
-              i: uid(),
+            const draftRow = normalizeRow({
+              i: 'u' + uid(),
               src,
-              v: [src, String(destRows.length + 1), tenVT, serial, maVT, partNo, ghiChu]
-            }, destRows.length, src));
+              v: [src, '0', tenVT, serial, maVT, partNo, ghiChu]
+            }, 0, src, STANDARD_COLS, fallbackTargetId);
+
+            const targetId = classifyRowTarget(sheetName, sheetName, draftRow, fallbackTargetId);
+            if (!targetId) continue;
+            const destRows = getRowsForNode(targetId);
+            draftRow.v[1] = String(destRows.length + 1);
+            destRows.push(draftRow);
             importedCount++;
           }
         });
 
-        persist(true);
-        renderAll();
+        persist();
+        render();
         toast(`Đã nhập ${importedCount} dòng dữ liệu.`, 3500);
       } catch (err) {
-        toast('Lỗi đọc file: ' + (err && err.message ? err.message : err), 4500);
+        toast('Lỗi đọc tệp: ' + (err && err.message ? err.message : err), 4500);
       }
     };
     reader.readAsArrayBuffer(file);
   }
 
-  function renderAll() {
+  function render() {
     syncSTFromStore();
     renderSidebar();
     renderMain();
@@ -707,28 +841,39 @@
 
   function refreshFromSync() {
     syncStoreFromST();
-    renderSidebar();
-    renderMain();
+    render();
   }
 
-  function bindGlobalControls() {
-    const titleEl = $('#appTitle');
-    const subEl = $('#appSub');
-    if (titleEl) titleEl.textContent = CFG.title;
-    if (subEl) subEl.textContent = CFG.subtitle;
+  function bindGlobal() {
+    const sb = $('#sidebar');
+    if (sb) {
+      sb.addEventListener('click', e => {
+        const nodeBtn = e.target.closest('[data-node-id]');
+        if (nodeBtn) {
+          V.activeId = nodeBtn.getAttribute('data-node-id');
+          V.route = { page: 'sheet', id: V.activeId };
+          render();
+          return;
+        }
+        if (e.target.closest('[data-go-overview]')) {
+          V.route = { page: 'overview', id: null };
+          render();
+        }
+      });
+    }
 
     const gq = $('#gq');
     const gqClear = $('#gqClear');
     if (gq) {
       gq.addEventListener('input', () => {
-        state.query = gq.value;
-        if (gqClear) gqClear.hidden = !state.query;
+        V.query = gq.value;
+        if (gqClear) gqClear.hidden = !V.query;
         renderMain();
       });
     }
     if (gqClear) {
       gqClear.addEventListener('click', () => {
-        state.query = '';
+        V.query = '';
         if (gq) gq.value = '';
         gqClear.hidden = true;
         renderMain();
@@ -738,32 +883,43 @@
     const btnEdit = $('#btnEdit');
     if (btnEdit) {
       btnEdit.addEventListener('click', () => {
-        state.editMode = !state.editMode;
-        btnEdit.setAttribute('aria-pressed', String(state.editMode));
+        V.edit = !V.edit;
+        btnEdit.setAttribute('aria-pressed', String(V.edit));
+        const eb = $('#editbar');
+        if (eb) eb.hidden = !V.edit;
         renderMain();
       });
     }
 
-    const importInput = $('#importFileInput');
-    if (importInput) {
-      importInput.addEventListener('change', handleImportFile);
+    const btnPrint = $('#btnPrint');
+    if (btnPrint) btnPrint.addEventListener('click', () => window.print());
+
+    const btnTheme = $('#btnTheme');
+    if (btnTheme) {
+      btnTheme.addEventListener('click', () => {
+        const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+        document.documentElement.dataset.theme = next;
+        localStorage.setItem(LS('theme'), next);
+      });
     }
+
+    const importInput = $('#importFileInput');
+    if (importInput) importInput.addEventListener('change', handleImportFile);
 
     $$('#menuExport [data-act]').forEach(btn => {
       btn.addEventListener('click', () => {
         const act = btn.getAttribute('data-act');
-        const curEntry = nodeById.get(state.activeId) || flatNodes[0];
+        const curEntry = nodeById.get(V.activeId) || flatNodes[0];
         if (act === 'xlsx-all') {
           if (typeof XLSX === 'undefined') return;
           const wb = XLSX.utils.book_new();
           const used = new Set();
-          const header = ['Nguồn', 'STT', 'Tên Vật Tư', 'Serial', 'Mã VT', 'Part number', 'Ghi chú'];
           for (const entry of flatNodes) {
             const n = entry.node;
             if (Array.isArray(n.children) && n.children.length > 0) continue;
             const sName = sanitizeSheetName(CFG.sheetLabels[n.id] || n.label, used);
-            const rows = getRowsForNode(n.id).map((r, i) => normalizeRow(r, i, CFG.defaultSource).v);
-            XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([header, ...rows]), sName);
+            const rows = getRowsForNode(n.id).map((r, i) => normalizeRow(r, i, CFG.defaultSource, STANDARD_COLS, n.id).v);
+            XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([STANDARD_COLS.slice(), ...rows]), sName);
           }
           XLSX.writeFile(wb, 'vat-tu-tai-san-all-sheets.xlsx');
         } else if (act === 'xlsx-cur' && curEntry) {
@@ -777,50 +933,117 @@
           a.click();
           setTimeout(() => URL.revokeObjectURL(a.href), 500);
         } else if (act === 'reset') {
-          if (confirm('Khôi phục dữ liệu gốc?')) {
+          if (confirm('Khôi phục dữ liệu gốc? Mọi chỉnh sửa trên máy sẽ mất.')) {
             resetToBaseline();
-            renderAll();
+            render();
             toast('Đã khôi phục dữ liệu gốc');
           }
         }
       });
     });
+
+    window.addEventListener('hashchange', () => {
+      parseHash();
+      render();
+    });
   }
 
   window.LabApp = {
+    BUILD,
     CFG,
-    DATA,
-    ST,
     esc,
     uid,
+    fold,
+    tokensOf,
+    toast,
+    sheetById,
+    labelOf,
+    isStock,
+    stockRows,
+    normalizeSource,
+    normalizeRow,
+    SOURCE_OPTIONS: SRC_LIST,
+    STANDARD_COLS,
+    get DATA() { return DATA; },
+    get ST() { return ST; },
+    get V() { return V; },
     saveLocal,
+    persist,
     resetToBaseline,
     refresh: refreshFromSync,
-    render: refreshFromSync,
+    render,
+    keepScroll: fn => { const y = window.scrollY; fn(); window.scrollTo(0, y); },
     touch: () => {}
   };
 
-  function init() {
-    loadInitialState();
-    syncSTFromStore();
-    bindGlobalControls();
-    renderAll();
+  function start(data) {
+    DATA = Object.assign({ meta: { source: 'LAB', generated: '', version: '' }, sheets: [] }, data || {});
+    loadState();
+    parseHash();
 
-    try {
-      if (window.Sync && typeof window.Sync.init === 'function') {
-        window.Sync.init(window.LabApp);
-      }
-    } catch (_) {}
+    const appTitle = $('#appTitle');
+    const appSub = $('#appSub');
+    if (appTitle) appTitle.textContent = CFG.title;
+    if (appSub) appSub.textContent = CFG.subtitle;
+    const dirtyEl = $('#dirty');
+    if (dirtyEl) dirtyEl.hidden = !ST.dirty;
+
+    try { if (window.Slips && typeof window.Slips.init === 'function') window.Slips.init(window.LabApp); } catch (_) {}
+    try { if (window.Sync && typeof window.Sync.init === 'function') window.Sync.init(window.LabApp); } catch (_) {}
+
+    bindGlobal();
+    render();
 
     const boot = $('#boot');
     const topbar = $('#topbar');
-    if (boot) boot.hidden = true;
+    const layout = $('#layout');
+    if (boot) boot.remove();
     if (topbar) topbar.hidden = false;
+    if (layout) layout.hidden = false;
+  }
+
+  async function decrypt(enc, pw) {
+    const b64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
+    const km = await crypto.subtle.importKey('raw', new TextEncoder().encode(pw), 'PBKDF2', false, ['deriveKey']);
+    const key = await crypto.subtle.deriveKey({ name: 'PBKDF2', salt: b64(enc.salt), iterations: enc.iter, hash: 'SHA-256' }, km, { name: 'AES-GCM', length: 256 }, false, ['decrypt']);
+    const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: b64(enc.iv) }, key, b64(enc.ct));
+    return JSON.parse(new TextDecoder().decode(pt));
+  }
+
+  function unlock() {
+    const bootEl = $('#boot');
+    if (!bootEl) return;
+    bootEl.innerHTML = `<form class="lock" id="lockForm"><h2>🔒 ${esc(CFG.title)}</h2><p>Dữ liệu được bảo vệ bằng mật khẩu.</p>
+      <input type="password" id="pw" placeholder="Nhập mật khẩu" autocomplete="current-password" autofocus><div class="err" id="pwErr"></div><button>Mở khoá</button></form>`;
+    $('#lockForm').addEventListener('submit', async ev => {
+      ev.preventDefault();
+      const err = $('#pwErr');
+      if (err) err.textContent = 'Đang giải mã…';
+      try {
+        if (!window.crypto || !crypto.subtle) throw new Error('nocrypto');
+        start(await decrypt(window.LAB_DATA_ENC, $('#pw').value));
+      } catch (e) {
+        if (err) err.textContent = e.message === 'nocrypto' ? 'Trình duyệt cần mở bằng https://' : 'Sai mật khẩu.';
+      }
+    });
+  }
+
+  function boot() {
+    const t = localStorage.getItem(LS('theme')) || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+    document.documentElement.dataset.theme = t;
+
+    if (window.LAB_DATA) {
+      start(window.LAB_DATA);
+    } else if (window.LAB_DATA_ENC) {
+      unlock();
+    } else {
+      start({ meta: { source: 'LAB', generated: '', version: '' }, sheets: [] });
+    }
   }
 
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', init);
+    document.addEventListener('DOMContentLoaded', boot);
   } else {
-    init();
+    boot();
   }
 })();
