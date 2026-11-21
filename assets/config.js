@@ -1,12 +1,10 @@
 /* =====================================================================
-   CẤU HÌNH WEB APP – TÀI SẢN VẬT TƯ LAB
+   CẤU HÌNH WEB APP – VẬT TƯ – TÀI SẢN
    ===================================================================== */
 window.APP_CONFIG = {
-  // Tiêu đề hiển thị trên thanh trên cùng
-  title: 'Tài sản – Vật tư Truyền dẫn LAB',
-  subtitle: 'LAB XVT',
+  title: 'Vật tư – Tài sản',
+  subtitle: 'Quản lý danh mục & thống kê',
 
-  // Cột Nguồn thay thế tick "Đã kiểm"
   sourceLabel: 'Nguồn',
   sourceOptions: [
     'Vật tư',
@@ -17,7 +15,7 @@ window.APP_CONFIG = {
   ],
   defaultSource: 'Không rõ nguồn',
 
-  // Cấu trúc chuẩn các bảng thống kê vật tư / tài sản
+  // Giữ nguyên cấu trúc 7 cột dữ liệu + cột Thao tác ở bảng
   tableColumns: [
     'Nguồn',
     'STT',
@@ -28,20 +26,14 @@ window.APP_CONFIG = {
     'Ghi chú'
   ],
 
-  // Kiểu hiển thị bảng thống kê ngang và tách mỗi mục thành 1 sheet khi xuất Excel
-  tableLayout: 'horizontal',
-  exportEachItemAsSheet: true,
+  storageKey: 'vat-tu-tai-san-v2',
 
-  // Khoá lưu chỉnh sửa trong trình duyệt
-  storageKey: 'lab-xvt-v1',
-
-  // Tên nhóm ở thanh bên (dự phòng)
   groupNames: [
-    'Thiết bị theo hệ thống',
-    'Vật tư rời / không rõ nguồn / đo kiểm'
+    'Thiết bị & Vật tư',
+    'Tài sản & Nguồn khác'
   ],
 
-  // ====== CẤU HÌNH CÂY THƯ MỤC RÚT GỌN THEO ẢNH MẪU ======
+  // Cây thư mục rút gọn theo sơ đồ mẫu
   treeMenu: [
     {
       id: 'truyen-dan-thiet-bi',
@@ -50,11 +42,11 @@ window.APP_CONFIG = {
       isDynamicGroup: true,
       allowCreate: true,
       matchKeywords: [
-        'truyen dan', 'truyền dẫn', 'infinera', 'xtc10', 'xtc-10', 'xtc 10',
-        'mtc9', 'mtc-9', 'mtc 9', 'otc9', 'otc-9', 'otc 9',
+        'truyen dan', 'truyền dẫn', 'thiet bi', 'thiết bị',
+        'infinera', 'xtc10', 'mtc9', 'otc9',
         'ciena', '5430', 'ome', 'bb',
         'huawei', 'hw', '6800', '8800', '7500', '3500', '3900',
-        'nokia', 'bb1', 'ribbon', 'ericson', 'ericsson'
+        'nokia', 'ribbon', 'ericson', 'ericsson'
       ],
       defaultGroup: 0,
       children: [
@@ -64,7 +56,7 @@ window.APP_CONFIG = {
           icon: '📁',
           isDynamicGroup: true,
           allowCreate: true,
-          matchKeywords: ['infinera'],
+          matchKeywords: ['infinera', 'xtc10', 'mtc9', 'otc9'],
           children: [
             {
               id: 'xtc10',
@@ -76,7 +68,7 @@ window.APP_CONFIG = {
             },
             {
               id: 'mtc9',
-              label: 'MTC 9',
+              label: 'MTC9',
               icon: '📄',
               isDynamicGroup: true,
               allowCreate: true,
@@ -84,7 +76,7 @@ window.APP_CONFIG = {
             },
             {
               id: 'otc9',
-              label: 'OTC 9',
+              label: 'OTC9',
               icon: '📄',
               isDynamicGroup: true,
               allowCreate: true,
@@ -98,7 +90,7 @@ window.APP_CONFIG = {
           icon: '📁',
           isDynamicGroup: true,
           allowCreate: true,
-          matchKeywords: ['ciena'],
+          matchKeywords: ['ciena', '5430', 'ome', 'ciena bb'],
           children: [
             {
               id: 'ciena-5430',
@@ -122,7 +114,7 @@ window.APP_CONFIG = {
               icon: '📄',
               isDynamicGroup: true,
               allowCreate: true,
-              matchKeywords: ['ciena bb', 'bb']
+              matchKeywords: ['ciena bb', 'bb ciena']
             }
           ]
         },
@@ -132,7 +124,7 @@ window.APP_CONFIG = {
           icon: '📁',
           isDynamicGroup: true,
           allowCreate: true,
-          matchKeywords: ['huawei', 'hua wei', 'hw'],
+          matchKeywords: ['huawei', 'hw 6800', 'hw 8800', 'hw 7500', 'hw 3500', 'hw 3900'],
           children: [
             {
               id: 'hw-6800',
@@ -140,7 +132,7 @@ window.APP_CONFIG = {
               icon: '📄',
               isDynamicGroup: true,
               allowCreate: true,
-              matchKeywords: ['hw 6800', 'hw6800', 'hw-6800', '6800']
+              matchKeywords: ['hw 6800', 'hw6800', '6800']
             },
             {
               id: 'hw-8800',
@@ -148,7 +140,7 @@ window.APP_CONFIG = {
               icon: '📄',
               isDynamicGroup: true,
               allowCreate: true,
-              matchKeywords: ['hw 8800', 'hw8800', 'hw-8800', '8800']
+              matchKeywords: ['hw 8800', 'hw8800', '8800']
             },
             {
               id: 'hw-7500',
@@ -156,7 +148,7 @@ window.APP_CONFIG = {
               icon: '📄',
               isDynamicGroup: true,
               allowCreate: true,
-              matchKeywords: ['hw 7500', 'hw7500', 'hw-7500', '7500']
+              matchKeywords: ['hw 7500', 'hw7500', '7500']
             },
             {
               id: 'hw-3500',
@@ -164,7 +156,7 @@ window.APP_CONFIG = {
               icon: '📄',
               isDynamicGroup: true,
               allowCreate: true,
-              matchKeywords: ['hw 3500', 'hw3500', 'hw-3500', '3500']
+              matchKeywords: ['hw 3500', 'hw3500', '3500']
             },
             {
               id: 'hw-3900',
@@ -172,17 +164,27 @@ window.APP_CONFIG = {
               icon: '📄',
               isDynamicGroup: true,
               allowCreate: true,
-              matchKeywords: ['hw 3900', 'hw3900', 'hw-3900', '3900']
+              matchKeywords: ['hw 3900', 'hw3900', '3900']
             }
           ]
         },
         {
-          id: 'nokia-bb1',
-          label: 'Nokia - BB1',
+          id: 'td-nokia',
+          label: 'Nokia',
           icon: '📁',
           isDynamicGroup: true,
           allowCreate: true,
-          matchKeywords: ['nokia', 'bb1', 'nokia - bb1', 'nokia bb1']
+          matchKeywords: ['nokia', 'nokia bb'],
+          children: [
+            {
+              id: 'nokia-bb',
+              label: 'BB',
+              icon: '📄',
+              isDynamicGroup: true,
+              allowCreate: true,
+              matchKeywords: ['nokia bb', 'bb nokia', 'nokia']
+            }
+          ]
         },
         {
           id: 'ribbon-ericson',
@@ -190,7 +192,7 @@ window.APP_CONFIG = {
           icon: '📁',
           isDynamicGroup: true,
           allowCreate: true,
-          matchKeywords: ['ribbon', 'ericson', 'ericsson', 'ribbon - ericson', 'ribbon - ericsson']
+          matchKeywords: ['ribbon', 'ericson', 'ericsson']
         }
       ]
     },
@@ -200,7 +202,25 @@ window.APP_CONFIG = {
       icon: '🌐',
       isDynamicGroup: true,
       allowCreate: true,
-      matchKeywords: ['ip', 'thiet bi ip', 'thiết bị ip', 'router', 'switch']
+      matchKeywords: ['thiet bi ip', 'thiết bị ip', 'ip', 'router', 'switch', 'tao moi', 'tạo mới', 'tao mo', 'tạo mở'],
+      children: [
+        {
+          id: 'ip-tao-moi',
+          label: 'Tạo mới',
+          icon: '📄',
+          isDynamicGroup: true,
+          allowCreate: true,
+          matchKeywords: ['tao moi', 'tạo mới', 'ip tao moi']
+        },
+        {
+          id: 'ip-tao-mo',
+          label: 'Tạo mở',
+          icon: '📄',
+          isDynamicGroup: true,
+          allowCreate: true,
+          matchKeywords: ['tao mo', 'tạo mở', 'tao ma', 'tạo má', 'ip tao mo']
+        }
+      ]
     },
     {
       id: 'thiet-bi-vsat',
@@ -216,7 +236,7 @@ window.APP_CONFIG = {
       icon: '📻',
       isDynamicGroup: true,
       allowCreate: true,
-      matchKeywords: ['vo tuyen', 'vô tuyến', 'thiet bi vo tuyen', 'thiết bị vô tuyến', 'radio']
+      matchKeywords: ['vo tuyen', 'vô tuyến', 'thiet bi vo tuyen', 'thiết bị vô tuyến', 'radio', 'bts', 'rru']
     },
     {
       id: 'vat-tu-do-luong',
@@ -224,7 +244,7 @@ window.APP_CONFIG = {
       icon: '📏',
       isDynamicGroup: true,
       allowCreate: true,
-      matchKeywords: ['do luong', 'đo lường', 'vat tu do luong', 'vật tư đo lường']
+      matchKeywords: ['do luong', 'đo lường', 'vat tu do luong', 'vật tư đo lường', 'do kiem', 'đo kiểm']
     },
     {
       id: 'vat-tu-sua-chua',
@@ -249,95 +269,28 @@ window.APP_CONFIG = {
       icon: '🏢',
       isDynamicGroup: true,
       allowCreate: true,
-      matchKeywords: ['tai san', 'tài sản']
+      matchKeywords: ['tai san', 'tài sản', 'tscd', 'ccdc'],
+      defaultGroup: 1
     }
   ],
 
-  // ====== ÁNH XẠ CÁC BẢNG / SHEET CON VỀ ĐÚNG THƯ MỤC ĐÍCH ======
-  sheetRouteMap: {
-    'xtc10': 'xtc10',
-    'xtc-10': 'xtc10',
-    'xtc 10': 'xtc10',
-    'mtc9': 'mtc9',
-    'mtc-9': 'mtc9',
-    'mtc 9': 'mtc9',
-    'otc9': 'otc9',
-    'otc-9': 'otc9',
-    'otc 9': 'otc9',
-    'ciena-5430': 'ciena-5430',
-    '5430': 'ciena-5430',
-    'ciena-ome': 'ciena-ome',
-    'ome': 'ciena-ome',
-    'ciena-bb': 'ciena-bb',
-    'bb': 'ciena-bb',
-    'hw-6800': 'hw-6800',
-    'hw-8800': 'hw-8800',
-    'hw-7500': 'hw-7500',
-    'hw-3500': 'hw-3500',
-    'hw-3900': 'hw-3900',
-    'nokia-bb1': 'nokia-bb1',
-    'nokia': 'nokia-bb1',
-    'bb1': 'nokia-bb1',
-    'ribbon-ericson': 'ribbon-ericson',
-    'ribbon': 'ribbon-ericson',
-    'ericson': 'ribbon-ericson',
-    'ericsson': 'ribbon-ericson',
-    'thiet-bi-ip': 'thiet-bi-ip',
-    'thiet-bi-vsat': 'thiet-bi-vsat',
-    'thiet-bi-vo-tuyen': 'thiet-bi-vo-tuyen',
-    'vat-tu-do-luong': 'vat-tu-do-luong',
-    'vat-tu-sua-chua': 'vat-tu-sua-chua',
-    'vat-tu-khong-ro-nguon-goc': 'vat-tu-khong-ro-nguon-goc',
-    'tai-san': 'tai-san'
-  },
-
-  // ====== TÁCH BẢNG / MỤC CON THEO TÊN BLOCK VÀ ĐƯA VỀ ĐÚNG THƯ MỤC ======
-  splitTablesByTitle: true,
-  blockRouteMap: {
-    'xtc10': 'xtc10',
-    'xtc-10': 'xtc10',
-    'xtc 10': 'xtc10',
-    'mtc9': 'mtc9',
-    'mtc-9': 'mtc9',
-    'mtc 9': 'mtc9',
-    'otc9': 'otc9',
-    'otc-9': 'otc9',
-    'otc 9': 'otc9',
-    '5430': 'ciena-5430',
-    'ome': 'ciena-ome',
-    'bb': 'ciena-bb',
-    'hw 6800': 'hw-6800',
-    'hw 8800': 'hw-8800',
-    'hw 7500': 'hw-7500',
-    'hw 3500': 'hw-3500',
-    'hw 3900': 'hw-3900',
-    'nokia - bb1': 'nokia-bb1',
-    'nokia bb1': 'nokia-bb1',
-    'ribbon - ericson': 'ribbon-ericson',
-    'ribbon - ericsson': 'ribbon-ericson',
-    'thiet bi ip': 'thiet-bi-ip',
-    'thiet bi vsat': 'thiet-bi-vsat',
-    'thiet bi vo tuyen': 'thiet-bi-vo-tuyen',
-    'vat tu do luong': 'vat-tu-do-luong',
-    'vat tu sua chua': 'vat-tu-sua-chua',
-    'vat tu khong ro nguon goc': 'vat-tu-khong-ro-nguon-goc',
-    'tai san': 'tai-san'
-  },
-
+  // Tên sheet chuẩn khi xuất Excel (mỗi mục con/nhóm xuất thành 1 sheet riêng)
   sheetLabels: {
     'xtc10': 'XTC10',
-    'mtc9': 'MTC 9',
-    'otc9': 'OTC 9',
+    'mtc9': 'MTC9',
+    'otc9': 'OTC9',
     'ciena-5430': '5430',
     'ciena-ome': 'OME',
-    'ciena-bb': 'BB',
+    'ciena-bb': 'Ciena_BB',
     'hw-6800': 'HW 6800',
     'hw-8800': 'HW 8800',
     'hw-7500': 'HW 7500',
     'hw-3500': 'HW 3500',
     'hw-3900': 'HW 3900',
-    'nokia-bb1': 'Nokia - BB1',
+    'nokia-bb': 'Nokia_BB',
     'ribbon-ericson': 'Ribbon - Ericson',
+    'ip-tao-moi': 'IP_Tao moi',
+    'ip-tao-mo': 'IP_Tao mo',
     'thiet-bi-ip': 'Thiết bị IP',
     'thiet-bi-vsat': 'Thiết bị VSAT',
     'thiet-bi-vo-tuyen': 'Thiết bị vô tuyến',
@@ -353,9 +306,9 @@ window.APP_CONFIG = {
     '00B0F0': 'Đã nhập kho / Hoàn thành',
     '00B050': 'Mới / Tốt'
   },
+
   maxSearchResults: 400,
 
-  // ====== CẤU HÌNH PHÂN QUYỀN TÊN ĐĂNG NHẬP (Đăng nhập bằng Tên) ======
   authUsers: {
     'admin': {
       email: 'admin@lab-xvt.local',
@@ -369,7 +322,6 @@ window.APP_CONFIG = {
     }
   },
 
-  // ====== KẾT NỐI FIREBASE (Đồng bộ nhiều thiết bị) ======
   sync: {
     provider: 'firebase',
     workspace: 'lab-xvt',
