@@ -20,8 +20,16 @@
   var COLS = ['rows', 'blocks'];
 
   function $(s, el) { return (el || document).querySelector(s); }
-  function esc(s) { return A && A.esc ? A.esc(s == null ? '' : s) : String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
-  function clone(o) { return JSON.parse(JSON.stringify(o)); }
+  function esc(s) {
+    return A && typeof A.esc === 'function'
+      ? A.esc(s == null ? '' : s)
+      : String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+          return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+        });
+  }
+  function clone(o) {
+    try { return JSON.parse(JSON.stringify(o)); } catch (e) { return o; }
+  }
 
   function normSrc(val, fallback) {
     if (A && typeof A.normalizeSource === 'function') return A.normalizeSource(val, fallback || DEFAULT_SOURCE);
@@ -82,14 +90,14 @@
   function nz(o) { return o && Object.keys(o).length ? o : null; }
 
   function rowSig(r) {
-    var src = normSrc(r.src || (r.v && r.v[0]), DEFAULT_SOURCE);
-    var vec = normVec(r.v, src);
+    var src = normSrc(r && (r.src || (r.v && r.v[0])), DEFAULT_SOURCE);
+    var vec = normVec(r && r.v, src);
     return hash(stable([
       src,
       vec,
-      nz(r.f),
-      (r.p && r.p.length) ? r.p : null,
-      nz(r.s)
+      nz(r && r.f),
+      (r && r.p && r.p.length) ? r.p : null,
+      nz(r && r.s)
     ]));
   }
 
@@ -803,66 +811,71 @@
   }
 
   function init(app) {
-    if (A) return;
-    A = app;
-    CS = (A && A.CFG && A.CFG.sync) || {};
+    try {
+      if (A) return;
+      A = app;
+      CS = (A && A.CFG && A.CFG.sync) || {};
 
-    var root = $('#modalRoot');
-    if (root && !$('#mdSync')) {
-      var d = document.createElement('div');
-      d.id = 'mdSync';
-      root.appendChild(d);
-      bindPanel();
-    }
-
-    var btn = $('#btnSync');
-    if (btn) btn.addEventListener('click', function () { openPanel(); });
-
-    document.addEventListener('keydown', function (e) {
-      if (e.key === 'Escape' && $('#mdSync .modal') && !$('#mdView .modal')) {
-        closePanel();
+      var root = $('#modalRoot');
+      if (root && !$('#mdSync')) {
+        var d = document.createElement('div');
+        d.id = 'mdSync';
+        root.appendChild(d);
+        bindPanel();
       }
-    });
 
-    window.addEventListener('online', function () {
-      if (ad && S.user) {
-        S.err = '';
-        S.retry = 0;
-        schedule(200);
-        if (ad.pollNow) ad.pollNow();
+      var btn = $('#btnSync');
+      if (btn) btn.addEventListener('click', function () { openPanel(); });
+
+      document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape' && $('#mdSync .modal') && !$('#mdView .modal')) {
+          closePanel();
+        }
+      });
+
+      window.addEventListener('online', function () {
+        if (ad && S.user) {
+          S.err = '';
+          S.retry = 0;
+          schedule(200);
+          if (ad.pollNow) ad.pollNow();
+        }
+      });
+      window.addEventListener('offline', function () {
+        if (ad && S.user) setState('offline');
+      });
+      document.addEventListener('visibilitychange', function () {
+        if (!document.hidden && ad && S.user) {
+          schedule(200);
+          if (ad.pollNow) ad.pollNow();
+        }
+      });
+
+      if (!enabled()) {
+        setState('off');
+        return;
       }
-    });
-    window.addEventListener('offline', function () {
-      if (ad && S.user) setState('offline');
-    });
-    document.addEventListener('visibilitychange', function () {
-      if (!document.hidden && ad && S.user) {
-        schedule(200);
-        if (ad.pollNow) ad.pollNow();
-      }
-    });
 
-    if (!enabled()) {
-      setState('off');
-      return;
-    }
+      S.baseline = buildBaseline();
+      var m = loadMeta();
+      S.since = (m && m.since) || { rows: 0, blocks: 0 };
+      S.M = (m && m.M) || { rows: {}, blocks: {} };
+      S.inited = m ? !!m.inited : false;
+      COLS.forEach(function (c) {
+        if (!S.M[c]) S.M[c] = {};
+        if (S.since[c] == null) S.since[c] = 0;
+      });
 
-    S.baseline = buildBaseline();
-    var m = loadMeta();
-    S.since = (m && m.since) || { rows: 0, blocks: 0 };
-    S.M = (m && m.M) || { rows: {}, blocks: {} };
-    S.inited = m ? !!m.inited : false;
-    COLS.forEach(function (c) {
-      if (!S.M[c]) S.M[c] = {};
-      if (S.since[c] == null) S.since[c] = 0;
-    });
-
-    ad = firebaseAdapter();
-    setState('loading');
-    Promise.resolve(ad.init(onUser)).catch(function (e) {
-      S.err = 'Không tải được thư viện đồng bộ: ' + ((e && e.message) || e) + ' (kiểm tra mạng / cấu hình).';
+      ad = firebaseAdapter();
+      setState('loading');
+      Promise.resolve(ad.init(onUser)).catch(function (e) {
+        S.err = 'Không tải được thư viện đồng bộ: ' + ((e && e.message) || e) + ' (kiểm tra mạng / cấu hình).';
+        setState('error');
+      });
+    } catch (e) {
+      S.err = 'Lỗi khởi tạo Sync: ' + ((e && e.message) || e);
       setState('error');
-    });
+    }
   }
 
   window.Sync = {
