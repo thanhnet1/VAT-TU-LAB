@@ -1,6 +1,6 @@
 /* =====================================================================
    assets/app.js – WEB APP: TÀI SẢN – VẬT TƯ TRUYỀN DẪN LAB
-   Phiên bản: 2026.11.21-1
+   Phiên bản: 2026.11.21-1 (Bảng thống kê ngang & Tách sheet Excel theo mục)
    ===================================================================== */
 (function () {
   'use strict';
@@ -19,7 +19,9 @@
     sheetLabels: {},
     colorMeaning: {},
     maxSearchResults: 400,
-    treeMenu: []
+    treeMenu: [],
+    tableLayout: 'horizontal',
+    exportEachItemAsSheet: true
   }, window.APP_CONFIG || {});
 
   const SRC_LIST = Array.isArray(CFG.sourceOptions) && CFG.sourceOptions.length
@@ -71,8 +73,9 @@
 
   function defaultSourceForSheet(sheet) {
     if (!sheet) return DEFAULT_SOURCE;
-    if (sheet.id === 'tai-san-khac' || fold(labelOf(sheet)).includes('tai san')) return 'Tài sản';
-    if (sheet.id === 'vt-do-kiem' || fold(labelOf(sheet)).includes('do kiem')) return 'Đo kiểm';
+    if (sheet.id === 'tai-san' || sheet.id === 'tai-san-khac' || fold(labelOf(sheet)).includes('tai san')) return 'Tài sản';
+    if (sheet.id === 'vt-do-kiem' || sheet.id === 'vat-tu-do-luong' || fold(labelOf(sheet)).includes('do kiem') || fold(labelOf(sheet)).includes('do luong')) return 'Đo kiểm';
+    if (sheet.id === 'vat-tu-sua-chua' || fold(labelOf(sheet)).includes('sua chua')) return 'Sửa chữa';
     return DEFAULT_SOURCE;
   }
 
@@ -140,133 +143,6 @@
       });
       return Object.assign({}, s, { blocks });
     });
-  }
-
-  function collectTreeTargets(nodes, out = []) {
-    if (!Array.isArray(nodes)) return out;
-    nodes.forEach(node => {
-      if (!node || !node.id) return;
-      out.push(node);
-      if (Array.isArray(node.children) && node.children.length) {
-        collectTreeTargets(node.children, out);
-      }
-    });
-    return out;
-  }
-
-  function ensureTargetSheet(sheetMap, targetId, titleFallback, defaultGroup = 0, categoryId = null) {
-    if (sheetMap.has(targetId)) return sheetMap.get(targetId);
-    const label = (CFG.sheetLabels && CFG.sheetLabels[targetId]) || titleFallback || targetId;
-    const created = {
-      id: targetId,
-      name: label,
-      categoryId: categoryId || targetId,
-      group: defaultGroup,
-      blocks: []
-    };
-    sheetMap.set(targetId, created);
-    return created;
-  }
-
-  function resolveBlockTargetId(blockTitle, sheetId, allNodes) {
-    const fTitle = fold(blockTitle || '').replace(/\s+/g, ' ').trim();
-    const blockMap = CFG.blockRouteMap || {};
-    if (fTitle) {
-      if (blockMap[fTitle]) return blockMap[fTitle];
-      for (const [k, v] of Object.entries(blockMap)) {
-        const fk = fold(k).replace(/\s+/g, ' ').trim();
-        if (fk && (fTitle === fk || fTitle.includes(fk))) return v;
-      }
-      const candidates = allNodes.filter(n => n.id !== sheetId && Array.isArray(n.matchKeywords));
-      for (const n of candidates) {
-        if (n.matchKeywords.some(kw => {
-          const fkw = fold(kw).replace(/\s+/g, ' ').trim();
-          return fkw.length >= 3 && (fTitle === fkw || fTitle.includes(fkw));
-        })) {
-          const hasMoreSpecificChild = allNodes.some(child =>
-            child.id !== n.id &&
-            Array.isArray(child.matchKeywords) &&
-            child.matchKeywords.some(ckw => {
-              const fckw = fold(ckw).replace(/\s+/g, ' ').trim();
-              return fckw.length >= 3 && (fTitle === fckw || fTitle.includes(fckw));
-            })
-          );
-          if (!hasMoreSpecificChild) return n.id;
-        }
-      }
-    }
-    const routeMap = CFG.sheetRouteMap || {};
-    const fSheet = fold(sheetId || '');
-    if (routeMap[sheetId]) return routeMap[sheetId];
-    if (routeMap[fSheet]) return routeMap[fSheet];
-    return sheetId;
-  }
-
-  function distributeSheetsByConfig(sheets) {
-    const normalized = normalizeSheetsData(sheets);
-    if (!Array.isArray(normalized) || !normalized.length) return [];
-
-    const allNodes = collectTreeTargets(CFG.treeMenu || []);
-    const nodeById = new Map(allNodes.map(n => [n.id, n]));
-    const sheetMap = new Map();
-
-    normalized.forEach(s => {
-      const mappedId = (CFG.sheetRouteMap && (CFG.sheetRouteMap[s.id] || CFG.sheetRouteMap[fold(s.id)])) || s.id;
-      const existing = sheetMap.get(mappedId);
-      if (!existing) {
-        const cloneSheet = Object.assign({}, s, {
-          id: mappedId,
-          blocks: Array.isArray(s.blocks)
-            ? s.blocks.map(b => Object.assign({}, b, { rows: Array.isArray(b.rows) ? b.rows.slice() : [] }))
-            : []
-        });
-        sheetMap.set(mappedId, cloneSheet);
-      } else {
-        const extraBlocks = Array.isArray(s.blocks) ? s.blocks : [];
-        extraBlocks.forEach(b => existing.blocks.push(Object.assign({}, b, { rows: Array.isArray(b.rows) ? b.rows.slice() : [] })));
-      }
-    });
-
-    if (CFG.splitTablesByTitle !== false) {
-      const currentList = Array.from(sheetMap.values());
-      currentList.forEach(s => {
-        const keptBlocks = [];
-        (s.blocks || []).forEach(b => {
-          const destId = resolveBlockTargetId(b.title, s.id, allNodes);
-          if (destId && destId !== s.id && sheetMap.has(destId)) {
-            const destSheet = sheetMap.get(destId);
-            destSheet.blocks.push(Object.assign({}, b, {
-              cols: STANDARD_COLS.slice(),
-              rows: Array.isArray(b.rows) ? b.rows.slice() : []
-            }));
-          } else if (destId && destId !== s.id && (nodeById.has(destId) || Object.values(CFG.blockRouteMap || {}).includes(destId))) {
-            const nodeInfo = nodeById.get(destId);
-            const destSheet = ensureTargetSheet(
-              sheetMap,
-              destId,
-              (nodeInfo && nodeInfo.label) || b.title,
-              (nodeInfo && nodeInfo.defaultGroup) || 0,
-              destId
-            );
-            destSheet.blocks.push(Object.assign({}, b, {
-              cols: STANDARD_COLS.slice(),
-              rows: Array.isArray(b.rows) ? b.rows.slice() : []
-            }));
-          } else {
-            keptBlocks.push(b);
-          }
-        });
-        if (keptBlocks.length !== (s.blocks || []).length) {
-          s.blocks = keptBlocks;
-        }
-      });
-    }
-
-    const result = Array.from(sheetMap.values());
-    result.forEach(s => {
-      (s.blocks || []).forEach(b => reindexBlock(b));
-    });
-    return result;
   }
 
   function hl(text, tokens) {
@@ -371,15 +247,15 @@
       if (saved && Array.isArray(saved.sheets)) {
         const metaVer = (DATA && DATA.meta && DATA.meta.version) || '';
         if (!metaVer || saved.ver === metaVer) {
-          st = { sheets: distributeSheetsByConfig(saved.sheets), dirty: true };
+          st = { sheets: normalizeSheetsData(saved.sheets), dirty: true };
         } else {
           const useNew = syncOn() || confirm('Dữ liệu gốc trên website vừa được cập nhật.\n\nOK = dùng dữ liệu MỚI\nHủy = giữ chỉnh sửa cũ');
           if (useNew) localStorage.removeItem(LS('state'));
-          else st = { sheets: distributeSheetsByConfig(saved.sheets), dirty: true };
+          else st = { sheets: normalizeSheetsData(saved.sheets), dirty: true };
         }
       }
     } catch (e) { }
-    if (!st) st = { sheets: distributeSheetsByConfig(clone((DATA && DATA.sheets) || [])), dirty: false };
+    if (!st) st = { sheets: normalizeSheetsData(clone((DATA && DATA.sheets) || [])), dirty: false };
     ensureIds(st.sheets);
     return st;
   }
@@ -399,7 +275,7 @@
   }
   function saveLocal() { clearTimeout(saveT); writeLocal(); }
   function resetToBaseline() {
-    ST = { sheets: distributeSheetsByConfig(clone((DATA && DATA.sheets) || [])), dirty: false };
+    ST = { sheets: normalizeSheetsData(clone((DATA && DATA.sheets) || [])), dirty: false };
     ensureIds(ST.sheets);
   }
 
@@ -514,7 +390,7 @@
     if (!name || !name.trim()) return;
     const cleanName = name.trim();
     const newId = 'cat-' + uid();
-    const defSrc = categoryId === 'tai-san-khac' || fold(cleanName).includes('tai san') ? 'Tài sản' : DEFAULT_SOURCE;
+    const defSrc = categoryId === 'tai-san' || categoryId === 'tai-san-khac' || fold(cleanName).includes('tai san') ? 'Tài sản' : DEFAULT_SOURCE;
     const newSheet = {
       id: newId,
       name: cleanName,
@@ -565,7 +441,7 @@
 
     let h = `<div class="page-title"><h1>Tổng quan</h1><span class="sub">Nguồn: ${esc(meta.source || 'LAB')} · cập nhật ${esc(meta.generated || '')}</span>
       <span class="ov-actions">
-        <button class="tbtn primary" onclick="window.openAddMaterialModal()">📦 Thêm vật tư / tài sản</button>
+        <button class="tbtn primary" onclick="window.openAddMaterialModal && window.openAddMaterialModal()">📦 Thêm vật tư / tài sản</button>
       </span></div>
     <div class="kpis">
       <div class="kpi"><div class="n">${(ST.sheets || []).length}</div><div class="l">Thư mục / hệ thống</div></div>
@@ -627,6 +503,44 @@
     return `<select class="src-sel" data-row-source="1" aria-label="${esc(CFG.sourceLabel)}">${opts}</select>`;
   }
 
+  // Hỗ trợ cả bảng ngang (mỗi trường là 1 hàng ngang, các bản ghi là các cột ngang) và bảng chuẩn
+  function horizontalMatrixHTML(s, bi, b, filteredRows, tokens) {
+    if (!filteredRows.length) return '';
+    const ce = V.edit ? ' contenteditable="true" spellcheck="false"' : '';
+    let html = '<div class="tbl-wrap"><table class="data horiz-table"><tbody>';
+
+    for (let k = 0; k < STANDARD_COLS.length; k++) {
+      html += `<tr><th class="horiz-label">${esc(STANDARD_COLS[k])}</th>`;
+      filteredRows.forEach(({ row, ri }) => {
+        const curSrc = normalizeSource(row.src || (row.v && row.v[0]));
+        row.src = curSrc;
+        if (!Array.isArray(row.v)) row.v = [curSrc, String(ri + 1), '', '', '', '', ''];
+        row.v[0] = curSrc;
+        if (!row.v[1]) row.v[1] = String(ri + 1);
+
+        const cls = [colClass(k), row.p && row.p.includes(k) ? 'dup' : ''].filter(Boolean).join(' ');
+        const st = row.f && row.f[k] ? ` style="background:${bgOf(row.f[k])}"` : '';
+
+        if (k === 0) {
+          html += `<td class="c-src" data-s="${s.id}" data-b="${bi}" data-r="${ri}">${sourceSelectHTML(curSrc)}</td>`;
+        } else {
+          html += `<td data-s="${s.id}" data-b="${bi}" data-r="${ri}" data-k="${k}"${cls ? ` class="${cls}"` : ''}${st}${ce}>${hl(row.v[k] || '', tokens)}</td>`;
+        }
+      });
+      html += '</tr>';
+    }
+
+    html += `<tr class="horiz-actions"><th class="horiz-label">Thao tác</th>`;
+    filteredRows.forEach(({ ri }) => {
+      html += `<td class="c-move" data-s="${s.id}" data-b="${bi}" data-r="${ri}">
+        <button type="button" class="move-row-btn" data-move title="Chuyển sang thư mục khác">➜</button>
+        ${V.edit ? '<button type="button" class="del" title="Xoá dòng">✕</button>' : ''}
+      </td>`;
+    });
+    html += '</tr></tbody></table></div>';
+    return html;
+  }
+
   function rowHTML(s, bi, b, ri, row, tokens) {
     const curSrc = normalizeSource(row.src || (row.v && row.v[0]));
     row.src = curSrc;
@@ -655,6 +569,7 @@
     const b = s.blocks[bi];
     const key = s.id + ':' + bi;
     const base = b.rows || [];
+    const matchedItems = [];
     let rows = '', shown = 0;
 
     base.forEach((row, ri) => {
@@ -662,19 +577,23 @@
       shown++;
       if (budget && budget.left <= 0) return;
       if (budget) budget.left--;
+      matchedItems.push({ row, ri });
       rows += rowHTML(s, bi, b, ri, row, tokens);
     });
 
     const filtered = tokens.length || f.src !== 'all' || f.color !== 'all';
     if (filtered && !shown && !V.edit) return '';
 
-    const head = STANDARD_COLS.map(c => `<th>${esc(c)}</th>`).join('') + '<th class="c-move" title="Chuyển thư mục">Chuyển</th>';
+    const isHorizontal = CFG.tableLayout === 'horizontal';
+    const tableContent = isHorizontal
+      ? horizontalMatrixHTML(s, bi, b, matchedItems, tokens)
+      : `<div class="tbl-wrap"><table class="data"><thead><tr>${STANDARD_COLS.map(c => `<th>${esc(c)}</th>`).join('') + '<th class="c-move" title="Chuyển thư mục">Chuyển</th>'}</tr></thead><tbody>${rows}</tbody></table></div>`;
+
     return `<section class="block ${V.collapsed[key] ? 'collapsed' : ''}" id="blk-${s.id}-${bi}" data-key="${key}" data-s="${s.id}" data-b="${bi}">
       <div class="block-head" data-toggle><span class="tg">▾</span><h3>${esc(b.title)}</h3>
         <span class="badge" data-badge>${filtered ? shown + ' / ' : ''}${base.length} dòng</span>
         <span class="sp"></span>${V.edit ? '<button class="add-row" data-add>＋ Thêm dòng</button>' : ''}</div>
-      ${rows ? `<div class="tbl-wrap"><table class="data"><thead><tr>${head}</tr></thead><tbody>${rows}</tbody></table></div>`
-             : `<div class="empty">Không có dòng nào khớp bộ lọc.</div>`}
+      ${matchedItems.length ? tableContent : `<div class="empty">Không có dòng nào khớp bộ lọc.</div>`}
     </section>`;
   }
 
@@ -790,10 +709,14 @@
     document.body.appendChild(div);
 
     const closeModal = () => { const el = document.getElementById('mdMoveRow'); if (el) el.remove(); };
-    $('#closeMoveRow').addEventListener('click', closeModal);
-    $('#btnCancelMoveRow').addEventListener('click', closeModal);
-    $('#btnConfirmMoveRow').addEventListener('click', () => {
-      const targetId = $('#selTargetSheet').value;
+    document.getElementById('closeMoveRow').onclick = closeModal;
+    document.getElementById('btnCancelMoveRow').onclick = closeModal;
+    document.getElementById('mdMoveRow').addEventListener('click', ev => {
+      if (ev.target.id === 'mdMoveRow') closeModal();
+    });
+
+    document.getElementById('btnConfirmMoveRow').onclick = () => {
+      const targetId = document.getElementById('selTargetSheet').value;
       const targetSheet = sheetById(targetId);
       if (!targetSheet) return;
 
@@ -805,182 +728,95 @@
           rows: []
         }];
       }
+      const destBlock = targetSheet.blocks[0];
+      const movedRow = clone(loc.row);
+      movedRow.i = 'u' + uid();
+      destBlock.rows.push(movedRow);
+      reindexBlock(destBlock);
 
-      const [moved] = loc.b.rows.splice(loc.ri, 1);
-      if (moved) {
-        targetSheet.blocks[0].rows.push(moved);
-        reindexBlock(loc.b);
-        reindexBlock(targetSheet.blocks[0]);
-        persist();
-        closeModal();
-        keepScroll(() => render());
-        toast(`✅ Đã chuyển sang "${labelOf(targetSheet)}"`);
-      }
-    });
+      loc.b.rows.splice(loc.ri, 1);
+      reindexBlock(loc.b);
+
+      persist();
+      closeModal();
+      keepScroll(() => render());
+      toast(`✅ Đã chuyển sang "${labelOf(targetSheet)}"`);
+    };
   }
 
-  window.openAddMaterialModal = function () {
-    const currentRole = localStorage.getItem('lab_user_role');
-    if (currentRole === 'guest') {
-      alert('Tài khoản Khách không có quyền thêm vật tư mới!');
+  window.openAddMaterialModal = function (prefill) {
+    if (localStorage.getItem('lab_user_role') === 'guest') {
+      toast('⚠ Tài khoản Khách không có quyền thêm mới.');
       return;
     }
+    const old = document.getElementById('mdAddMat');
+    if (old) old.remove();
 
-    window._materialDict = {};
-    const setMaVT = new Set(), setPartNum = new Set(), setTenVT = new Set();
+    const sheets = ST.sheets || [];
+    const defSheetId = (prefill && prefill.sheetId && sheetById(prefill.sheetId))
+      ? prefill.sheetId
+      : ((V.route.page === 'sheet' && sheetById(V.route.id)) ? V.route.id : (sheets[0] ? sheets[0].id : ''));
+    const sheetOpts = sheets.map(sh => `<option value="${esc(sh.id)}" ${sh.id === defSheetId ? 'selected' : ''}>${esc(labelOf(sh))}</option>`).join('');
+    const defSrc = (prefill && prefill.src) ? normalizeSource(prefill.src) : DEFAULT_SOURCE;
+    const srcOpts = SRC_LIST.map(opt => `<option value="${esc(opt)}" ${opt === defSrc ? 'selected' : ''}>${esc(opt)}</option>`).join('');
 
-    if (ST && ST.sheets) {
-      ST.sheets.forEach(s => (s.blocks || []).forEach(b => (b.rows || []).forEach(r => {
-        if (r.v) {
-          const ten = String(r.v[2] || '').trim();
-          const ma = String(r.v[4] || '').trim();
-          const part = String(r.v[5] || '').trim();
-          if (ma) { setMaVT.add(ma); window._materialDict[ma.toLowerCase()] = { ten, part }; }
-          if (ten) setTenVT.add(ten);
-          if (part) setPartNum.add(part);
-        }
-      })));
-    }
-
-    const optMaVT = Array.from(setMaVT).sort().map(item => `<option value="${esc(item)}">`).join('');
-    const optPartNum = Array.from(setPartNum).sort().map(item => `<option value="${esc(item)}">`).join('');
-    const optTenVT = Array.from(setTenVT).sort().map(item => `<option value="${esc(item)}">`).join('');
-    const optSrc = SRC_LIST.map(s => `<option value="${esc(s)}">${esc(s)}</option>`).join('');
-
-    const mdOld = document.getElementById('mdAddMat');
-    if (mdOld) mdOld.remove();
-
-    const modalHTML = `
-      <div class="modal-back" id="mdAddMat">
-        <div class="modal" style="max-width: 500px;">
+    const div = document.createElement('div');
+    div.innerHTML = `
+      <div class="modal-back" id="mdAddMat" style="display:flex">
+        <div class="modal" style="max-width:480px;">
           <div class="modal-head">
-            <h2>📦 Thêm vật tư / tài sản mới</h2>
-            <button class="modal-x" onclick="document.getElementById('mdAddMat').remove()">✕</button>
+            <h2>📦 Thêm vật tư / tài sản</h2>
+            <button type="button" class="modal-x" id="closeAddMat">✕</button>
           </div>
-          <div class="modal-body">
-            <form id="formAddMat" onsubmit="window.handleSaveNewMaterial(event)">
-              <label class="fld">
-                <span>Nguồn:</span>
-                <select id="newSource">${optSrc}</select>
-              </label>
-              <label class="fld">
-                <span>Mã vật tư (Mã VT):</span>
-                <input type="text" id="newMaVT" list="listMaVT" placeholder="Chọn hoặc nhập mã VT..." oninput="window.handleMaVTChange(this.value)">
-                <datalist id="listMaVT">${optMaVT}</datalist>
-              </label>
-              <label class="fld">
-                <span>Tên Vật Tư:</span>
-                <input type="text" id="newTenVT" list="listTenVT" placeholder="Nhập tên vật tư / tài sản..." required>
-                <datalist id="listTenVT">${optTenVT}</datalist>
-              </label>
-              <label class="fld">
-                <span>Serial:</span>
-                <input type="text" id="newSerial" placeholder="Nhập Serial...">
-              </label>
-              <label class="fld">
-                <span>Part number:</span>
-                <input type="text" id="newPartNum" list="listPartNum" placeholder="Nhập Part number...">
-                <datalist id="listPartNum">${optPartNum}</datalist>
-              </label>
-              <label class="fld">
-                <span>Ghi chú:</span>
-                <input type="text" id="newGhiChu" placeholder="Nhập ghi chú...">
-              </label>
-              <div class="sy-btns" style="margin-top: 15px;">
-                <button class="tbtn primary" type="submit">Lưu & Phân loại tự động</button>
-                <button class="tbtn" type="button" onclick="document.getElementById('mdAddMat').remove()">Hủy</button>
-              </div>
-            </form>
-          </div>
+          <form class="modal-body" id="frmAddMat">
+            <label class="fld"><span>Thư mục / Mục đích:</span><select id="addMatSheet">${sheetOpts}</select></label>
+            <label class="fld"><span>Nguồn:</span><select id="addMatSrc">${srcOpts}</select></label>
+            <label class="fld"><span>Tên Vật Tư:</span><input type="text" id="addMatName" required value="${esc((prefill && prefill.name) || '')}"></label>
+            <label class="fld"><span>Serial:</span><input type="text" id="addMatSerial" value="${esc((prefill && prefill.serial) || '')}"></label>
+            <label class="fld"><span>Mã VT:</span><input type="text" id="addMatCode" value="${esc((prefill && prefill.code) || '')}"></label>
+            <label class="fld"><span>Part number:</span><input type="text" id="addMatPart" value="${esc((prefill && prefill.part) || '')}"></label>
+            <label class="fld"><span>Ghi chú:</span><input type="text" id="addMatNote" value="${esc((prefill && prefill.note) || '')}"></label>
+            <div class="sy-btns" style="margin-top:14px">
+              <button type="submit" class="tbtn primary">Lưu</button>
+              <button type="button" class="tbtn" id="cancelAddMat">Hủy</button>
+            </div>
+          </form>
         </div>
       </div>`;
-    const div = document.createElement('div');
-    div.innerHTML = modalHTML;
     document.body.appendChild(div);
-  };
 
-  window.handleMaVTChange = function (val) {
-    if (!window._materialDict) return;
-    const found = window._materialDict[String(val || '').trim().toLowerCase()];
-    if (found) {
-      const tenInput = document.getElementById('newTenVT');
-      const partInput = document.getElementById('newPartNum');
-      if (tenInput && found.ten && !tenInput.value) tenInput.value = found.ten;
-      if (partInput && found.part && !partInput.value) partInput.value = found.part;
-    }
-  };
-
-  window.handleSaveNewMaterial = function (e) {
-    e.preventDefault();
-    const src = normalizeSource($('#newSource').value, DEFAULT_SOURCE);
-    const maVT = ($('#newMaVT').value || '').trim();
-    const tenVT = ($('#newTenVT').value || '').trim();
-    const serial = ($('#newSerial').value || '').trim();
-    const partNum = ($('#newPartNum').value || '').trim();
-    const ghiChu = ($('#newGhiChu').value || '').trim();
-
-    let targetBlock = null, targetSheet = null;
-    const sheets = ST.sheets || [];
-
-    function cleanStr(str) {
-      if (!str) return '';
-      return str.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\s+/g, '');
-    }
-
-    const cleanMa = cleanStr(maVT), cleanPart = cleanStr(partNum), cleanTen = cleanStr(tenVT);
-
-    if (cleanMa || cleanPart) {
-      for (let i = 0; i < sheets.length && !targetBlock; i++) {
-        for (let b = 0; b < (sheets[i].blocks || []).length && !targetBlock; b++) {
-          for (let r = 0; r < (sheets[i].blocks[b].rows || []).length; r++) {
-            const rowV = sheets[i].blocks[b].rows[r].v || [];
-            const exPart = cleanStr(rowV[5]), exMa = cleanStr(rowV[4]);
-            if ((cleanMa && exMa && cleanMa === exMa) || (cleanPart && exPart && cleanPart === exPart)) {
-              targetSheet = sheets[i]; targetBlock = sheets[i].blocks[b]; break;
-            }
-          }
-        }
+    const closeModal = () => { const el = document.getElementById('mdAddMat'); if (el) el.remove(); };
+    document.getElementById('closeAddMat').onclick = closeModal;
+    document.getElementById('cancelAddMat').onclick = closeModal;
+    document.getElementById('frmAddMat').onsubmit = ev => {
+      ev.preventDefault();
+      const targetSheet = sheetById(document.getElementById('addMatSheet').value);
+      if (!targetSheet) return;
+      if (!Array.isArray(targetSheet.blocks) || !targetSheet.blocks.length) {
+        targetSheet.blocks = [{ title: labelOf(targetSheet), hr: 1, cols: STANDARD_COLS.slice(), rows: [] }];
       }
-    }
+      const blk = targetSheet.blocks[0];
+      const src = normalizeSource(document.getElementById('addMatSrc').value);
+      const stt = String((blk.rows || []).length + 1);
+      const ten = document.getElementById('addMatName').value.trim();
+      const ser = document.getElementById('addMatSerial').value.trim();
+      const ma = document.getElementById('addMatCode').value.trim();
+      const part = document.getElementById('addMatPart').value.trim();
+      const note = document.getElementById('addMatNote').value.trim();
 
-    if (!targetBlock && cleanTen) {
-      for (let i = 0; i < sheets.length && !targetBlock; i++) {
-        for (let b = 0; b < (sheets[i].blocks || []).length && !targetBlock; b++) {
-          for (let r = 0; r < (sheets[i].blocks[b].rows || []).length; r++) {
-            const exTen = cleanStr((sheets[i].blocks[b].rows[r].v || [])[2]);
-            if (exTen && (cleanTen === exTen || exTen.includes(cleanTen) || cleanTen.includes(exTen))) {
-              targetSheet = sheets[i]; targetBlock = sheets[i].blocks[b]; break;
-            }
-          }
-        }
-      }
-    }
-
-    if (!targetBlock && src === 'Tài sản') {
-      targetSheet = sheetById('tai-san-khac');
-      if (targetSheet && targetSheet.blocks && targetSheet.blocks[0]) targetBlock = targetSheet.blocks[0];
-    }
-
-    if (!targetBlock && sheets.length > 0 && sheets[0].blocks.length > 0) {
-      targetSheet = sheets[0]; targetBlock = sheets[0].blocks[0];
-    }
-
-    if (targetBlock) {
-      const nextStt = String((targetBlock.rows || []).length + 1);
-      targetBlock.rows.push({
-        r: Number(nextStt),
-        i: 'm_' + uid(),
+      blk.rows.push({
+        r: Number(stt),
+        i: 'u' + uid(),
+        ct: Date.now(),
         src,
-        v: [src, nextStt, tenVT, serial, maVT, partNum, ghiChu],
-        ct: Date.now()
+        v: [src, stt, ten, ser, ma, part, note]
       });
-      persist(); render();
-      const mdAddMat = document.getElementById('mdAddMat');
-      if (mdAddMat) mdAddMat.remove();
-      toast(`Đã thêm vào thư mục "${labelOf(targetSheet)}" (${src})`);
-    } else {
-      alert('Lỗi: Không tìm thấy thư mục phù hợp.');
-    }
+      reindexBlock(blk);
+      persist();
+      closeModal();
+      render();
+      toast(`✅ Đã thêm vào "${labelOf(targetSheet)}"`);
+    };
   };
 
   function render() {
@@ -1002,11 +838,11 @@
   const keepScroll = fn => { const y = window.scrollY; fn(); window.scrollTo(0, y); };
 
   function locate(el) {
-    const tr = el.closest('tr[data-s]'); if (!tr) return null;
-    const s = sheetById(tr.dataset.s); if (!s) return null;
-    const b = s.blocks[+tr.dataset.b]; if (!b) return null;
-    const row = b.rows[+tr.dataset.r]; if (!row) return null;
-    return { tr, s, b, row, bi: +tr.dataset.b, ri: +tr.dataset.r };
+    const host = el.closest('[data-s][data-b][data-r]'); if (!host) return null;
+    const s = sheetById(host.dataset.s); if (!s) return null;
+    const b = s.blocks[+host.dataset.b]; if (!b) return null;
+    const row = b.rows[+host.dataset.r]; if (!row) return null;
+    return { el: host, s, b, row, bi: +host.dataset.b, ri: +host.dataset.r };
   }
 
   function refreshBadges() {
@@ -1026,7 +862,7 @@
       const q = t.closest('[data-q]'); if (q) { setGlobalSearch(q.dataset.q); return; }
       const srcJump = t.closest('[data-src-jump]');
       if (srcJump) {
-        const targetSheet = sheetById('tai-san-khac') || (ST.sheets && ST.sheets[0]);
+        const targetSheet = sheetById('vat-tu-khong-ro-nguon-goc') || sheetById('tai-san') || (ST.sheets && ST.sheets[0]);
         if (targetSheet) {
           V.f = Object.assign(newF(), { src: srcJump.dataset.srcJump });
           location.hash = '#/s/' + targetSheet.id;
@@ -1212,26 +1048,51 @@
     document.body.appendChild(a); a.click();
     setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500);
   }
-  function sheetAOA(s) {
-    const aoa = [];
-    (s.blocks || []).forEach((b, i) => {
-      if (i) aoa.push([]);
-      aoa.push([b.title]);
-      aoa.push(STANDARD_COLS.slice());
-      (b.rows || []).forEach(r => {
+
+  // Tạo mảng 2 chiều dạng BẢNG NGANG cho 1 block hoặc 1 sheet
+  function blockHorizontalAOA(b) {
+    const rows = b.rows || [];
+    const aoa = [[b.title]];
+    for (let k = 0; k < STANDARD_COLS.length; k++) {
+      const line = [STANDARD_COLS[k]];
+      rows.forEach((r, idx) => {
         const curSrc = normalizeSource(r.src || (r.v && r.v[0]));
         const vals = (r.v || []).slice(0, 7);
         while (vals.length < 7) vals.push('');
         vals[0] = curSrc;
-        aoa.push(vals);
+        if (k === 1 && !vals[1]) vals[1] = String(idx + 1);
+        line.push(vals[k]);
       });
+      aoa.push(line);
+    }
+    return aoa;
+  }
+
+  function sheetAOA(s) {
+    const aoa = [];
+    (s.blocks || []).forEach((b, i) => {
+      if (i) aoa.push([]);
+      const hRows = blockHorizontalAOA(b);
+      hRows.forEach(r => aoa.push(r));
     });
     return aoa;
   }
+
   const toCSV = aoa => '\ufeffsep=,\r\n' + aoa.map(r => r.map(c => {
     c = String(c == null ? '' : c);
     return /[",\r\n]/.test(c) ? '"' + c.replace(/"/g, '""') + '"' : c;
   }).join(',')).join('\r\n');
+
+  function cleanSheetName(raw, used) {
+    let nm = String(raw || 'Sheet').replace(/[\\\/?*\[\]:]/g, ' ').trim().slice(0, 31) || 'Sheet';
+    const base = nm;
+    let i = 2;
+    while (used.has(nm.toLowerCase())) {
+      nm = base.slice(0, 28) + ' ' + i++;
+    }
+    used.add(nm.toLowerCase());
+    return nm;
+  }
 
   function doAction(act) {
     const cur = V.route.page === 'sheet' ? sheetById(V.route.id) : null;
@@ -1240,14 +1101,22 @@
       if (!list) { toast('Hãy mở một thư mục trước.'); return; }
       if (!window.XLSX) { toast('Chưa tải được thư viện Excel.', 5000); return; }
       const wb = XLSX.utils.book_new(), used = new Set();
+
       list.forEach(s => {
-        const ws = XLSX.utils.aoa_to_sheet(sheetAOA(s));
-        let nm = s.name.replace(/[\\\/?*\[\]:]/g, ' ').trim().slice(0, 31) || 'Sheet', i = 2;
-        const base = nm;
-        while (used.has(nm.toLowerCase())) nm = base.slice(0, 28) + ' ' + i++;
-        used.add(nm.toLowerCase());
-        XLSX.utils.book_append_sheet(wb, ws, nm);
+        const blocks = s.blocks || [];
+        // Nếu mục có nhiều block (ví dụ mục XTC10, MTC 9, OTC 9 tách thành các block/mục riêng) hoặc xuất từng mục thành sheet riêng
+        if (CFG.exportEachItemAsSheet && blocks.length > 1) {
+          blocks.forEach(b => {
+            const ws = XLSX.utils.aoa_to_sheet(blockHorizontalAOA(b));
+            const title = (CFG.sheetLabels && CFG.sheetLabels[fold(b.title)]) || b.title || labelOf(s);
+            XLSX.utils.book_append_sheet(wb, ws, cleanSheetName(title, used));
+          });
+        } else {
+          const ws = XLSX.utils.aoa_to_sheet(sheetAOA(s));
+          XLSX.utils.book_append_sheet(wb, ws, cleanSheetName(labelOf(s) || s.name, used));
+        }
       });
+
       XLSX.writeFile(wb, `Tai-san-Vat-tu-LAB_${ymd()}.xlsx`);
     } else if (act === 'csv-cur') {
       if (!cur) { toast('Hãy mở một thư mục trước.'); return; }
@@ -1273,7 +1142,7 @@
       try {
         const j = JSON.parse(rd.result);
         if (!j || !Array.isArray(j.sheets)) throw new Error('sai định dạng');
-        ST = { sheets: distributeSheetsByConfig(j.sheets), dirty: true };
+        ST = { sheets: normalizeSheetsData(j.sheets), dirty: true };
         ensureIds(ST.sheets);
         persist();
         render();
@@ -1336,7 +1205,7 @@
     get DATA() { return DATA; },
     fold, tokensOf, toast, download, toCSV, ymd, uid,
     sheetById, labelOf, persist, render, keepScroll, isStock, stockRows,
-    normalizeSource, normalizeRow, normalizeSheetsData, distributeSheetsByConfig, SOURCE_OPTIONS: SRC_LIST, STANDARD_COLS,
+    normalizeSource, normalizeRow, normalizeSheetsData, SOURCE_OPTIONS: SRC_LIST, STANDARD_COLS,
     get ST() { return ST; }, get V() { return V; }, touch: r => hayCache.delete(r)
   };
 
