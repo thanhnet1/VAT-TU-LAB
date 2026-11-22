@@ -6,8 +6,40 @@
   'use strict';
 
   var prev = window.APP_CONFIG && typeof window.APP_CONFIG === 'object' ? window.APP_CONFIG : {};
-  var prevSync = prev.sync && typeof prev.sync === 'object' ? prev.sync : {};
-  var prevFb = prevSync.firebase && typeof prevSync.firebase === 'object' ? prevSync.firebase : {};
+  var extSync = window.LAB_SYNC_CONFIG && typeof window.LAB_SYNC_CONFIG === 'object' ? window.LAB_SYNC_CONFIG : {};
+  var prevSync = Object.assign(
+    {},
+    extSync,
+    prev.sync && typeof prev.sync === 'object' ? prev.sync : {}
+  );
+  var prevFb = Object.assign(
+    {},
+    extSync.firebase && typeof extSync.firebase === 'object' ? extSync.firebase : {},
+    prevSync.firebase && typeof prevSync.firebase === 'object' ? prevSync.firebase : {}
+  );
+
+  if (!prevFb.databaseURL && prevFb.projectId) {
+    prevFb.databaseURL = 'https://' + String(prevFb.projectId).trim() + '-default-rtdb.firebaseio.com';
+  }
+
+  var normalizedSync = Object.assign({
+    provider: 'firebase',
+    mode: 'two-way',
+    workspace: 'lab-xvt',
+    channel: 'vat-tu-tai-san',
+    sdkBase: 'https://www.gstatic.com/firebasejs/10.12.2/',
+    autoSync: true,
+    realtime: true,
+    pullOnFocus: true,
+    pullOnVisible: true,
+    debounceMs: 250,
+    pollIntervalMs: 15000,
+    syncFolders: true,
+    syncSlips: true,
+    conflictStrategy: 'last-write-wins'
+  }, prevSync, {
+    firebase: prevFb
+  });
 
   window.APP_CONFIG = Object.assign({}, prev, {
     title: prev.title || 'Tài sản – Vật tư Truyền dẫn LAB',
@@ -231,18 +263,6 @@
       khach: { email: 'khach@lab-xvt.local', role: 'guest' }
     }, prev.authUsers || {}),
 
-    sync: {
-    provider: 'firebase',
-    workspace: 'lab-xvt',
-    firebase: {
-      apiKey: "AIzaSyAzE8Eb7Jd2j2FTt6nVw3gJ57ENBV-soeA",
-      authDomain: "minigame-8a94c.firebaseapp.com",
-      databaseURL: "https://minigame-8a94c-default-rtdb.asia-southeast1.firebasedatabase.app",
-      projectId: "minigame-8a94c",
-      storageBucket: "minigame-8a94c.firebasestorage.app",
-      messagingSenderId: "604735984087",
-      appId: "1:604735984087:web:83b5926e168efb02c6bb92",
-      measurementId: "G-4FXBFBE74T"
-    })
+    sync: normalizedSync
   });
 })();
