@@ -1,12 +1,12 @@
 /* =====================================================================
    assets/slips.js – MODULE TIỆN ÍCH VẬT TƯ / TÀI SẢN LAB
-   Phiên bản: 2026.11.21-5
+   Phiên bản: 2026.11.22-3
    ===================================================================== */
 (function () {
   'use strict';
 
   var A = null;
-  var BUILD = '2026.11.21-5';
+  var BUILD = '2026.11.22-3';
 
   var SOURCE_OPTIONS = ['Vật tư', 'Tài sản', 'Đo kiểm', 'Sửa chữa', 'Không rõ nguồn'];
   var DEFAULT_SOURCE = 'Không rõ nguồn';
@@ -32,6 +32,21 @@
       return window.APP_CONFIG.sourceOptions;
     }
     return SOURCE_OPTIONS;
+  }
+
+  function getSyncSessionStatus() {
+    var role = localStorage.getItem('lab_user_role') || '';
+    var username = localStorage.getItem('lab_username') || '';
+    var syncBtn = $('#btnSync');
+    var connected = !!(syncBtn && !syncBtn.classList.contains('sync-off'));
+    var accountLabel = username
+      ? (username + (role ? ' (' + role + ')' : ''))
+      : (role === 'guest' ? 'khach (guest)' : 'admin/khach');
+    return {
+      account: accountLabel,
+      role: role || '',
+      connected: connected
+    };
   }
 
   function normalizeSource(val, fallback) {
@@ -102,6 +117,78 @@
       r.r = idx + 1;
       if (Array.isArray(r.v)) r.v[1] = String(idx + 1);
     });
+  }
+
+  function searchRows(query, sheetId) {
+    if (!A || !A.ST || !Array.isArray(A.ST.sheets)) return [];
+    var tokens = (A.tokensOf ? A.tokensOf(query) : fold(query).trim().split(/\s+/).filter(Boolean));
+    var out = [];
+    A.ST.sheets.forEach(function (s) {
+      if (sheetId && s.id !== sheetId) return;
+      (s.blocks || []).forEach(function (b, bIdx) {
+        (b.rows || []).forEach(function (r, rIdx) {
+          ensureStandardRow(r, rIdx, DEFAULT_SOURCE);
+          if (!tokens.length) {
+            out.push({ sheetId: s.id, sheetName: s.name, blockIdx: bIdx, rowIdx: rIdx, row: r });
+            return;
+          }
+          var hay = fold((r.v || []).join(' ') + ' ' + (s.name || ''));
+          if (tokens.every(function (t) { return hay.indexOf(t) >= 0; })) {
+            out.push({ sheetId: s.id, sheetName: s.name, blockIdx: bIdx, rowIdx: rIdx, row: r });
+          }
+        });
+      });
+    });
+    return out;
+  }
+
+  function addItemToSheet(targetSheetId, itemPayload) {
+    if (!A || !A.ST || !A.sheetById) return null;
+    var sheet = A.sheetById(targetSheetId) || A.ST.sheets[0];
+    if (!sheet) return null;
+
+    if (!Array.isArray(sheet.blocks) || !sheet.blocks.length) {
+      sheet.blocks = [{
+        title: A.labelOf ? A.labelOf(sheet) : sheet.name,
+        hr: 1,
+        cols: STANDARD_COLS.slice(),
+        rows: []
+      }];
+    }
+    var block = sheet.blocks[0];
+    if (!Array.isArray(block.rows)) block.rows = [];
+
+    var p = itemPayload || {};
+    var src = normalizeSource(p.src || (p.v && p.v[0]), DEFAULT_SOURCE);
+    var row = Array.isArray(p.v)
+      ? ensureStandardRow({
+          i: (A.uid ? ('u' + A.uid()) : ('u' + Date.now())),
+          ct: Date.now(),
+          src: src,
+          v: p.v.slice()
+        }, block.rows.length, src)
+      : ensureStandardRow({
+          i: (A.uid ? ('u' + A.uid()) : ('u' + Date.now())),
+          ct: Date.now(),
+          src: src,
+          v: [
+            src,
+            String(block.rows.length + 1),
+            String(p.tenVT || ''),
+            String(p.serial || ''),
+            String(p.maVT || ''),
+            String(p.partNo || ''),
+            String(p.ghiChu || '')
+          ]
+        }, block.rows.length, src);
+
+    block.rows.push(row);
+    reindexRows(block);
+    if (A.touch) A.touch(row);
+    if (A.persist) A.persist();
+    if (A.refresh) A.refresh();
+    else if (A.render) A.render();
+    return row;
   }
 
   function moveRowToSheet(sourceSheetId, blockIdx, rowIdx, targetSheetId) {
@@ -236,9 +323,12 @@
 
   window.Slips = {
     ver: BUILD,
-    disabled: true,
+    disabled: false,
     sources: getSources,
     columns: STANDARD_COLS.slice(),
+    getSyncSessionStatus: getSyncSessionStatus,
+    searchRows: searchRows,
+    addItemToSheet: addItemToSheet,
     normalizeSource: normalizeSource,
     ensureStandardRow: ensureStandardRow,
     normalizeAllState: normalizeAllState,
