@@ -1,14 +1,15 @@
 /* =====================================================================
    assets/app.js – VẬT TƯ – TÀI SẢN
-   - Tổng quan thống kê + màu phân biệt trạng thái
-   - Cây thư mục sổ/thu gọn + nút tạo thêm thư mục
-   - Nút chuyển vật tư sang thư mục khác
-   - Bảng cân đối trên cả điện thoại và máy tính
+   - Tải dữ liệu từ window.LAB_DATA / LAB_DATA_ENC / localStorage
+   - Phân loại chuẩn theo từng sheet, block và nội dung dòng trong data.js
+   - Rút gọn cây thư mục + hiển thị thư mục ngang (VD: XTC10 - MTC9 - OTC9)
+   - Bảng chuẩn: Nguồn | STT | Tên Vật Tư | Serial | Mã VT | Part number | Ghi chú | Thao tác
+   - Xuất Excel tách từng mục thành các sheet riêng biệt
    ===================================================================== */
 (function () {
   'use strict';
 
-  const BUILD = '2026.11.21-4';
+  const BUILD = '2026.11.21-1';
   const SOURCE_OPTIONS = ['Vật tư', 'Tài sản', 'Đo kiểm', 'Sửa chữa', 'Không rõ nguồn'];
   const DEFAULT_SOURCE = 'Không rõ nguồn';
   const STANDARD_COLS = ['Nguồn', 'STT', 'Tên Vật Tư', 'Serial', 'Mã VT', 'Part number', 'Ghi chú'];
@@ -34,26 +35,6 @@
     ? CFG.sourceOptions
     : SOURCE_OPTIONS;
 
-  const COLOR_NAMES = {
-    FFFF00: 'Vàng',
-    FF0000: 'Đỏ',
-    '92D050': 'Xanh lá nhạt',
-    '00B050': 'Xanh lá',
-    '00B0F0': 'Xanh dương',
-    FFC000: 'Cam',
-    F79646: 'Cam nhạt',
-    FFF2CC: 'Vàng kem',
-    '0F243E': 'Xanh đen'
-  };
-
-  const SOURCE_BADGE_STYLE = {
-    'Vật tư': 'background:#e0f2fe;color:#075985;border-color:#7dd3fc;',
-    'Tài sản': 'background:#dcfce7;color:#166534;border-color:#86efac;',
-    'Đo kiểm': 'background:#fef9c3;color:#854d0e;border-color:#fde047;',
-    'Sửa chữa': 'background:#fee2e2;color:#991b1b;border-color:#fca5a5;',
-    'Không rõ nguồn': 'background:#f1f5f9;color:#334155;border-color:#cbd5e1;'
-  };
-
   const $ = (s, el = document) => el.querySelector(s);
   const $$ = (s, el = document) => Array.from(el.querySelectorAll(s));
   const LS = k => `${CFG.storageKey}:${k}`;
@@ -73,18 +54,6 @@
     .toLowerCase();
 
   const tokensOf = q => fold(q).trim().split(/\s+/).filter(Boolean);
-
-  const bgOf = hex => {
-    const clean = String(hex || '').replace(/^#/, '');
-    const n = parseInt(clean, 16);
-    if (isNaN(n)) return 'transparent';
-    return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},.28)`;
-  };
-
-  const colorLabel = hex => {
-    const clean = String(hex || '').replace(/^#/, '').toUpperCase();
-    return CFG.colorMeaning[clean] || COLOR_NAMES[clean] || ('#' + clean);
-  };
 
   function toast(msg, ms = 2600) {
     const el = $('#toast');
@@ -190,16 +159,6 @@
     });
   }
 
-  function cloneTreeWithCustomFolders(nodes = [], customMap = {}) {
-    return nodes.map(node => {
-      const children = Array.isArray(node.children) ? cloneTreeWithCustomFolders(node.children, customMap) : [];
-      const extra = Array.isArray(customMap[node.id]) ? customMap[node.id] : [];
-      return Object.assign({}, node, {
-        children: [...children, ...extra]
-      });
-    });
-  }
-
   function flattenTree(nodes = [], parentId = null, ancestors = []) {
     const out = [];
     for (const node of nodes) {
@@ -222,18 +181,8 @@
     return leaves;
   }
 
-  let customFoldersByParent = {};
-  let activeTree = [];
-  let flatNodes = [];
-  let nodeById = new Map();
-
-  function rebuildTreeIndex() {
-    activeTree = cloneTreeWithCustomFolders(CFG.treeMenu || [], customFoldersByParent);
-    flatNodes = flattenTree(activeTree);
-    nodeById = new Map(flatNodes.map(item => [item.node.id, item]));
-  }
-
-  rebuildTreeIndex();
+  const flatNodes = flattenTree(CFG.treeMenu || []);
+  const nodeById = new Map(flatNodes.map(item => [item.node.id, item]));
 
   function resolveTargetNodeId(textOrId) {
     if (!textOrId) return null;
@@ -395,7 +344,6 @@
   }
 
   function syncStoreFromST() {
-    rebuildTreeIndex();
     storeData = buildStoreFromSheets(ST.sheets || []);
   }
 
@@ -417,8 +365,6 @@
       if (saved && Array.isArray(saved.sheets)) {
         const metaVer = (DATA && DATA.meta && DATA.meta.version) || '';
         if (!metaVer || saved.ver === metaVer) {
-          customFoldersByParent = saved.customFolders && typeof saved.customFolders === 'object' ? saved.customFolders : {};
-          rebuildTreeIndex();
           ensureIds(saved.sheets);
           storeData = buildStoreFromSheets(saved.sheets);
           syncSTFromStore();
@@ -431,8 +377,6 @@
       }
     } catch (_) {}
 
-    customFoldersByParent = {};
-    rebuildTreeIndex();
     const rawSheets = (DATA && Array.isArray(DATA.sheets)) ? clone(DATA.sheets) : [];
     ensureIds(rawSheets);
     storeData = buildStoreFromSheets(rawSheets);
@@ -446,7 +390,6 @@
     try {
       localStorage.setItem(LS('state'), JSON.stringify({
         ver: (DATA && DATA.meta && DATA.meta.version) || '',
-        customFolders: customFoldersByParent,
         sheets: ST.sheets,
         slips: ST.slips,
         dirty: ST.dirty
@@ -468,8 +411,6 @@
 
   function resetToBaseline() {
     localStorage.removeItem(LS('state'));
-    customFoldersByParent = {};
-    rebuildTreeIndex();
     const rawSheets = (DATA && Array.isArray(DATA.sheets)) ? clone(DATA.sheets) : [];
     ensureIds(rawSheets);
     storeData = buildStoreFromSheets(rawSheets);
@@ -491,15 +432,6 @@
     return storeData[nodeId];
   }
 
-  function countNodeRowsDeep(node) {
-    if (!node) return 0;
-    let total = getRowsForNode(node.id).length;
-    if (Array.isArray(node.children)) {
-      for (const ch of node.children) total += countNodeRowsDeep(ch);
-    }
-    return total;
-  }
-
   function matchesRow(row, qTokens, srcFilter) {
     const normSrc = normalizeSource(row.src || (row.v && row.v[0]), CFG.defaultSource);
     if (srcFilter && srcFilter !== 'ALL' && normSrc !== srcFilter) return false;
@@ -514,58 +446,6 @@
     return rows
       .map((row, idx) => ({ row: normalizeRow(row, idx, CFG.defaultSource, STANDARD_COLS, nodeId), idx }))
       .filter(item => matchesRow(item.row, qTokens, V.sourceFilter));
-  }
-
-  function moveRowToNode(fromNodeId, rowIdx, toNodeId) {
-    if (!toNodeId || fromNodeId === toNodeId) return;
-    const srcRows = getRowsForNode(fromNodeId);
-    const targetEntry = nodeById.get(toNodeId);
-    if (!srcRows[rowIdx] || !targetEntry) return;
-
-    const [moved] = srcRows.splice(rowIdx, 1);
-    const dstRows = getRowsForNode(toNodeId);
-    const normMoved = normalizeRow(moved, dstRows.length, CFG.defaultSource, STANDARD_COLS, toNodeId);
-    normMoved.v[1] = String(dstRows.length + 1);
-    dstRows.push(normMoved);
-
-    srcRows.forEach((r, i) => {
-      if (Array.isArray(r.v)) r.v[1] = String(i + 1);
-      r.r = i + 1;
-    });
-
-    persist();
-    render();
-    toast(`Đã chuyển sang "${targetEntry.node.label}"`);
-  }
-
-  function createFolderUnder(parentId) {
-    const parentEntry = nodeById.get(parentId);
-    const parentLabel = parentEntry ? parentEntry.node.label : 'Thư mục';
-    const rawName = prompt(`Nhập tên thư mục mới trong "${parentLabel}":`);
-    if (!rawName || !rawName.trim()) return;
-    const cleanName = rawName.trim();
-    const newId = 'folder-' + uid();
-
-    if (!Array.isArray(customFoldersByParent[parentId])) {
-      customFoldersByParent[parentId] = [];
-    }
-    customFoldersByParent[parentId].push({
-      id: newId,
-      label: cleanName,
-      icon: '📄',
-      isDynamicGroup: true,
-      allowCreate: true,
-      matchKeywords: [fold(cleanName)]
-    });
-
-    delete V.treeCollapsed[parentId];
-    rebuildTreeIndex();
-    if (!Array.isArray(storeData[newId])) storeData[newId] = [];
-    V.activeId = newId;
-    V.route = { page: 'sheet', id: newId };
-    persist();
-    render();
-    toast(`Đã tạo thư mục "${cleanName}"`);
   }
 
   function parseHash() {
@@ -584,49 +464,37 @@
 
     const renderNodes = (nodes, depth = 0) => {
       if (!Array.isArray(nodes) || !nodes.length) return '';
-      return `<div class="tree-children" style="padding-left:${depth ? 12 : 0}px;">` +
+      return `<ul class="tree-list depth-${depth}" style="list-style:none;margin:0;padding-left:${depth ? 12 : 0}px;">` +
         nodes.map(node => {
-          const isCollapsed = !!V.treeCollapsed[node.id];
-          const isActive = V.route.page === 'sheet' && V.activeId === node.id;
-          const totalCount = countNodeRowsDeep(node);
+          const isActive = V.activeId === node.id;
+          const count = getRowsForNode(node.id).length;
           const hasChildren = Array.isArray(node.children) && node.children.length > 0;
-          const canAddChild = !!node.allowCreate;
-
           return `
-            <div class="tree-node ${isCollapsed ? 'collapsed' : ''}" data-node="${esc(node.id)}" style="margin:2px 0;">
-              <div class="tree-row ${isActive ? 'active' : ''}" style="display:flex;align-items:center;justify-content:space-between;gap:4px;padding:5px 7px;border-radius:6px;cursor:pointer;background:${isActive ? 'rgba(11,58,91,.14)' : 'transparent'};">
-                <button type="button" class="tree-toggle-btn" data-toggle-node="${esc(node.id)}" aria-label="Thu gọn hoặc mở rộng" style="border:0;background:transparent;cursor:pointer;padding:0 3px;font-size:12px;line-height:1;">
-                  ${hasChildren ? (isCollapsed ? '▸' : '▾') : '•'}
-                </button>
-                <button type="button" class="tree-select-btn" data-node-id="${esc(node.id)}" style="flex:1;min-width:0;border:0;background:transparent;color:inherit;cursor:pointer;display:flex;align-items:center;gap:6px;text-align:left;padding:0;font-weight:${isActive ? '600' : '400'};">
+            <li class="tree-item ${isActive ? 'is-active' : ''}" style="margin:2px 0;">
+              <button type="button"
+                class="tree-link ${isActive ? 'active' : ''}"
+                data-node-id="${esc(node.id)}"
+                style="width:100%;display:flex;align-items:center;justify-content:space-between;gap:6px;padding:6px 8px;border:0;border-radius:6px;background:${isActive ? 'rgba(11,58,91,.14)' : 'transparent'};color:inherit;text-align:left;cursor:pointer;font-weight:${isActive ? '600' : '400'};">
+                <span style="display:inline-flex;align-items:center;gap:6px;min-width:0;">
                   <span>${esc(node.icon || (hasChildren ? '📁' : '📄'))}</span>
-                  <span class="nm" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(node.label)}</span>
-                </button>
-                <span class="ct" style="font-size:12px;opacity:.75;">${totalCount}</span>
-              </div>
-              ${!isCollapsed ? `
-                ${hasChildren ? renderNodes(node.children, depth + 1) : ''}
-                ${canAddChild ? `
-                  <div style="padding-left:${(depth + 1) * 10}px;margin:2px 0 4px;">
-                    <button type="button" class="tree-add-btn" data-create-folder="${esc(node.id)}" style="width:100%;text-align:left;padding:4px 8px;border:1px dashed rgba(11,58,91,.28);border-radius:6px;background:transparent;color:inherit;font-size:12px;opacity:.85;cursor:pointer;">
-                      ＋ Tạo thư mục mới
-                    </button>
-                  </div>
-                ` : ''}
-              ` : ''}
-            </div>
+                  <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(node.label)}</span>
+                </span>
+                <span class="tree-count" style="font-size:12px;opacity:.75;">${count}</span>
+              </button>
+              ${hasChildren ? renderNodes(node.children, depth + 1) : ''}
+            </li>
           `;
         }).join('') +
-      `</div>`;
+      `</ul>`;
     };
 
     const ovActive = V.route.page === 'overview' && !V.query ? 'active' : '';
     sb.innerHTML = `
       <div class="tree-root">
-        <button type="button" class="tree-row ${ovActive}" data-go-overview="1" style="width:100%;margin-bottom:8px;border:0;background:${ovActive ? 'rgba(11,58,91,.14)' : 'transparent'};cursor:pointer;text-align:left;padding:7px 8px;border-radius:6px;display:flex;align-items:center;gap:6px;">
+        <button type="button" class="tree-row ${ovActive}" data-go-overview="1" style="width:100%;margin-bottom:6px;border:0;background:${ovActive ? 'rgba(11,58,91,.14)' : 'transparent'};cursor:pointer;text-align:left;">
           <span>🏠</span><span class="nm"><b>Tổng quan (Vật tư - Tài sản)</b></span>
         </button>
-        ${renderNodes(activeTree, 0)}
+        ${renderNodes(CFG.treeMenu || [], 0)}
       </div>
     `;
   }
@@ -662,7 +530,7 @@
           class="h-folder-btn ${selected ? 'active' : ''}"
           data-h-node="${esc(item.id)}"
           style="padding:5px 10px;border-radius:6px;border:1px solid ${selected ? '#0b3a5b' : 'rgba(0,0,0,.15)'};background:${selected ? '#0b3a5b' : '#fff'};color:${selected ? '#fff' : 'inherit'};cursor:pointer;font-size:13px;font-weight:${selected ? '600' : '500'};white-space:nowrap;">
-          ${esc(item.label)} (${countNodeRowsDeep(item)})
+          ${esc(item.label)} (${getRowsForNode(item.id).length})
         </button>
         ${sep}
       `;
@@ -678,188 +546,7 @@
     `;
   }
 
-  function computeStats() {
-    const counts = {};
-    SRC_LIST.forEach(s => { counts[s] = 0; });
-    const colorMap = {};
-    let total = 0;
-    let folderCount = 0;
-
-    for (const entry of flatNodes) {
-      const n = entry.node;
-      if (!Array.isArray(n.children) || n.children.length === 0) folderCount++;
-      const rows = getRowsForNode(n.id);
-      for (const r of rows) {
-        total++;
-        const src = normalizeSource(r.src || (r.v && r.v[0]), CFG.defaultSource);
-        counts[src] = (counts[src] || 0) + 1;
-        if (r.f && typeof r.f === 'object') {
-          new Set(Object.values(r.f).map(c => String(c || '').replace(/^#/, '').toUpperCase()).filter(Boolean)).forEach(hex => {
-            colorMap[hex] = (colorMap[hex] || 0) + 1;
-          });
-        }
-      }
-    }
-
-    const colorEntries = Object.entries(colorMap).sort((a, b) => b[1] - a[1]);
-    return { counts, total, folderCount, colorEntries };
-  }
-
-  function renderOverview(mainEl) {
-    const { counts, total, folderCount, colorEntries } = computeStats();
-    const meta = (DATA && DATA.meta) || {};
-    const meaningEntries = Object.entries(CFG.colorMeaning || {});
-
-    const sourceCards = SRC_LIST.map(src => {
-      const style = SOURCE_BADGE_STYLE[src] || SOURCE_BADGE_STYLE['Không rõ nguồn'];
-      return `
-        <div class="kpi" style="padding:12px 14px;border-radius:10px;border:1px solid rgba(0,0,0,.1);background:#fff;">
-          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
-            <span class="src-badge" style="display:inline-block;padding:2px 8px;border-radius:999px;font-size:12px;font-weight:600;border:1px solid;${style}">${esc(src)}</span>
-            <strong style="font-size:20px;">${(counts[src] || 0).toLocaleString('vi-VN')}</strong>
-          </div>
-          <div style="font-size:12px;opacity:.7;margin-top:6px;">Số dòng thuộc nguồn ${esc(src)}</div>
-        </div>
-      `;
-    }).join('');
-
-    const legendItems = (colorEntries.length ? colorEntries.map(([hex, cnt]) => ({ hex, cnt })) : meaningEntries.map(([hex, label]) => ({ hex, cnt: 0, label }))).map(item => {
-      const bg = bgOf(item.hex);
-      const lbl = item.label || colorLabel(item.hex);
-      return `
-        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 10px;border-radius:8px;background:${bg};border:1px solid rgba(0,0,0,.12);">
-          <span style="display:inline-flex;align-items:center;gap:8px;font-size:13px;font-weight:600;">
-            <span style="width:12px;height:12px;border-radius:3px;background:#${esc(item.hex)};display:inline-block;border:1px solid rgba(0,0,0,.25);"></span>
-            <span>${esc(lbl)}</span>
-          </span>
-          ${item.cnt > 0 ? `<strong style="font-size:13px;">${item.cnt}</strong>` : ''}
-        </div>
-      `;
-    }).join('');
-
-    const folderSummaryRows = flatNodes
-      .filter(e => !Array.isArray(e.node.children) || e.node.children.length === 0)
-      .map((e, idx) => {
-        const n = e.node;
-        const rows = getRowsForNode(n.id);
-        const bySrc = {};
-        SRC_LIST.forEach(s => { bySrc[s] = 0; });
-        rows.forEach(r => {
-          const s = normalizeSource(r.src || (r.v && r.v[0]), CFG.defaultSource);
-          bySrc[s] = (bySrc[s] || 0) + 1;
-        });
-        const pathTxt = e.pathNodes.map(x => x.label).join(' / ');
-        return `
-          <tr>
-            <td style="text-align:center;">${idx + 1}</td>
-            <td>
-              <button type="button" class="link-btn" data-open-node="${esc(n.id)}" style="border:0;background:transparent;color:#0b3a5b;font-weight:600;cursor:pointer;text-align:left;padding:0;">
-                ${esc(n.label)}
-              </button>
-              <div style="font-size:11px;opacity:.65;">${esc(pathTxt)}</div>
-            </td>
-            <td style="text-align:right;font-weight:700;">${rows.length}</td>
-            <td style="text-align:right;">${bySrc['Vật tư'] || 0}</td>
-            <td style="text-align:right;">${bySrc['Tài sản'] || 0}</td>
-            <td style="text-align:right;">${bySrc['Đo kiểm'] || 0}</td>
-            <td style="text-align:right;">${bySrc['Sửa chữa'] || 0}</td>
-            <td style="text-align:right;">${bySrc['Không rõ nguồn'] || 0}</td>
-          </tr>
-        `;
-      }).join('');
-
-    mainEl.innerHTML = `
-      <div class="view-header" style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;margin-bottom:14px;">
-        <div>
-          <h2 style="margin:0;font-size:20px;">📊 Tổng quan Vật tư – Tài sản</h2>
-          <div style="font-size:12px;opacity:.7;">Nguồn dữ liệu: ${esc(meta.source || 'LAB')} · Cập nhật: ${esc(meta.generated || '')}</div>
-        </div>
-        <div style="display:flex;flex-wrap:wrap;gap:8px;">
-          <button type="button" id="btnOverviewAddFolder" class="btn">＋ Tạo thư mục mới</button>
-          <button type="button" id="btnOverviewExportAll" class="btn accent">📗 Xuất Excel toàn bộ</button>
-        </div>
-      </div>
-
-      <div class="kpis" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(175px,1fr));gap:10px;margin-bottom:14px;">
-        <div class="kpi" style="padding:12px 14px;border-radius:10px;border:1px solid rgba(0,0,0,.1);background:#fff;">
-          <div style="font-size:12px;opacity:.7;">Tổng thư mục / danh mục</div>
-          <strong style="font-size:22px;">${folderCount}</strong>
-        </div>
-        <div class="kpi" style="padding:12px 14px;border-radius:10px;border:1px solid rgba(0,0,0,.1);background:#fff;">
-          <div style="font-size:12px;opacity:.7;">Tổng dòng thống kê</div>
-          <strong style="font-size:22px;">${total.toLocaleString('vi-VN')}</strong>
-        </div>
-        ${sourceCards}
-      </div>
-
-      <div style="margin-bottom:16px;padding:12px;border-radius:10px;border:1px solid rgba(0,0,0,.1);background:#fff;">
-        <div style="font-size:13px;font-weight:700;margin-bottom:8px;">🎨 Màu phân biệt trạng thái & nguồn</div>
-        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:8px;">
-          ${legendItems}
-        </div>
-      </div>
-
-      <div class="table-wrap" style="overflow-x:auto;border:1px solid rgba(0,0,0,.12);border-radius:8px;background:#fff;">
-        <table class="data-table stats-overview-table" style="width:100%;border-collapse:collapse;">
-          <thead>
-            <tr>
-              <th style="white-space:nowrap;">STT</th>
-              <th style="white-space:nowrap;">Thư mục / Danh mục</th>
-              <th style="white-space:nowrap;">Tổng</th>
-              <th style="white-space:nowrap;">Vật tư</th>
-              <th style="white-space:nowrap;">Tài sản</th>
-              <th style="white-space:nowrap;">Đo kiểm</th>
-              <th style="white-space:nowrap;">Sửa chữa</th>
-              <th style="white-space:nowrap;">Không rõ</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${folderSummaryRows}
-          </tbody>
-        </table>
-      </div>
-    `;
-
-    $$('[data-open-node]', mainEl).forEach(btn => {
-      btn.addEventListener('click', () => {
-        V.activeId = btn.getAttribute('data-open-node');
-        V.route = { page: 'sheet', id: V.activeId };
-        render();
-      });
-    });
-
-    const addFolderBtn = $('#btnOverviewAddFolder', mainEl);
-    if (addFolderBtn) {
-      addFolderBtn.addEventListener('click', () => createFolderUnder(V.activeId || 'truyen-dan-thiet-bi'));
-    }
-
-    const exportAllBtn = $('#btnOverviewExportAll', mainEl);
-    if (exportAllBtn) {
-      exportAllBtn.addEventListener('click', () => {
-        if (typeof XLSX === 'undefined') return;
-        const wb = XLSX.utils.book_new();
-        const used = new Set();
-        for (const entry of flatNodes) {
-          const n = entry.node;
-          if (Array.isArray(n.children) && n.children.length > 0) continue;
-          const sName = sanitizeSheetName(CFG.sheetLabels[n.id] || n.label, used);
-          const rows = getRowsForNode(n.id).map((r, i) => normalizeRow(r, i, CFG.defaultSource, STANDARD_COLS, n.id).v);
-          XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([STANDARD_COLS.slice(), ...rows]), sName);
-        }
-        XLSX.writeFile(wb, 'vat-tu-tai-san-all-sheets.xlsx');
-      });
-    }
-  }
-
-  function renderMoveOptions(currentNodeId) {
-    return flatNodes
-      .filter(e => !Array.isArray(e.node.children) || e.node.children.length === 0)
-      .filter(e => e.node.id !== currentNodeId)
-      .map(e => `<option value="${esc(e.node.id)}">${esc(e.pathNodes.map(x => x.label).join(' / '))}</option>`)
-      .join('');
-  }
-
-  function renderTableRows(currentNodeId, entries) {
+  function renderTableRows(entries) {
     if (!entries.length) {
       return `
         <tr>
@@ -870,23 +557,13 @@
       `;
     }
 
-    const moveOpts = renderMoveOptions(currentNodeId);
-
     return entries.map(({ row, idx }) => {
       const v = row.v;
-      const badgeStyle = SOURCE_BADGE_STYLE[v[0]] || SOURCE_BADGE_STYLE['Không rõ nguồn'];
-      const rowBg = row.f && typeof row.f === 'object'
-        ? (() => {
-            const firstHex = Object.values(row.f).map(c => String(c || '').replace(/^#/, '')).find(Boolean);
-            return firstHex ? bgOf(firstHex) : '';
-          })()
-        : '';
-
       if (!V.edit) {
         return `
-          <tr data-row-idx="${idx}" style="${rowBg ? `background:${rowBg};` : ''}">
-            <td style="white-space:nowrap;"><span style="display:inline-block;padding:2px 7px;border-radius:999px;font-size:12px;font-weight:600;border:1px solid;${badgeStyle}">${esc(v[0])}</span></td>
-            <td style="text-align:center;white-space:nowrap;">${esc(v[1])}</td>
+          <tr data-row-idx="${idx}">
+            <td>${esc(v[0])}</td>
+            <td style="text-align:center;">${esc(v[1])}</td>
             <td>${esc(v[2])}</td>
             <td>${esc(v[3])}</td>
             <td>${esc(v[4])}</td>
@@ -894,10 +571,6 @@
             <td>${esc(v[6])}</td>
             <td style="white-space:nowrap;">
               <button type="button" class="btn-row-edit" data-idx="${idx}" title="Sửa dòng">✏️</button>
-              <select class="row-move-select" data-idx="${idx}" title="Chuyển sang thư mục khác" style="max-width:118px;padding:3px 4px;border-radius:5px;border:1px solid rgba(0,0,0,.2);font-size:12px;">
-                <option value="">↗ Chuyển...</option>
-                ${moveOpts}
-              </select>
               <button type="button" class="btn-row-del" data-idx="${idx}" title="Xoá dòng">🗑</button>
             </td>
           </tr>
@@ -909,19 +582,15 @@
       ).join('');
 
       return `
-        <tr data-row-idx="${idx}" style="${rowBg ? `background:${rowBg};` : ''}">
+        <tr data-row-idx="${idx}">
           <td><select class="cell-edit" data-col="0">${srcOpts}</select></td>
-          <td style="text-align:center;white-space:nowrap;">${esc(v[1])}</td>
+          <td style="text-align:center;">${esc(v[1])}</td>
           <td><input type="text" class="cell-edit" data-col="2" value="${esc(v[2])}"></td>
           <td><input type="text" class="cell-edit" data-col="3" value="${esc(v[3])}"></td>
           <td><input type="text" class="cell-edit" data-col="4" value="${esc(v[4])}"></td>
           <td><input type="text" class="cell-edit" data-col="5" value="${esc(v[5])}"></td>
           <td><input type="text" class="cell-edit" data-col="6" value="${esc(v[6])}"></td>
           <td style="white-space:nowrap;">
-            <select class="row-move-select" data-idx="${idx}" title="Chuyển sang thư mục khác" style="max-width:118px;padding:3px 4px;border-radius:5px;border:1px solid rgba(0,0,0,.2);font-size:12px;">
-              <option value="">↗ Chuyển...</option>
-              ${moveOpts}
-            </select>
             <button type="button" class="btn-row-del" data-idx="${idx}" title="Xoá dòng">🗑</button>
           </td>
         </tr>
@@ -932,11 +601,6 @@
   function renderMain() {
     const mainEl = $('#main');
     if (!mainEl) return;
-
-    if (V.route.page === 'overview' && !V.query) {
-      renderOverview(mainEl);
-      return;
-    }
 
     const currentEntry = nodeById.get(V.activeId) || flatNodes[0];
     if (!currentEntry) return;
@@ -961,7 +625,6 @@
           <select id="filterSource" aria-label="Lọc theo nguồn" style="padding:6px 8px;border-radius:6px;border:1px solid rgba(0,0,0,.2);">
             ${srcFilterOpts}
           </select>
-          <button type="button" id="btnAddFolderHere" class="btn">＋ Thư mục mới</button>
           <button type="button" id="btnAddRow" class="btn accent">+ Thêm dòng</button>
           <button type="button" id="btnExportSheets" class="btn">📗 Xuất Excel (tách sheet)</button>
         </div>
@@ -969,22 +632,22 @@
 
       ${renderHorizontalBar(currentEntry)}
 
-      <div class="table-wrap responsive-table-wrap" style="overflow-x:auto;-webkit-overflow-scrolling:touch;border:1px solid rgba(0,0,0,.12);border-radius:8px;background:#fff;">
+      <div class="table-wrap" style="overflow-x:auto;border:1px solid rgba(0,0,0,.12);border-radius:8px;">
         <table id="statsTable" class="data-table" style="width:100%;border-collapse:collapse;">
           <thead>
             <tr>
-              <th style="white-space:nowrap;">Nguồn</th>
-              <th style="white-space:nowrap;">STT</th>
-              <th style="white-space:nowrap;">Tên Vật Tư</th>
-              <th style="white-space:nowrap;">Serial</th>
-              <th style="white-space:nowrap;">Mã VT</th>
-              <th style="white-space:nowrap;">Part number</th>
-              <th style="white-space:nowrap;">Ghi chú</th>
-              <th style="white-space:nowrap;">Thao tác</th>
+              <th>Nguồn</th>
+              <th>STT</th>
+              <th>Tên Vật Tư</th>
+              <th>Serial</th>
+              <th>Mã VT</th>
+              <th>Part number</th>
+              <th>Ghi chú</th>
+              <th>Thao tác</th>
             </tr>
           </thead>
           <tbody>
-            ${renderTableRows(node.id, filtered)}
+            ${renderTableRows(filtered)}
           </tbody>
         </table>
       </div>
@@ -1004,11 +667,6 @@
         V.sourceFilter = filterEl.value;
         renderMain();
       });
-    }
-
-    const addFolderBtn = $('#btnAddFolderHere', mainEl);
-    if (addFolderBtn) {
-      addFolderBtn.addEventListener('click', () => createFolderUnder(node.id));
     }
 
     const addBtn = $('#btnAddRow', mainEl);
@@ -1053,15 +711,6 @@
         const editBtn = $('#btnEdit');
         if (editBtn) editBtn.setAttribute('aria-pressed', 'true');
         renderMain();
-      });
-    });
-
-    $$('.row-move-select', mainEl).forEach(sel => {
-      sel.addEventListener('change', () => {
-        const destId = sel.value;
-        if (!destId) return;
-        const idx = Number(sel.getAttribute('data-idx'));
-        moveRowToNode(node.id, idx, destId);
       });
     });
 
@@ -1197,56 +846,17 @@
 
   function bindGlobal() {
     const sb = $('#sidebar');
-    const overlay = $('#overlay');
-    const btnMenu = $('#btnMenu');
-
-    if (btnMenu && sb) {
-      btnMenu.addEventListener('click', () => {
-        sb.classList.toggle('open');
-        if (overlay) overlay.classList.toggle('show', sb.classList.contains('open'));
-      });
-    }
-    if (overlay && sb) {
-      overlay.addEventListener('click', () => {
-        sb.classList.remove('open');
-        overlay.classList.remove('show');
-      });
-    }
-
     if (sb) {
       sb.addEventListener('click', e => {
-        const toggleBtn = e.target.closest('[data-toggle-node]');
-        if (toggleBtn) {
-          const nid = toggleBtn.getAttribute('data-toggle-node');
-          V.treeCollapsed[nid] = !V.treeCollapsed[nid];
-          renderSidebar();
-          return;
-        }
-
-        const createBtn = e.target.closest('[data-create-folder]');
-        if (createBtn) {
-          createFolderUnder(createBtn.getAttribute('data-create-folder'));
-          return;
-        }
-
         const nodeBtn = e.target.closest('[data-node-id]');
         if (nodeBtn) {
           V.activeId = nodeBtn.getAttribute('data-node-id');
           V.route = { page: 'sheet', id: V.activeId };
-          if (sb.classList.contains('open')) {
-            sb.classList.remove('open');
-            if (overlay) overlay.classList.remove('show');
-          }
           render();
           return;
         }
-
         if (e.target.closest('[data-go-overview]')) {
           V.route = { page: 'overview', id: null };
-          if (sb.classList.contains('open')) {
-            sb.classList.remove('open');
-            if (overlay) overlay.classList.remove('show');
-          }
           render();
         }
       });
@@ -1316,7 +926,7 @@
           exportExcelSeparateSheets(curEntry.node);
         } else if (act === 'json-out') {
           syncSTFromStore();
-          const blob = new Blob([JSON.stringify({ sheets: ST.sheets, slips: ST.slips, customFolders: customFoldersByParent }, null, 2)], { type: 'application/json' });
+          const blob = new Blob([JSON.stringify({ sheets: ST.sheets, slips: ST.slips }, null, 2)], { type: 'application/json' });
           const a = document.createElement('a');
           a.href = URL.createObjectURL(blob);
           a.download = 'sao-luu-vat-tu-tai-san.json';
