@@ -1,11 +1,11 @@
 /* =====================================================================
    assets/sync.js – ĐỒNG BỘ DỮ LIỆU ĐA THIẾT BỊ & PHÂN QUYỀN (Admin vs Guest)
-   Phiên bản: 2026.11.21-5
+   Phiên bản: 2026.11.22-3
    ===================================================================== */
 (function () {
   'use strict';
 
-  var BUILD = '2026.11.21-5';
+  var BUILD = '2026.11.22-3';
   var SOURCE_OPTIONS = ['Vật tư', 'Tài sản', 'Đo kiểm', 'Sửa chữa', 'Không rõ nguồn'];
   var DEFAULT_SOURCE = 'Không rõ nguồn';
   var STANDARD_COLS = ['Nguồn', 'STT', 'Tên Vật Tư', 'Serial', 'Mã VT', 'Part number', 'Ghi chú'];
@@ -89,12 +89,10 @@
 
   function nz(o) { return o && Object.keys(o).length ? o : null; }
 
-  function rowSig(r, sid, bt) {
+  function rowSig(r) {
     var src = normSrc(r && (r.src || (r.v && r.v[0])), DEFAULT_SOURCE);
     var vec = normVec(r && r.v, src);
     return hash(stable([
-      sid || (r && r.sid) || '',
-      bt || (r && r.bt) || '',
       src,
       vec,
       nz(r && r.f),
@@ -103,12 +101,8 @@
     ]));
   }
 
-  function blockSig(b) {
-    return hash(stable([
-      (b && b.title) || '',
-      (b && b.ord) || 0,
-      STANDARD_COLS
-    ]));
+  function blockSig() {
+    return hash(stable([STANDARD_COLS]));
   }
 
   function enc(key) { return encodeURIComponent(key); }
@@ -162,7 +156,7 @@
       (s.blocks || []).forEach(function (b, bi) {
         blocks.add(s.id + '|' + b.title);
         (b.rows || []).forEach(function (r) {
-          rows.set(s.id + ':' + bi + ':' + r.r, { sid: s.id, bt: b.title, sig: rowSig(r, s.id, b.title) });
+          rows.set(s.id + ':' + bi + ':' + r.r, { sid: s.id, bt: b.title, sig: rowSig(r) });
         });
       });
     });
@@ -205,7 +199,7 @@
     if (!S.baseline || !S.M || !A || !A.ST) return [];
     var ops = [], base = S.baseline, lr = localRows(), M = S.M;
     lr.forEach(function (e, rid) {
-      var sig = rowSig(e.row, e.s.id, e.b.title), last = M.rows[rid];
+      var sig = rowSig(e.row), last = M.rows[rid];
       var need = last !== undefined ? last !== sig : (!base.rows.has(rid) || base.rows.get(rid).sig !== sig);
       if (need) ops.push({ col: 'rows', key: rid, sig: sig, data: rowData(e) });
     });
@@ -237,16 +231,24 @@
     return ops;
   }
 
+  function getAccountTag() {
+    var u = localStorage.getItem('lab_username') || '';
+    var r = localStorage.getItem('lab_user_role') || '';
+    if (u) return u + (r ? '/' + r : '');
+    if (r === 'guest') return 'khach/guest';
+    return 'admin/khach';
+  }
+
   function applyRoleUI() {
     var currentRole = localStorage.getItem('lab_user_role');
     var isGuest = currentRole === 'guest';
     var btnEdit = $('#btnEdit');
     if (btnEdit) btnEdit.style.display = isGuest ? 'none' : '';
     if (isGuest) {
-      document.querySelectorAll('#main button, #main .tbtn, #main select.row-move-select').forEach(function (el) {
+      document.querySelectorAll('#main button, #main .tbtn, #btnAddItemTop').forEach(function (el) {
         var text = (el.textContent || '').toLowerCase();
         var idClass = ((el.id || '') + ' ' + (el.className || '')).toLowerCase();
-        if (text.includes('thêm') || text.includes('xoá') || text.includes('chuyển') || idClass.includes('admin') || el.classList.contains('row-move-select')) {
+        if (text.includes('thêm vật tư') || text.includes('thêm dòng') || text.includes('xoá') || text.includes('chuyển') || idClass.includes('admin')) {
           if (!text.includes('xem')) {
             el.style.opacity = '0.35';
             el.style.pointerEvents = 'none';
@@ -259,22 +261,23 @@
 
   function setState(st) {
     S.st = st;
+    var acct = getAccountTag();
     var b = $('#btnSync');
     if (b) {
       var map = {
-        off: ['☁', 'Chỉ trên máy', 'off'],
-        login: ['🔒', 'Đăng nhập', 'login'],
-        syncing: ['🔄', 'Đang đồng bộ…', 'syncing'],
-        ok: ['☁✓', 'Đã đồng bộ', 'ok'],
-        offline: ['⚠', 'Chờ mạng', 'bad'],
-        error: ['⚠', 'Lỗi đồng bộ', 'bad'],
-        loading: ['🔄', 'Đang kết nối…', 'syncing']
+        off: ['☁', 'Chỉ trên máy [' + acct + ']', 'off'],
+        login: ['🔒', 'Đăng nhập (' + acct + ')', 'login'],
+        syncing: ['🔄', 'Đang đồng bộ… [' + acct + ']', 'syncing'],
+        ok: ['☁✓', 'Đã đồng bộ [' + acct + ']', 'ok'],
+        offline: ['⚠', 'Chờ mạng [' + acct + ']', 'bad'],
+        error: ['⚠', 'Lỗi đồng bộ [' + acct + ']', 'bad'],
+        loading: ['🔄', 'Đang kết nối… [' + acct + ']', 'syncing']
       };
       var m = map[st] || map.off;
       var n = S.pending > 0 && (st === 'offline' || st === 'error') ? ' (' + S.pending + ')' : '';
       b.className = 'btn ghost sync-' + m[2];
       b.innerHTML = '<i>' + m[0] + '</i> <span>' + m[1] + n + '</span>';
-      b.title = 'Đồng bộ: ' + m[1] + (S.lastOk ? ' – lần cuối ' + new Date(S.lastOk).toLocaleTimeString('vi-VN') : '') + (S.err ? '\n' + S.err : '');
+      b.title = 'Tài khoản: ' + acct + ' · Trạng thái: ' + m[1] + (S.lastOk ? ' – lần cuối ' + new Date(S.lastOk).toLocaleTimeString('vi-VN') : '') + (S.err ? '\n' + S.err : '');
     }
     var p = $('#syncPanel');
     if (p) renderPanel();
@@ -286,10 +289,8 @@
       if (ad && S.user && !S.inited) setState(S.st);
       return;
     }
-    S.pending = computeOps().length;
-    setState(S.st === 'ok' && S.pending > 0 ? 'syncing' : S.st);
     clearTimeout(S.pushT);
-    S.pushT = setTimeout(push, delay == null ? 600 : delay);
+    S.pushT = setTimeout(push, delay == null ? 900 : delay);
   }
 
   function push() {
@@ -350,32 +351,16 @@
     S.retryT = setTimeout(function () { push(); }, wait);
   }
 
-  function ensureSheet(sid, title) {
-    if (!sid || !A || !A.ST || !Array.isArray(A.ST.sheets)) return null;
-    var s = A.sheetById(sid);
-    if (s) return s;
-    s = {
-      id: sid,
-      name: title || sid,
-      categoryId: sid,
-      group: 0,
-      blocks: []
-    };
-    A.ST.sheets.push(s);
-    return s;
-  }
-
   function ensureBlock(sid, title) {
-    var s = ensureSheet(sid, title);
+    var s = A.sheetById(sid);
     if (!s) return null;
-    if (!Array.isArray(s.blocks)) s.blocks = [];
     for (var i = 0; i < s.blocks.length; i++) {
       if (s.blocks[i].title === title) {
         s.blocks[i].cols = STANDARD_COLS.slice();
         return s.blocks[i];
       }
     }
-    var b = { title: title || s.name || sid, hr: 0, cols: STANDARD_COLS.slice(), rows: [], ord: 0 };
+    var b = { title: title, hr: 0, cols: STANDARD_COLS.slice(), rows: [], ord: 0 };
     s.blocks.push(b);
     return b;
   }
@@ -397,9 +382,9 @@
   function applyRow(d) {
     var data = d.data, rid = data.rid;
     if (!rid) return false;
-    var rs = data.del ? 'DEL' : rowSig(data, data.sid, data.bt);
+    var rs = data.del ? 'DEL' : rowSig(data);
     var idx = localRows(), cur = idx.get(rid);
-    var ls = cur ? rowSig(cur.row, cur.s.id, cur.b.title) : 'DEL';
+    var ls = cur ? rowSig(cur.row) : 'DEL';
     var last = S.M.rows[rid], base = S.baseline.rows.get(rid);
     var dirty = last !== undefined ? last !== ls : (base ? base.sig !== ls : ls !== 'DEL');
 
@@ -419,16 +404,6 @@
     var vec = normVec(data.v, src);
 
     if (cur) {
-      if (data.sid && data.bt && (cur.s.id !== data.sid || cur.b.title !== data.bt)) {
-        var oldIdx = cur.b.rows.indexOf(cur.row);
-        if (oldIdx >= 0) cur.b.rows.splice(oldIdx, 1);
-        var targetBlock = ensureBlock(data.sid, data.bt);
-        if (targetBlock) {
-          var movedRow = Object.assign({}, cur.row, { src: src, v: vec });
-          placeNew(targetBlock, movedRow);
-          cur.row = movedRow;
-        }
-      }
       var r = cur.row;
       r.src = src;
       r.v = vec;
@@ -458,7 +433,7 @@
   function applyBlock(d) {
     var data = d.data;
     if (data.del || !data.sid) return false;
-    var s = ensureSheet(data.sid, data.title);
+    var s = A.sheetById(data.sid);
     if (!s) return false;
     var key = data.sid + '|' + data.title, b = null, i;
     for (i = 0; i < s.blocks.length; i++) if (s.blocks[i].title === data.title) b = s.blocks[i];
@@ -481,17 +456,12 @@
     if (COLS.indexOf(col) < 0) return;
     var changed = 0, maxUpd = S.since[col] || 0;
     docs.sort(function (a, b) { return (a.upd || 0) - (b.upd || 0); });
-    S.reconciling = true;
-    try {
-      docs.forEach(function (d) {
-        S.remoteSeen++;
-        if (d.upd && d.upd > maxUpd) maxUpd = d.upd;
-        var ok = col === 'rows' ? applyRow(d) : applyBlock(d);
-        if (ok) changed++;
-      });
-    } finally {
-      S.reconciling = false;
-    }
+    docs.forEach(function (d) {
+      S.remoteSeen++;
+      if (d.upd && d.upd > maxUpd) maxUpd = d.upd;
+      var ok = col === 'rows' ? applyRow(d) : applyBlock(d);
+      if (ok) changed++;
+    });
     if (maxUpd > 0) S.since[col] = Math.max(0, maxUpd - 1);
     saveMeta();
 
