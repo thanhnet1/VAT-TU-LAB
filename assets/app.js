@@ -2,8 +2,6 @@
    assets/app.js – VẬT TƯ – TÀI SẢN
    - Cây thư mục chuẩn theo sơ đồ mẫu, thu gọn mặc định cho gọn mắt
    - Đồng bộ dữ liệu hai chiều mượt mà trên nhiều thiết bị (qua Sync)
-   - Đồng bộ cả cấu trúc thư mục tạo mới (customFolders) giữa các thiết bị
-   - Tự động cập nhật trạng thái đồng bộ & làm mới khi chuyển tab / mở lại app
    - Tổng quan thống kê + màu phân biệt trạng thái + trạng thái đồng bộ
    - Tìm kiếm toàn bộ tại Trang chủ, tìm trong thư mục tại từng thư mục
    - Nút "+ Thêm vật tư" với danh sách sổ Mã VT / Tên VT / Serial / Part number
@@ -56,6 +54,14 @@
     'Đo kiểm': 'background:#fef9c3;color:#854d0e;border-color:#fde047;',
     'Sửa chữa': 'background:#fee2e2;color:#991b1b;border-color:#fca5a5;',
     'Không rõ nguồn': 'background:#f1f5f9;color:#334155;border-color:#cbd5e1;'
+  };
+
+  const ACTION_BTN_STYLE = {
+    primary: 'padding:7px 12px;border-radius:7px;border:1px solid #0b3a5b;background:#0b3a5b;color:#ffffff;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:5px;box-shadow:0 1px 2px rgba(11,58,91,.18);',
+    folder: 'padding:7px 12px;border-radius:7px;border:1px solid #0284c7;background:#e0f2fe;color:#0369a1;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:5px;',
+    sync: 'padding:7px 12px;border-radius:7px;border:1px solid #0d9488;background:#f0fdfa;color:#0f766e;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:5px;',
+    exportBtn: 'padding:7px 12px;border-radius:7px;border:1px solid #16a34a;background:#f0fdf4;color:#15803d;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:5px;',
+    neutral: 'padding:7px 12px;border-radius:7px;border:1px solid #cbd5e1;background:#ffffff;color:#1e293b;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:5px;'
   };
 
   const $ = (s, el = document) => el.querySelector(s);
@@ -115,13 +121,13 @@
     const username = localStorage.getItem('lab_username') || '';
     const accountLabel = username
       ? `${username}${role ? ' (' + role + ')' : ''}`
-      : (role === 'guest' ? 'khach (guest)' : 'admin / khach');
+      : 'Tự động đồng bộ';
 
     const btnSync = $('#btnSync');
     const isConnected = !!(btnSync && !btnSync.classList.contains('sync-off') && !btnSync.classList.contains('sync-login'));
     const syncText = btnSync && btnSync.querySelector('span')
       ? btnSync.querySelector('span').textContent.trim()
-      : (isConnected ? 'Đã đồng bộ' : 'Chỉ trên máy');
+      : (isConnected ? 'Đã đồng bộ' : 'Đang kết nối');
 
     return {
       accountLabel,
@@ -226,56 +232,10 @@
     });
   }
 
-  function mergeCustomFolderMaps(baseMap = {}, incomingMap = {}) {
-    const out = {};
-    const parentKeys = new Set([
-      ...Object.keys(baseMap || {}),
-      ...Object.keys(incomingMap || {})
-    ]);
-    for (const pid of parentKeys) {
-      const seenIds = new Set();
-      const mergedList = [];
-      const listA = Array.isArray(baseMap[pid]) ? baseMap[pid] : [];
-      const listB = Array.isArray(incomingMap[pid]) ? incomingMap[pid] : [];
-      for (const item of [...listA, ...listB]) {
-        if (!item || !item.id || seenIds.has(item.id)) continue;
-        seenIds.add(item.id);
-        mergedList.push(Object.assign({}, item, { isCustom: true }));
-      }
-      if (mergedList.length) out[pid] = mergedList;
-    }
-    return out;
-  }
-
-  function extractCustomFoldersFromSheets(sheets = []) {
-    const extracted = {};
-    if (!Array.isArray(sheets)) return extracted;
-    for (const sh of sheets) {
-      if (!sh || !sh.id) continue;
-      if (sh.isCustom || String(sh.id).startsWith('folder-')) {
-        const pid = sh.parentId || 'thiet-bi-ip';
-        if (!Array.isArray(extracted[pid])) extracted[pid] = [];
-        if (!extracted[pid].some(x => x.id === sh.id)) {
-          extracted[pid].push({
-            id: sh.id,
-            label: sh.name || sh.id,
-            icon: sh.icon || '📄',
-            isCustom: true,
-            isDynamicGroup: true,
-            allowCreate: true,
-            matchKeywords: [fold(sh.name || sh.id)]
-          });
-        }
-      }
-    }
-    return extracted;
-  }
-
   function cloneTreeWithCustomFolders(nodes = [], customMap = {}) {
     return nodes.map(node => {
       const children = Array.isArray(node.children) ? cloneTreeWithCustomFolders(node.children, customMap) : [];
-      const extraRaw = Array.isArray(customMap[node.id]) ? customMap[node.id] : [];
-      const extra = cloneTreeWithCustomFolders(extraRaw, customMap);
+      const extra = Array.isArray(customMap[node.id]) ? customMap[node.id] : [];
       return Object.assign({}, node, {
         children: [...children, ...extra]
       });
@@ -333,10 +293,6 @@
   }
 
   function classifyRowTarget(sheetId, blockTitle, rowNorm, fallbackNodeId) {
-    // Ưu tiên tuyệt đối thư mục đã lưu nếu sheetId khớp trực tiếp với một nút trên cây
-    if (sheetId && nodeById.has(sheetId)) return sheetId;
-    if (fallbackNodeId && nodeById.has(fallbackNodeId)) return fallbackNodeId;
-
     const bt = fold(blockTitle);
     const v = rowNorm.v || [];
     const blob = fold(`${blockTitle} ${v[2] || ''} ${v[3] || ''} ${v[4] || ''} ${v[5] || ''} ${v[6] || ''}`);
@@ -386,6 +342,7 @@
       return 'vat-tu-khong-ro-nguon-goc';
     }
 
+    if (fallbackNodeId && nodeById.has(fallbackNodeId)) return fallbackNodeId;
     if (sheetId === 'trang-tinh14') return 'vat-tu-sua-chua';
     if (sheetId === 'vt-do-kiem') return 'vat-tu-do-luong';
     if (sheetId === 'khong-ro-ng' || sheetId === 'hang-ton-kho' || sheetId === 'ton-kho-xvt-26-10-2026') {
@@ -405,14 +362,10 @@
         r.r = i + 1;
         r.v[1] = String(i + 1);
       });
-      const isCustom = !!(n.isCustom || String(n.id).startsWith('folder-'));
       return {
         id: n.id,
         name: CFG.sheetLabels[n.id] || n.label,
         categoryId: n.id,
-        parentId: entry.parentId || null,
-        icon: n.icon || '📄',
-        isCustom,
         group: n.defaultGroup != null ? n.defaultGroup : (entry.parentId ? 0 : idx),
         blocks: [
           {
@@ -461,7 +414,7 @@
 
   let DATA = { meta: { source: 'LAB', generated: '', version: '' }, sheets: [] };
   let storeData = {};
-  const ST = { sheets: [], slips: { xuat: [], nhap: [] }, customFolders: {}, dirty: false, updatedAt: 0 };
+  const ST = { sheets: [], slips: { xuat: [], nhap: [] }, dirty: false };
   const V = {
     route: { page: 'overview', id: null },
     activeId: (flatNodes[0] && flatNodes[0].node.id) || null,
@@ -492,25 +445,12 @@
   }
 
   function syncSTFromStore() {
-    ST.customFolders = clone(customFoldersByParent);
     ST.sheets = buildSheetsFromStore(storeData);
   }
 
-  // Đồng bộ storeData từ ST.sheets (khi Sync áp dụng dữ liệu từ thiết bị khác)
   function syncStoreFromST() {
-    const fromSTFolders = ST.customFolders && typeof ST.customFolders === 'object' ? ST.customFolders : {};
-    const fromSheetFolders = extractCustomFoldersFromSheets(ST.sheets || []);
-    customFoldersByParent = mergeCustomFolderMaps(
-      customFoldersByParent,
-      mergeCustomFolderMaps(fromSTFolders, fromSheetFolders)
-    );
-    ST.customFolders = clone(customFoldersByParent);
     rebuildTreeIndex();
-    ensureIds(ST.sheets || []);
     storeData = buildStoreFromSheets(ST.sheets || []);
-    if (V.activeId && !nodeById.has(V.activeId)) {
-      V.activeId = (flatNodes[0] && flatNodes[0].node.id) || null;
-    }
   }
 
   function ensureIds(sheets) {
@@ -531,9 +471,7 @@
       if (saved && Array.isArray(saved.sheets)) {
         const metaVer = (DATA && DATA.meta && DATA.meta.version) || '';
         if (!metaVer || saved.ver === metaVer) {
-          const savedFolders = saved.customFolders && typeof saved.customFolders === 'object' ? saved.customFolders : {};
-          const sheetFolders = extractCustomFoldersFromSheets(saved.sheets);
-          customFoldersByParent = mergeCustomFolderMaps(savedFolders, sheetFolders);
+          customFoldersByParent = saved.customFolders && typeof saved.customFolders === 'object' ? saved.customFolders : {};
           rebuildTreeIndex();
           initCollapsedState(true);
           ensureIds(saved.sheets);
@@ -543,7 +481,6 @@
             ? Object.assign({ xuat: [], nhap: [] }, saved.slips)
             : { xuat: [], nhap: [] };
           ST.dirty = !!saved.dirty;
-          ST.updatedAt = Number(saved.updatedAt || 0);
           return;
         }
       }
@@ -558,7 +495,6 @@
     syncSTFromStore();
     ST.slips = { xuat: [], nhap: [] };
     ST.dirty = false;
-    ST.updatedAt = 0;
   }
 
   function saveLocal() {
@@ -569,8 +505,7 @@
         customFolders: customFoldersByParent,
         sheets: ST.sheets,
         slips: ST.slips,
-        dirty: ST.dirty,
-        updatedAt: ST.updatedAt || Date.now()
+        dirty: ST.dirty
       }));
     } catch (_) {
       toast('⚠ Không lưu được vào trình duyệt.', 4000);
@@ -579,16 +514,11 @@
 
   function persist() {
     ST.dirty = true;
-    ST.updatedAt = Date.now();
     const d = $('#dirty');
     if (d) d.hidden = false;
     saveLocal();
-    if (window.Sync) {
-      if (typeof window.Sync.schedule === 'function') {
-        window.Sync.schedule(250);
-      } else if (typeof window.Sync.push === 'function') {
-        window.Sync.push();
-      }
+    if (window.Sync && typeof window.Sync.schedule === 'function') {
+      window.Sync.schedule(200);
     }
   }
 
@@ -603,10 +533,12 @@
     syncSTFromStore();
     ST.slips = { xuat: [], nhap: [] };
     ST.dirty = false;
-    ST.updatedAt = Date.now();
     const d = $('#dirty');
     if (d) d.hidden = true;
     saveLocal();
+    if (window.Sync && typeof window.Sync.schedule === 'function') {
+      window.Sync.schedule(200);
+    }
   }
 
   const sheetById = id => (ST && ST.sheets ? ST.sheets.find(s => s.id === id) : null);
@@ -719,11 +651,10 @@
     if (!targetNodeId) return;
     const rows = getRowsForNode(targetNodeId);
     const src = normalizeSource(payload.src || (V.sourceFilter !== 'ALL' ? V.sourceFilter : CFG.defaultSource), CFG.defaultSource);
-    const now = Date.now();
     const newRow = normalizeRow({
       i: 'u' + uid(),
-      ct: now,
-      ut: now,
+      ct: Date.now(),
+      ut: Date.now(),
       src,
       v: [
         src,
@@ -827,8 +758,8 @@
             </label>
 
             <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:8px;">
-              <button type="button" id="btnCancelAddItem" class="btn">Huỷ</button>
-              <button type="submit" class="btn accent">+ Lưu vật tư</button>
+              <button type="button" id="btnCancelAddItem" style="${ACTION_BTN_STYLE.neutral}">Huỷ</button>
+              <button type="submit" style="${ACTION_BTN_STYLE.primary}">+ Lưu vật tư</button>
             </div>
           </form>
         </div>
@@ -931,7 +862,6 @@
       id: newId,
       label: cleanName,
       icon: '📄',
-      isCustom: true,
       isDynamicGroup: true,
       allowCreate: true,
       matchKeywords: [fold(cleanName)]
@@ -963,7 +893,6 @@
     const sb = $('#sidebar');
     if (!sb) return;
 
-    const syncInfo = getSyncStatusInfo();
     const treeTargetParent = V.activeId || 'thiet-bi-ip';
 
     const renderNodes = (nodes, depth = 0) => {
@@ -1007,12 +936,6 @@
 
     const ovActive = V.route.page === 'overview' && !V.query ? 'active' : '';
     sb.innerHTML = `
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;padding:6px 8px;margin-bottom:8px;border-radius:8px;background:rgba(11,58,91,.07);font-size:12px;">
-        <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">☁ <b>${esc(syncInfo.syncText)}</b> · ${esc(syncInfo.accountLabel)}</span>
-        <button type="button" id="btnSidebarOpenSync" style="border:1px solid rgba(11,58,91,.25);background:#fff;color:#0b3a5b;border-radius:5px;padding:2px 7px;font-size:11.5px;font-weight:600;cursor:pointer;flex-shrink:0;">
-          Đổi
-        </button>
-      </div>
       <div class="tree-root">
         <button type="button" class="tree-row ${ovActive}" data-go-overview="1" style="width:100%;margin-bottom:6px;border:0;background:${ovActive ? 'rgba(11,58,91,.14)' : 'transparent'};cursor:pointer;text-align:left;padding:7px 8px;border-radius:6px;display:flex;align-items:center;gap:6px;">
           <span>🏠</span><span class="nm"><b>Vật tư - Tài sản</b></span>
@@ -1032,9 +955,6 @@
       </div>
     `;
 
-    $('#btnSidebarOpenSync', sb)?.addEventListener('click', () => {
-      if (window.Sync && typeof window.Sync.open === 'function') window.Sync.open();
-    });
     $('#btnTreeCollapseAll', sb)?.addEventListener('click', () => {
       initCollapsedState(true);
       renderSidebar();
@@ -1075,7 +995,7 @@
         <button type="button"
           class="h-folder-btn ${selected ? 'active' : ''}"
           data-h-node="${esc(item.id)}"
-          style="padding:5px 10px;border-radius:6px;border:1px solid ${selected ? '#0b3a5b' : 'rgba(0,0,0,.15)'};background:${selected ? '#0b3a5b' : '#fff'};color:${selected ? '#fff' : 'inherit'};cursor:pointer;font-size:13px;font-weight:${selected ? '600' : '500'};white-space:nowrap;">
+          style="padding:5px 10px;border-radius:6px;border:1px solid ${selected ? '#0b3a5b' : '#cbd5e1'};background:${selected ? '#0b3a5b' : '#ffffff'};color:${selected ? '#ffffff' : '#1e293b'};cursor:pointer;font-size:13px;font-weight:${selected ? '600' : '500'};white-space:nowrap;">
           ${esc(item.label)} (${countNodeRowsDeep(item)})
         </button>
         ${sep}
@@ -1083,8 +1003,8 @@
     }).join('');
 
     return `
-      <div class="horizontal-folder-bar" style="display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:10px 12px;margin-bottom:12px;border-radius:8px;background:rgba(11,58,91,.05);border:1px solid rgba(11,58,91,.14);overflow-x:auto;">
-        <span style="font-size:12px;font-weight:700;text-transform:uppercase;opacity:.8;margin-right:4px;">
+      <div class="horizontal-folder-bar" style="display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:10px 12px;margin-bottom:12px;border-radius:8px;background:#f8fafc;border:1px solid #cbd5e1;overflow-x:auto;">
+        <span style="font-size:12px;font-weight:700;text-transform:uppercase;color:#334155;margin-right:4px;">
           ${esc(groupTitle)} [${esc(summaryText)}]:
         </span>
         ${chipsHtml}
@@ -1152,8 +1072,8 @@
           <h2 style="margin:2px 0 0;font-size:20px;">🔍 Kết quả tìm kiếm: "${esc(V.query)}" <small style="font-weight:400;opacity:.7;">(${results.length} dòng)</small></h2>
         </div>
         <div style="display:flex;flex-wrap:wrap;gap:8px;">
-          <button type="button" id="btnAddItemSearch" class="btn accent">+ Thêm vật tư</button>
-          <button type="button" id="btnBackOverview" class="btn">🏠 Về Trang chủ</button>
+          <button type="button" id="btnAddItemSearch" style="${ACTION_BTN_STYLE.primary}">+ Thêm vật tư</button>
+          <button type="button" id="btnBackOverview" style="${ACTION_BTN_STYLE.neutral}">🏠 Về Trang chủ</button>
         </div>
       </div>
       <div class="table-wrap responsive-table-wrap" style="overflow-x:auto;-webkit-overflow-scrolling:touch;border:1px solid rgba(0,0,0,.12);border-radius:8px;background:#fff;">
@@ -1268,11 +1188,11 @@
             Đồng bộ đa thiết bị: <b>${esc(syncInfo.syncText)}</b> (${esc(syncInfo.accountLabel)})
           </div>
         </div>
-        <div style="display:flex;flex-wrap:wrap;gap:8px;">
-          <button type="button" id="btnOverviewAddFolder" class="btn btn-add-folder-featured">＋ Tạo thư mục mới</button>
-          <button type="button" id="btnOverviewAddItem" class="btn accent">+ Thêm vật tư</button>
-          <button type="button" id="btnOverviewSync" class="btn">☁ Đồng bộ (${esc(syncInfo.accountLabel)})</button>
-          <button type="button" id="btnOverviewExportAll" class="btn">📗 Xuất Excel toàn bộ</button>
+        <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;">
+          <button type="button" id="btnOverviewAddItem" style="${ACTION_BTN_STYLE.primary}">+ Thêm vật tư</button>
+          <button type="button" id="btnOverviewAddFolder" style="${ACTION_BTN_STYLE.folder}">＋ Tạo thư mục mới</button>
+          <button type="button" id="btnOverviewSync" style="${ACTION_BTN_STYLE.sync}">☁ Đồng bộ (${esc(syncInfo.accountLabel)})</button>
+          <button type="button" id="btnOverviewExportAll" style="${ACTION_BTN_STYLE.exportBtn}">📗 Xuất Excel toàn bộ</button>
         </div>
       </div>
 
@@ -1527,16 +1447,16 @@
     mainEl.innerHTML = `
       <div class="view-header" style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;">
         <div>
-          <div style="font-size:12px;opacity:.7;">${esc(breadcrumb)} · ☁ ${esc(syncInfo.syncText)} (${esc(syncInfo.accountLabel)})</div>
+          <div style="font-size:12px;opacity:.75;">${esc(breadcrumb)} · ☁ ${esc(syncInfo.syncText)} (${esc(syncInfo.accountLabel)})</div>
           <h2 style="margin:2px 0 0;font-size:20px;">${esc(node.icon || '📄')} ${esc(node.label)} <small style="font-weight:400;opacity:.7;">(${filtered.length} dòng)</small></h2>
         </div>
         <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;">
-          <select id="selSourceFilter" aria-label="Lọc theo nguồn" style="padding:6px 8px;border-radius:6px;border:1px solid rgba(0,0,0,.2);background:#fff;font-size:13px;">
+          <select id="selSourceFilter" aria-label="Lọc theo nguồn" style="padding:7px 10px;border-radius:7px;border:1px solid #cbd5e1;background:#ffffff;color:#1e293b;font-size:13px;font-weight:600;cursor:pointer;">
             ${srcFilterOpts}
           </select>
-          <button type="button" id="btnSheetAddItem" class="btn accent">+ Thêm vật tư</button>
-          <button type="button" id="btnSheetAddFolder" class="btn">＋ Tạo thư mục con</button>
-          <button type="button" id="btnSheetOverview" class="btn">🏠 Tổng quan</button>
+          <button type="button" id="btnSheetAddItem" style="${ACTION_BTN_STYLE.primary}">+ Thêm vật tư</button>
+          <button type="button" id="btnSheetAddFolder" style="${ACTION_BTN_STYLE.folder}">＋ Tạo thư mục con</button>
+          <button type="button" id="btnSheetOverview" style="${ACTION_BTN_STYLE.neutral}">🏠 Tổng quan</button>
         </div>
       </div>
 
@@ -1595,61 +1515,12 @@
     renderMain();
   }
 
-  // Khi Sync gọi refresh(), đồng bộ storeData từ ST.sheets rồi vẽ lại
   function refreshFromSync() {
     syncStoreFromST();
+    saveLocal();
     const d = $('#dirty');
     if (d) d.hidden = !ST.dirty;
     render();
-  }
-
-  // Theo dõi thay đổi trạng thái nút Sync trên topbar & đồng bộ chéo giữa các tab/thiết bị
-  function setupSyncWatchers() {
-    const btnSync = $('#btnSync');
-    if (btnSync && typeof MutationObserver !== 'undefined') {
-      const obs = new MutationObserver(() => {
-        renderSidebar();
-        const headerSyncEl = $('#main .view-header');
-        if (headerSyncEl) renderMain();
-      });
-      obs.observe(btnSync, {
-        attributes: true,
-        attributeFilter: ['class'],
-        childList: true,
-        subtree: true,
-        characterData: true
-      });
-    }
-
-    // Đồng bộ tức thì khi mở nhiều tab trên cùng trình duyệt
-    window.addEventListener('storage', e => {
-      if (e.key === LS('state') && e.newValue) {
-        try {
-          const parsed = JSON.parse(e.newValue);
-          if (parsed && Array.isArray(parsed.sheets)) {
-            ST.sheets = parsed.sheets;
-            ST.customFolders = parsed.customFolders || {};
-            ST.slips = parsed.slips || { xuat: [], nhap: [] };
-            ST.dirty = !!parsed.dirty;
-            ST.updatedAt = Number(parsed.updatedAt || Date.now());
-            refreshFromSync();
-          }
-        } catch (_) {}
-      } else if (e.key === 'lab_user_role' || e.key === 'lab_username') {
-        render();
-      }
-    });
-
-    // Kéo dữ liệu mới nhất khi người dùng chuyển từ ứng dụng khác quay lại trình duyệt (mobile/desktop)
-    const triggerPullOnResume = () => {
-      if (document.hidden) return;
-      if (window.Sync) {
-        if (typeof window.Sync.pull === 'function') window.Sync.pull();
-        else if (typeof window.Sync.syncNow === 'function') window.Sync.syncNow();
-      }
-    };
-    document.addEventListener('visibilitychange', triggerPullOnResume);
-    window.addEventListener('focus', triggerPullOnResume);
   }
 
   function bindEvents() {
@@ -1806,9 +1677,7 @@
         reader.onload = () => {
           try {
             const parsed = JSON.parse(String(reader.result || '{}'));
-            const importedFolders = parsed.customFolders || {};
-            const sheetFolders = Array.isArray(parsed.sheets) ? extractCustomFoldersFromSheets(parsed.sheets) : {};
-            customFoldersByParent = mergeCustomFolderMaps(importedFolders, sheetFolders);
+            if (parsed.customFolders) customFoldersByParent = parsed.customFolders;
             rebuildTreeIndex();
             initCollapsedState(true);
             if (Array.isArray(parsed.sheets)) {
@@ -1873,7 +1742,6 @@
       loadState();
       parseHash();
       bindEvents();
-      setupSyncWatchers();
       render();
     } catch (e) {
       renderOverview($('#main') || document.body);
