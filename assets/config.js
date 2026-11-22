@@ -32,18 +32,6 @@ window.APP_CONFIG = {
     'Vật tư & Tài sản khác'
   ],
 
-  // Cấu hình đồng bộ đa thiết bị, tìm kiếm ngữ cảnh, thêm vật tư & nút tạo thư mục
-  uiFeatures: {
-    showDeviceSyncStatus: true,
-    syncAccounts: ['admin', 'khach'],
-    globalSearchAllKeywords: true,
-    scopedSearchInActiveFolder: true,
-    enableAddItemModal: true,
-    dropdownFields: ['maVT', 'tenVT', 'serial', 'partNo'],
-    highlightAddFolderOnOverview: true,
-    showTreeFolderButtons: false
-  },
-
   treeMenu: [
     {
       id: 'truyen-dan-thiet-bi',
