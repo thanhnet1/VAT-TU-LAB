@@ -231,11 +231,18 @@
       khach: { email: 'khach@lab-xvt.local', role: 'guest' }
     }, prev.authUsers || {}),
 
-    sync: Object.assign({}, prevSync, {
-      provider: prevSync.provider || 'firebase',
-      workspace: prevSync.workspace || 'lab-xvt',
-      sdkBase: prevSync.sdkBase || 'https://www.gstatic.com/firebasejs/10.12.2/',
-      firebase: Object.assign({}, prevFb)
+    sync: {
+    provider: 'firebase',
+    workspace: 'lab-xvt',
+    firebase: {
+      apiKey: "AIzaSyAzE8Eb7Jd2j2FTt6nVw3gJ57ENBV-soeA",
+      authDomain: "minigame-8a94c.firebaseapp.com",
+      databaseURL: "https://minigame-8a94c-default-rtdb.asia-southeast1.firebasedatabase.app",
+      projectId: "minigame-8a94c",
+      storageBucket: "minigame-8a94c.firebasestorage.app",
+      messagingSenderId: "604735984087",
+      appId: "1:604735984087:web:83b5926e168efb02c6bb92",
+      measurementId: "G-4FXBFBE74T"
     })
   });
 })();
