@@ -1,9 +1,10 @@
 /* =====================================================================
    assets/app.js – VẬT TƯ – TÀI SẢN
-   - Tổng quan thống kê + màu phân biệt trạng thái
-   - Cây thư mục sổ/thu gọn + nút tạo thêm thư mục
-   - Nút chuyển vật tư sang thư mục khác
-   - Bảng cân đối trên cả điện thoại và máy tính
+   - Cây thư mục chuẩn theo sơ đồ mẫu, thu gọn mặc định cho gọn mắt
+   - Tổng quan thống kê + màu phân biệt trạng thái + trạng thái đồng bộ
+   - Tìm kiếm toàn bộ tại Trang chủ, tìm trong thư mục tại từng thư mục
+   - Nút "+ Thêm vật tư" với danh sách sổ Mã VT / Tên VT / Serial / Part number
+   - Nút chuyển vật tư sang thư mục khác + Bảng cân đối mobile & desktop
    ===================================================================== */
 (function () {
   'use strict';
@@ -57,7 +58,9 @@
   const $ = (s, el = document) => el.querySelector(s);
   const $$ = (s, el = document) => Array.from(el.querySelectorAll(s));
   const LS = k => `${CFG.storageKey}:${k}`;
-  const clone = o => JSON.parse(JSON.stringify(o));
+  const clone = o => {
+    try { return JSON.parse(JSON.stringify(o)); } catch (_) { return o; }
+  };
 
   const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, ch => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
@@ -93,6 +96,36 @@
     el.classList.add('show');
     clearTimeout(toast._t);
     toast._t = setTimeout(() => el.classList.remove('show'), ms);
+  }
+
+  function hideBoot() {
+    const boot = $('#boot');
+    if (boot) boot.style.display = 'none';
+    const topbar = $('#topbar');
+    if (topbar) topbar.hidden = false;
+    const layout = $('#layout');
+    if (layout) layout.hidden = false;
+  }
+
+  function getSyncStatusInfo() {
+    const role = localStorage.getItem('lab_user_role') || '';
+    const username = localStorage.getItem('lab_username') || '';
+    const accountLabel = username
+      ? `${username}${role ? ' (' + role + ')' : ''}`
+      : (role === 'guest' ? 'khach (guest)' : 'admin / khach');
+
+    const btnSync = $('#btnSync');
+    const isConnected = !!(btnSync && !btnSync.classList.contains('sync-off') && !btnSync.classList.contains('sync-login'));
+    const syncText = btnSync && btnSync.querySelector('span')
+      ? btnSync.querySelector('span').textContent.trim()
+      : (isConnected ? 'Đã đồng bộ' : 'Chỉ trên máy');
+
+    return {
+      accountLabel,
+      role: role || '',
+      syncText,
+      isConnected
+    };
   }
 
   function sanitizeSheetName(name, usedNames) {
@@ -212,16 +245,6 @@
     return out;
   }
 
-  function collectLeafNodes(node) {
-    if (!node) return [];
-    if (!Array.isArray(node.children) || node.children.length === 0) return [node];
-    const leaves = [];
-    for (const child of node.children) {
-      leaves.push(...collectLeafNodes(child));
-    }
-    return leaves;
-  }
-
   let customFoldersByParent = {};
   let activeTree = [];
   let flatNodes = [];
@@ -270,6 +293,7 @@
     if (bt === 'otc9') return 'otc9';
     if (bt.includes('5430') || bt.includes('6500t')) return 'ciena-5430';
     if (bt.includes('ome')) return 'ciena-ome';
+    if (bt === 'bb' || bt.includes('ciena bb')) return 'ciena-bb';
     if (bt.includes('nokia')) return 'nokia-bb';
     if (bt.includes('hw6800') || bt.includes('hw 6800')) return 'hw-6800';
     if (bt.includes('hw8800') || bt.includes('hw 8800')) return 'hw-8800';
@@ -315,7 +339,8 @@
     if (sheetId === 'khong-ro-ng' || sheetId === 'hang-ton-kho' || sheetId === 'ton-kho-xvt-26-10-2026') {
       return 'vat-tu-khong-ro-nguon-goc';
     }
-    return 'truyen-dan-thiet-bi';
+    if (rowNorm.src === 'Tài sản') return 'tai-san';
+    return flatNodes[0] ? flatNodes[0].node.id : 'truyen-dan-thiet-bi';
   }
 
   function buildSheetsFromStore(storeMap) {
@@ -380,7 +405,7 @@
 
   let DATA = { meta: { source: 'LAB', generated: '', version: '' }, sheets: [] };
   let storeData = {};
-  let ST = { sheets: [], slips: { xuat: [], nhap: [] }, dirty: false };
+  const ST = { sheets: [], slips: { xuat: [], nhap: [] }, dirty: false };
   const V = {
     route: { page: 'overview', id: null },
     activeId: (flatNodes[0] && flatNodes[0].node.id) || null,
@@ -390,13 +415,29 @@
     treeCollapsed: {}
   };
 
-  function syncSTFromStore() {
-    ST.sheets = buildSheetsFromStore(storeData);
+  // Mặc định thu gọn tất cả thư mục có nhánh con / allowCreate để cây thư mục gọn gàng
+  function initCollapsedState(collapseAll = true) {
+    const next = {};
+    for (const entry of flatNodes) {
+      const n = entry.node;
+      const isFolder = (Array.isArray(n.children) && n.children.length > 0) || n.allowCreate;
+      if (isFolder && collapseAll) {
+        next[n.id] = true;
+      }
+    }
+    V.treeCollapsed = next;
   }
 
-  function syncStoreFromST() {
-    rebuildTreeIndex();
-    storeData = buildStoreFromSheets(ST.sheets || []);
+  function expandAncestorsOf(nodeId) {
+    const entry = nodeById.get(nodeId);
+    if (!entry) return;
+    for (const anc of entry.ancestors) {
+      delete V.treeCollapsed[anc.id];
+    }
+  }
+
+  function syncSTFromStore() {
+    ST.sheets = buildSheetsFromStore(storeData);
   }
 
   function ensureIds(sheets) {
@@ -419,6 +460,7 @@
         if (!metaVer || saved.ver === metaVer) {
           customFoldersByParent = saved.customFolders && typeof saved.customFolders === 'object' ? saved.customFolders : {};
           rebuildTreeIndex();
+          initCollapsedState(true);
           ensureIds(saved.sheets);
           storeData = buildStoreFromSheets(saved.sheets);
           syncSTFromStore();
@@ -433,6 +475,7 @@
 
     customFoldersByParent = {};
     rebuildTreeIndex();
+    initCollapsedState(true);
     const rawSheets = (DATA && Array.isArray(DATA.sheets)) ? clone(DATA.sheets) : [];
     ensureIds(rawSheets);
     storeData = buildStoreFromSheets(rawSheets);
@@ -470,6 +513,7 @@
     localStorage.removeItem(LS('state'));
     customFoldersByParent = {};
     rebuildTreeIndex();
+    initCollapsedState(true);
     const rawSheets = (DATA && Array.isArray(DATA.sheets)) ? clone(DATA.sheets) : [];
     ensureIds(rawSheets);
     storeData = buildStoreFromSheets(rawSheets);
@@ -485,6 +529,7 @@
   const labelOf = s => (s ? (CFG.sheetLabels[s.id] || s.name || s.id) : '');
   const isStock = () => true;
   const stockRows = b => (b && b.rows) || [];
+  const touch = r => { if (r) r.ut = Date.now(); };
 
   function getRowsForNode(nodeId) {
     if (!Array.isArray(storeData[nodeId])) storeData[nodeId] = [];
@@ -516,6 +561,251 @@
       .filter(item => matchesRow(item.row, qTokens, V.sourceFilter));
   }
 
+  function getGlobalSearchResults() {
+    const qTokens = tokensOf(V.query);
+    const results = [];
+    for (const entry of flatNodes) {
+      const n = entry.node;
+      if (Array.isArray(n.children) && n.children.length > 0) continue;
+      const rows = getRowsForNode(n.id);
+      rows.forEach((r, idx) => {
+        const norm = normalizeRow(r, idx, CFG.defaultSource, STANDARD_COLS, n.id);
+        if (matchesRow(norm, qTokens, V.sourceFilter)) {
+          results.push({
+            nodeId: n.id,
+            nodeLabel: n.label,
+            pathText: entry.pathNodes.map(x => x.label).join(' / '),
+            row: norm,
+            idx
+          });
+        }
+      });
+      if (results.length >= (CFG.maxSearchResults || 400)) break;
+    }
+    return results;
+  }
+
+  function collectCatalogLookups() {
+    const maVTSet = new Set();
+    const tenVTSet = new Set();
+    const serialSet = new Set();
+    const partNoSet = new Set();
+    const catalogItems = [];
+
+    for (const entry of flatNodes) {
+      const n = entry.node;
+      if (Array.isArray(n.children) && n.children.length > 0) continue;
+      const rows = getRowsForNode(n.id);
+      rows.forEach((r, idx) => {
+        const norm = normalizeRow(r, idx, CFG.defaultSource, STANDARD_COLS, n.id);
+        const v = norm.v || [];
+        const ten = String(v[2] || '').trim();
+        const ser = String(v[3] || '').trim();
+        const ma = String(v[4] || '').trim();
+        const part = String(v[5] || '').trim();
+        const note = String(v[6] || '').trim();
+        if (ma) maVTSet.add(ma);
+        if (ten) tenVTSet.add(ten);
+        if (ser) serialSet.add(ser);
+        if (part) partNoSet.add(part);
+        if (ma || ten || ser || part) {
+          catalogItems.push({
+            src: norm.src,
+            tenVT: ten,
+            serial: ser,
+            maVT: ma,
+            partNo: part,
+            ghiChu: note
+          });
+        }
+      });
+    }
+
+    return {
+      maVTList: Array.from(maVTSet).sort((a, b) => a.localeCompare(b, 'vi')),
+      tenVTList: Array.from(tenVTSet).sort((a, b) => a.localeCompare(b, 'vi')),
+      serialList: Array.from(serialSet).sort((a, b) => a.localeCompare(b, 'vi')),
+      partNoList: Array.from(partNoSet).sort((a, b) => a.localeCompare(b, 'vi')),
+      catalogItems
+    };
+  }
+
+  function addStructuredItem(payload) {
+    const targetNodeId = payload.targetNodeId || V.activeId || (flatNodes[0] && flatNodes[0].node.id);
+    if (!targetNodeId) return;
+    const rows = getRowsForNode(targetNodeId);
+    const src = normalizeSource(payload.src || (V.sourceFilter !== 'ALL' ? V.sourceFilter : CFG.defaultSource), CFG.defaultSource);
+    const newRow = normalizeRow({
+      i: 'u' + uid(),
+      ct: Date.now(),
+      src,
+      v: [
+        src,
+        String(rows.length + 1),
+        String(payload.tenVT || '').trim(),
+        String(payload.serial || '').trim(),
+        String(payload.maVT || '').trim(),
+        String(payload.partNo || '').trim(),
+        String(payload.ghiChu || '').trim()
+      ]
+    }, rows.length, src, STANDARD_COLS, targetNodeId);
+
+    rows.push(newRow);
+    persist();
+    render();
+    toast('Đã thêm vật tư vào danh mục');
+  }
+
+  function openAddItemModal(defaultNodeId) {
+    let host = $('#mdAddItem');
+    if (!host) {
+      host = document.createElement('div');
+      host.id = 'mdAddItem';
+      document.body.appendChild(host);
+    }
+
+    const leafEntries = flatNodes.filter(e => !Array.isArray(e.node.children) || e.node.children.length === 0);
+    const chosenId = defaultNodeId && nodeById.has(defaultNodeId)
+      ? defaultNodeId
+      : (leafEntries[0] && leafEntries[0].node.id) || '';
+
+    const folderOpts = leafEntries.map(e =>
+      `<option value="${esc(e.node.id)}" ${e.node.id === chosenId ? 'selected' : ''}>${esc(e.pathNodes.map(x => x.label).join(' / '))}</option>`
+    ).join('');
+
+    const defaultSrc = V.sourceFilter !== 'ALL' ? V.sourceFilter : CFG.defaultSource;
+    const srcOpts = SRC_LIST.map(s =>
+      `<option value="${esc(s)}" ${s === defaultSrc ? 'selected' : ''}>${esc(s)}</option>`
+    ).join('');
+
+    const lookups = collectCatalogLookups();
+    const toOpts = arr => arr.map(val => `<option value="${esc(val)}">${esc(val)}</option>`).join('');
+
+    host.innerHTML = `
+      <div class="modal-backdrop" id="addItemBackdrop" style="position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:9998;padding:12px;">
+        <div class="modal" style="width:100%;max-width:520px;background:#fff;color:#111;border-radius:10px;padding:16px;box-shadow:0 12px 30px rgba(0,0,0,.25);max-height:92vh;overflow-y:auto;">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+            <h3 style="margin:0;font-size:17px;">📦 Thêm vật tư / tài sản</h3>
+            <button type="button" id="btnCloseAddItem" style="border:0;background:transparent;font-size:18px;cursor:pointer;">✕</button>
+          </div>
+          <form id="addItemForm" style="display:flex;flex-direction:column;gap:9px;">
+            <label style="font-size:12px;font-weight:600;">Thư mục lưu trữ
+              <select id="aiFolder" style="width:100%;margin-top:3px;padding:7px 8px;border:1px solid #cbd5e1;border-radius:6px;">${folderOpts}</select>
+            </label>
+            <label style="font-size:12px;font-weight:600;">Nguồn
+              <select id="aiSrc" style="width:100%;margin-top:3px;padding:7px 8px;border:1px solid #cbd5e1;border-radius:6px;">${srcOpts}</select>
+            </label>
+
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+              <label style="font-size:12px;font-weight:600;">Mã vật tư (danh sách sổ)
+                <input id="aiMaVT" list="dlMaVT" type="text" placeholder="Chọn hoặc nhập Mã VT..." style="width:100%;margin-top:3px;padding:7px 8px;border:1px solid #cbd5e1;border-radius:6px;">
+                <select id="selMaVT" aria-label="Chọn nhanh Mã vật tư" style="width:100%;margin-top:4px;padding:5px 6px;border:1px solid #e2e8f0;border-radius:6px;font-size:12px;background:#f8fafc;">
+                  <option value="">-- Danh sách Mã vật tư --</option>
+                  ${toOpts(lookups.maVTList)}
+                </select>
+                <datalist id="dlMaVT">${toOpts(lookups.maVTList)}</datalist>
+              </label>
+
+              <label style="font-size:12px;font-weight:600;">Tên vật tư (danh sách sổ)
+                <input id="aiTen" list="dlTenVT" type="text" placeholder="Chọn hoặc nhập Tên Vật Tư..." style="width:100%;margin-top:3px;padding:7px 8px;border:1px solid #cbd5e1;border-radius:6px;">
+                <select id="selTenVT" aria-label="Chọn nhanh Tên vật tư" style="width:100%;margin-top:4px;padding:5px 6px;border:1px solid #e2e8f0;border-radius:6px;font-size:12px;background:#f8fafc;">
+                  <option value="">-- Danh sách Tên vật tư --</option>
+                  ${toOpts(lookups.tenVTList)}
+                </select>
+                <datalist id="dlTenVT">${toOpts(lookups.tenVTList)}</datalist>
+              </label>
+            </div>
+
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+              <label style="font-size:12px;font-weight:600;">Serial (danh sách sổ)
+                <input id="aiSerial" list="dlSerial" type="text" placeholder="Chọn hoặc nhập Serial..." style="width:100%;margin-top:3px;padding:7px 8px;border:1px solid #cbd5e1;border-radius:6px;">
+                <select id="selSerial" aria-label="Chọn nhanh Serial" style="width:100%;margin-top:4px;padding:5px 6px;border:1px solid #e2e8f0;border-radius:6px;font-size:12px;background:#f8fafc;">
+                  <option value="">-- Danh sách Serial --</option>
+                  ${toOpts(lookups.serialList)}
+                </select>
+                <datalist id="dlSerial">${toOpts(lookups.serialList)}</datalist>
+              </label>
+
+              <label style="font-size:12px;font-weight:600;">Part number (danh sách sổ)
+                <input id="aiPartNo" list="dlPartNo" type="text" placeholder="Chọn hoặc nhập Part number..." style="width:100%;margin-top:3px;padding:7px 8px;border:1px solid #cbd5e1;border-radius:6px;">
+                <select id="selPartNo" aria-label="Chọn nhanh Part number" style="width:100%;margin-top:4px;padding:5px 6px;border:1px solid #e2e8f0;border-radius:6px;font-size:12px;background:#f8fafc;">
+                  <option value="">-- Danh sách Part number --</option>
+                  ${toOpts(lookups.partNoList)}
+                </select>
+                <datalist id="dlPartNo">${toOpts(lookups.partNoList)}</datalist>
+              </label>
+            </div>
+
+            <label style="font-size:12px;font-weight:600;">Ghi chú
+              <input id="aiGhiChu" type="text" placeholder="Tình trạng, vị trí, ghi chú..." style="width:100%;margin-top:3px;padding:7px 8px;border:1px solid #cbd5e1;border-radius:6px;">
+            </label>
+
+            <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:8px;">
+              <button type="button" id="btnCancelAddItem" class="btn">Huỷ</button>
+              <button type="submit" class="btn accent">+ Lưu vật tư</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    `;
+
+    const closeModal = () => { host.innerHTML = ''; };
+    $('#btnCloseAddItem', host)?.addEventListener('click', closeModal);
+    $('#btnCancelAddItem', host)?.addEventListener('click', closeModal);
+    $('#addItemBackdrop', host)?.addEventListener('click', e => {
+      if (e.target && e.target.id === 'addItemBackdrop') closeModal();
+    });
+
+    const maInp = $('#aiMaVT', host);
+    const tenInp = $('#aiTen', host);
+    const serInp = $('#aiSerial', host);
+    const partInp = $('#aiPartNo', host);
+    const noteInp = $('#aiGhiChu', host);
+
+    function autofillFromMatch(fieldKey, val) {
+      if (!val) return;
+      const hit = lookups.catalogItems.find(item => fold(item[fieldKey]) === fold(val));
+      if (!hit) return;
+      if (maInp && !maInp.value.trim() && hit.maVT) maInp.value = hit.maVT;
+      if (tenInp && !tenInp.value.trim() && hit.tenVT) tenInp.value = hit.tenVT;
+      if (serInp && !serInp.value.trim() && hit.serial) serInp.value = hit.serial;
+      if (partInp && !partInp.value.trim() && hit.partNo) partInp.value = hit.partNo;
+      if (noteInp && !noteInp.value.trim() && hit.ghiChu) noteInp.value = hit.ghiChu;
+    }
+
+    const bindDropdown = (selId, inp, fieldKey) => {
+      const sel = $(selId, host);
+      if (!sel || !inp) return;
+      sel.addEventListener('change', () => {
+        if (!sel.value) return;
+        inp.value = sel.value;
+        autofillFromMatch(fieldKey, sel.value);
+      });
+      inp.addEventListener('change', () => autofillFromMatch(fieldKey, inp.value));
+    };
+
+    bindDropdown('#selMaVT', maInp, 'maVT');
+    bindDropdown('#selTenVT', tenInp, 'tenVT');
+    bindDropdown('#selSerial', serInp, 'serial');
+    bindDropdown('#selPartNo', partInp, 'partNo');
+
+    $('#addItemForm', host)?.addEventListener('submit', e => {
+      e.preventDefault();
+      addStructuredItem({
+        targetNodeId: $('#aiFolder', host)?.value || chosenId,
+        src: $('#aiSrc', host)?.value || defaultSrc,
+        tenVT: tenInp ? tenInp.value : '',
+        serial: serInp ? serInp.value : '',
+        maVT: maInp ? maInp.value : '',
+        partNo: partInp ? partInp.value : '',
+        ghiChu: noteInp ? noteInp.value : ''
+      });
+      closeModal();
+    });
+
+    tenInp?.focus();
+  }
+
   function moveRowToNode(fromNodeId, rowIdx, toNodeId) {
     if (!toNodeId || fromNodeId === toNodeId) return;
     const srcRows = getRowsForNode(fromNodeId);
@@ -539,17 +829,18 @@
   }
 
   function createFolderUnder(parentId) {
-    const parentEntry = nodeById.get(parentId);
+    const parentEntry = nodeById.get(parentId) || nodeById.get('thiet-bi-ip') || flatNodes[0];
+    const resolvedParentId = parentEntry ? parentEntry.node.id : 'thiet-bi-ip';
     const parentLabel = parentEntry ? parentEntry.node.label : 'Thư mục';
     const rawName = prompt(`Nhập tên thư mục mới trong "${parentLabel}":`);
     if (!rawName || !rawName.trim()) return;
     const cleanName = rawName.trim();
     const newId = 'folder-' + uid();
 
-    if (!Array.isArray(customFoldersByParent[parentId])) {
-      customFoldersByParent[parentId] = [];
+    if (!Array.isArray(customFoldersByParent[resolvedParentId])) {
+      customFoldersByParent[resolvedParentId] = [];
     }
-    customFoldersByParent[parentId].push({
+    customFoldersByParent[resolvedParentId].push({
       id: newId,
       label: cleanName,
       icon: '📄',
@@ -558,8 +849,9 @@
       matchKeywords: [fold(cleanName)]
     });
 
-    delete V.treeCollapsed[parentId];
     rebuildTreeIndex();
+    delete V.treeCollapsed[resolvedParentId];
+    expandAncestorsOf(newId);
     if (!Array.isArray(storeData[newId])) storeData[newId] = [];
     V.activeId = newId;
     V.route = { page: 'sheet', id: newId };
@@ -573,6 +865,7 @@
     if (m && nodeById.has(m[1])) {
       V.route = { page: 'sheet', id: m[1] };
       V.activeId = m[1];
+      expandAncestorsOf(m[1]);
       return;
     }
     V.route = { page: 'overview', id: null };
@@ -582,37 +875,41 @@
     const sb = $('#sidebar');
     if (!sb) return;
 
+    const syncInfo = getSyncStatusInfo();
+    const treeTargetParent = V.activeId || 'thiet-bi-ip';
+
     const renderNodes = (nodes, depth = 0) => {
       if (!Array.isArray(nodes) || !nodes.length) return '';
-      return `<div class="tree-children" style="padding-left:${depth ? 12 : 0}px;">` +
+      return `<div class="tree-children" style="padding-left:${depth ? 12 : 0}px;border-left:${depth ? '1px dashed rgba(11,58,91,.22)' : 'none'};margin-left:${depth ? 6 : 0}px;">` +
         nodes.map(node => {
+          const hasChildren = Array.isArray(node.children) && node.children.length > 0;
+          const isExpandable = hasChildren || !!node.allowCreate;
           const isCollapsed = !!V.treeCollapsed[node.id];
           const isActive = V.route.page === 'sheet' && V.activeId === node.id;
           const totalCount = countNodeRowsDeep(node);
-          const hasChildren = Array.isArray(node.children) && node.children.length > 0;
-          const canAddChild = !!node.allowCreate;
+          const childPreview = hasChildren && isCollapsed
+            ? node.children.map(c => c.label).join(', ')
+            : '';
 
           return `
             <div class="tree-node ${isCollapsed ? 'collapsed' : ''}" data-node="${esc(node.id)}" style="margin:2px 0;">
               <div class="tree-row ${isActive ? 'active' : ''}" style="display:flex;align-items:center;justify-content:space-between;gap:4px;padding:5px 7px;border-radius:6px;cursor:pointer;background:${isActive ? 'rgba(11,58,91,.14)' : 'transparent'};">
-                <button type="button" class="tree-toggle-btn" data-toggle-node="${esc(node.id)}" aria-label="Thu gọn hoặc mở rộng" style="border:0;background:transparent;cursor:pointer;padding:0 3px;font-size:12px;line-height:1;">
-                  ${hasChildren ? (isCollapsed ? '▸' : '▾') : '•'}
+                <button type="button" class="tree-toggle-btn" data-toggle-node="${esc(node.id)}" aria-label="Thu gọn hoặc mở rộng" style="border:0;background:transparent;cursor:pointer;padding:0 3px;font-size:12px;line-height:1;width:16px;">
+                  ${isExpandable ? (isCollapsed ? '▸' : '▾') : '•'}
                 </button>
-                <button type="button" class="tree-select-btn" data-node-id="${esc(node.id)}" style="flex:1;min-width:0;border:0;background:transparent;color:inherit;cursor:pointer;display:flex;align-items:center;gap:6px;text-align:left;padding:0;font-weight:${isActive ? '600' : '400'};">
-                  <span>${esc(node.icon || (hasChildren ? '📁' : '📄'))}</span>
+                <button type="button" class="tree-select-btn" data-node-id="${esc(node.id)}" title="${esc(childPreview ? node.label + ': ' + childPreview : node.label)}" style="flex:1;min-width:0;border:0;background:transparent;color:inherit;cursor:pointer;display:flex;align-items:center;gap:6px;text-align:left;padding:0;font-weight:${isActive || hasChildren ? '600' : '400'};">
+                  <span>${esc(node.icon || (isExpandable ? '📁' : '📄'))}</span>
                   <span class="nm" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(node.label)}</span>
                 </button>
-                <span class="ct" style="font-size:12px;opacity:.75;">${totalCount}</span>
+                <span class="ct" style="font-size:11.5px;opacity:.75;padding:1px 5px;border-radius:999px;background:rgba(11,58,91,.07);">${totalCount}</span>
               </div>
-              ${!isCollapsed ? `
-                ${hasChildren ? renderNodes(node.children, depth + 1) : ''}
-                ${canAddChild ? `
-                  <div style="padding-left:${(depth + 1) * 10}px;margin:2px 0 4px;">
-                    <button type="button" class="tree-add-btn" data-create-folder="${esc(node.id)}" style="width:100%;text-align:left;padding:4px 8px;border:1px dashed rgba(11,58,91,.28);border-radius:6px;background:transparent;color:inherit;font-size:12px;opacity:.85;cursor:pointer;">
-                      ＋ Tạo thư mục mới
-                    </button>
-                  </div>
-                ` : ''}
+              ${!isCollapsed && hasChildren ? renderNodes(node.children, depth + 1) : ''}
+              ${!isCollapsed && !hasChildren && node.allowCreate ? `
+                <div style="padding-left:22px;margin:2px 0 4px;">
+                  <button type="button" data-create-folder="${esc(node.id)}" style="border:1px dashed rgba(11,58,91,.35);background:transparent;color:#0b3a5b;border-radius:5px;padding:2px 8px;font-size:11.5px;cursor:pointer;">
+                    ＋ Tạo mới trong ${esc(node.label)}
+                  </button>
+                </div>
               ` : ''}
             </div>
           `;
@@ -622,13 +919,42 @@
 
     const ovActive = V.route.page === 'overview' && !V.query ? 'active' : '';
     sb.innerHTML = `
-      <div class="tree-root">
-        <button type="button" class="tree-row ${ovActive}" data-go-overview="1" style="width:100%;margin-bottom:8px;border:0;background:${ovActive ? 'rgba(11,58,91,.14)' : 'transparent'};cursor:pointer;text-align:left;padding:7px 8px;border-radius:6px;display:flex;align-items:center;gap:6px;">
-          <span>🏠</span><span class="nm"><b>Tổng quan (Vật tư - Tài sản)</b></span>
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;padding:6px 8px;margin-bottom:8px;border-radius:8px;background:rgba(11,58,91,.07);font-size:12px;">
+        <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">☁ <b>${esc(syncInfo.syncText)}</b> · ${esc(syncInfo.accountLabel)}</span>
+        <button type="button" id="btnSidebarOpenSync" style="border:1px solid rgba(11,58,91,.25);background:#fff;color:#0b3a5b;border-radius:5px;padding:2px 7px;font-size:11.5px;font-weight:600;cursor:pointer;flex-shrink:0;">
+          Đổi
         </button>
+      </div>
+      <div class="tree-root">
+        <button type="button" class="tree-row ${ovActive}" data-go-overview="1" style="width:100%;margin-bottom:6px;border:0;background:${ovActive ? 'rgba(11,58,91,.14)' : 'transparent'};cursor:pointer;text-align:left;padding:7px 8px;border-radius:6px;display:flex;align-items:center;gap:6px;">
+          <span>🏠</span><span class="nm"><b>Vật tư - Tài sản</b></span>
+        </button>
+        <div style="display:flex;gap:5px;margin-bottom:8px;">
+          <button type="button" data-create-folder="${esc(treeTargetParent)}" style="flex:1;text-align:center;padding:5px 6px;border:1px dashed rgba(11,58,91,.35);border-radius:6px;background:rgba(11,58,91,.04);color:#0b3a5b;font-size:11.5px;font-weight:600;cursor:pointer;">
+            ＋ Thư mục
+          </button>
+          <button type="button" id="btnTreeCollapseAll" title="Thu gọn tất cả thư mục" style="padding:5px 7px;border:1px solid rgba(11,58,91,.22);border-radius:6px;background:#fff;color:#0b3a5b;font-size:11.5px;cursor:pointer;">
+            ▾ Thu gọn
+          </button>
+          <button type="button" id="btnTreeExpandAll" title="Mở rộng tất cả thư mục" style="padding:5px 7px;border:1px solid rgba(11,58,91,.22);border-radius:6px;background:#fff;color:#0b3a5b;font-size:11.5px;cursor:pointer;">
+            ▸ Mở hết
+          </button>
+        </div>
         ${renderNodes(activeTree, 0)}
       </div>
     `;
+
+    $('#btnSidebarOpenSync', sb)?.addEventListener('click', () => {
+      if (window.Sync && typeof window.Sync.open === 'function') window.Sync.open();
+    });
+    $('#btnTreeCollapseAll', sb)?.addEventListener('click', () => {
+      initCollapsedState(true);
+      renderSidebar();
+    });
+    $('#btnTreeExpandAll', sb)?.addEventListener('click', () => {
+      V.treeCollapsed = {};
+      renderSidebar();
+    });
   }
 
   function renderHorizontalBar(currentEntry) {
@@ -705,10 +1031,87 @@
     return { counts, total, folderCount, colorEntries };
   }
 
+  function renderGlobalSearchView(mainEl) {
+    const results = getGlobalSearchResults();
+    const rowsHtml = results.length
+      ? results.map((item, i) => {
+          const v = item.row.v;
+          const badgeStyle = SOURCE_BADGE_STYLE[v[0]] || SOURCE_BADGE_STYLE['Không rõ nguồn'];
+          return `
+            <tr>
+              <td style="text-align:center;">${i + 1}</td>
+              <td>
+                <button type="button" data-jump-folder="${esc(item.nodeId)}" style="border:0;background:transparent;color:#0b3a5b;font-weight:600;cursor:pointer;text-align:left;padding:0;">
+                  ${esc(item.nodeLabel)}
+                </button>
+                <div style="font-size:11px;opacity:.65;">${esc(item.pathText)}</div>
+              </td>
+              <td style="white-space:nowrap;"><span style="display:inline-block;padding:2px 7px;border-radius:999px;font-size:12px;font-weight:600;border:1px solid;${badgeStyle}">${esc(v[0])}</span></td>
+              <td>${esc(v[2])}</td>
+              <td>${esc(v[3])}</td>
+              <td>${esc(v[4])}</td>
+              <td>${esc(v[5])}</td>
+              <td>${esc(v[6])}</td>
+            </tr>
+          `;
+        }).join('')
+      : `<tr><td colspan="8" style="text-align:center;padding:18px;opacity:.7;">Không tìm thấy vật tư nào khớp với từ khóa "${esc(V.query)}" trên toàn bộ thư mục.</td></tr>`;
+
+    mainEl.innerHTML = `
+      <div class="view-header" style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px;">
+        <div>
+          <div style="font-size:12px;opacity:.7;">Tìm kiếm toàn bộ danh mục tại Trang chủ</div>
+          <h2 style="margin:2px 0 0;font-size:20px;">🔍 Kết quả tìm kiếm: "${esc(V.query)}" <small style="font-weight:400;opacity:.7;">(${results.length} dòng)</small></h2>
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:8px;">
+          <button type="button" id="btnAddItemSearch" class="btn accent">+ Thêm vật tư</button>
+          <button type="button" id="btnBackOverview" class="btn">🏠 Về Trang chủ</button>
+        </div>
+      </div>
+      <div class="table-wrap responsive-table-wrap" style="overflow-x:auto;-webkit-overflow-scrolling:touch;border:1px solid rgba(0,0,0,.12);border-radius:8px;background:#fff;">
+        <table class="data-table" style="width:100%;border-collapse:collapse;">
+          <thead>
+            <tr>
+              <th style="white-space:nowrap;">STT</th>
+              <th style="white-space:nowrap;">Thư mục</th>
+              <th style="white-space:nowrap;">Nguồn</th>
+              <th style="white-space:nowrap;">Tên Vật Tư</th>
+              <th style="white-space:nowrap;">Serial</th>
+              <th style="white-space:nowrap;">Mã VT</th>
+              <th style="white-space:nowrap;">Part number</th>
+              <th style="white-space:nowrap;">Ghi chú</th>
+            </tr>
+          </thead>
+          <tbody>${rowsHtml}</tbody>
+        </table>
+      </div>
+    `;
+
+    $('#btnAddItemSearch', mainEl)?.addEventListener('click', () => openAddItemModal(V.activeId));
+    $('#btnBackOverview', mainEl)?.addEventListener('click', () => {
+      V.query = '';
+      const gq = $('#gq');
+      const gqClear = $('#gqClear');
+      if (gq) gq.value = '';
+      if (gqClear) gqClear.hidden = true;
+      V.route = { page: 'overview', id: null };
+      render();
+    });
+    $$('[data-jump-folder]', mainEl).forEach(btn => {
+      btn.addEventListener('click', () => {
+        V.activeId = btn.getAttribute('data-jump-folder');
+        expandAncestorsOf(V.activeId);
+        V.route = { page: 'sheet', id: V.activeId };
+        render();
+      });
+    });
+  }
+
   function renderOverview(mainEl) {
     const { counts, total, folderCount, colorEntries } = computeStats();
     const meta = (DATA && DATA.meta) || {};
     const meaningEntries = Object.entries(CFG.colorMeaning || {});
+    const syncInfo = getSyncStatusInfo();
 
     const sourceCards = SRC_LIST.map(src => {
       const style = SOURCE_BADGE_STYLE[src] || SOURCE_BADGE_STYLE['Không rõ nguồn'];
@@ -772,11 +1175,16 @@
       <div class="view-header" style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;margin-bottom:14px;">
         <div>
           <h2 style="margin:0;font-size:20px;">📊 Tổng quan Vật tư – Tài sản</h2>
-          <div style="font-size:12px;opacity:.7;">Nguồn dữ liệu: ${esc(meta.source || 'LAB')} · Cập nhật: ${esc(meta.generated || '')}</div>
+          <div style="font-size:12px;opacity:.75;">
+            Nguồn dữ liệu: ${esc(meta.source || 'LAB')} · Cập nhật: ${esc(meta.generated || '')} ·
+            Đồng bộ đa thiết bị: <b>${esc(syncInfo.syncText)}</b> (${esc(syncInfo.accountLabel)})
+          </div>
         </div>
         <div style="display:flex;flex-wrap:wrap;gap:8px;">
-          <button type="button" id="btnOverviewAddFolder" class="btn">＋ Tạo thư mục mới</button>
-          <button type="button" id="btnOverviewExportAll" class="btn accent">📗 Xuất Excel toàn bộ</button>
+          <button type="button" id="btnOverviewAddFolder" class="btn btn-add-folder-featured">＋ Tạo thư mục mới</button>
+          <button type="button" id="btnOverviewAddItem" class="btn accent">+ Thêm vật tư</button>
+          <button type="button" id="btnOverviewSync" class="btn">☁ Đồng bộ (${esc(syncInfo.accountLabel)})</button>
+          <button type="button" id="btnOverviewExportAll" class="btn">📗 Xuất Excel toàn bộ</button>
         </div>
       </div>
 
@@ -823,6 +1231,7 @@
     $$('[data-open-node]', mainEl).forEach(btn => {
       btn.addEventListener('click', () => {
         V.activeId = btn.getAttribute('data-open-node');
+        expandAncestorsOf(V.activeId);
         V.route = { page: 'sheet', id: V.activeId };
         render();
       });
@@ -830,8 +1239,13 @@
 
     const addFolderBtn = $('#btnOverviewAddFolder', mainEl);
     if (addFolderBtn) {
-      addFolderBtn.addEventListener('click', () => createFolderUnder(V.activeId || 'truyen-dan-thiet-bi'));
+      addFolderBtn.addEventListener('click', () => createFolderUnder(V.activeId || 'thiet-bi-ip'));
     }
+
+    $('#btnOverviewAddItem', mainEl)?.addEventListener('click', () => openAddItemModal(V.activeId));
+    $('#btnOverviewSync', mainEl)?.addEventListener('click', () => {
+      if (window.Sync && typeof window.Sync.open === 'function') window.Sync.open();
+    });
 
     const exportAllBtn = $('#btnOverviewExportAll', mainEl);
     if (exportAllBtn) {
@@ -864,7 +1278,7 @@
       return `
         <tr>
           <td colspan="8" style="text-align:center;padding:18px;opacity:.7;">
-            Không có dữ liệu vật tư / tài sản phù hợp.
+            Không có dữ liệu vật tư / tài sản phù hợp trong thư mục này.
           </td>
         </tr>
       `;
@@ -929,22 +1343,93 @@
     }).join('');
   }
 
+  function bindMainTableEvents(mainEl, currentNodeId) {
+    $$('.btn-row-edit', mainEl).forEach(btn => {
+      btn.addEventListener('click', () => {
+        V.edit = true;
+        const btnEdit = $('#btnEdit');
+        if (btnEdit) btnEdit.setAttribute('aria-pressed', 'true');
+        const eb = $('#editbar');
+        if (eb) eb.hidden = false;
+        renderMain();
+      });
+    });
+
+    $$('.btn-row-del', mainEl).forEach(btn => {
+      btn.addEventListener('click', () => {
+        const idx = Number(btn.getAttribute('data-idx'));
+        const rows = getRowsForNode(currentNodeId);
+        if (!rows[idx]) return;
+        if (!confirm('Xoá dòng vật tư này?')) return;
+        rows.splice(idx, 1);
+        rows.forEach((r, i) => {
+          r.r = i + 1;
+          if (Array.isArray(r.v)) r.v[1] = String(i + 1);
+        });
+        persist();
+        render();
+        toast('Đã xoá dòng');
+      });
+    });
+
+    $$('.row-move-select', mainEl).forEach(sel => {
+      sel.addEventListener('change', () => {
+        const targetId = sel.value;
+        const idx = Number(sel.getAttribute('data-idx'));
+        if (targetId) moveRowToNode(currentNodeId, idx, targetId);
+      });
+    });
+
+    if (V.edit) {
+      $$('tbody tr[data-row-idx]', mainEl).forEach(tr => {
+        const idx = Number(tr.getAttribute('data-row-idx'));
+        const rows = getRowsForNode(currentNodeId);
+        const rowObj = rows[idx];
+        if (!rowObj) return;
+        $$('.cell-edit', tr).forEach(inp => {
+          const colIdx = Number(inp.getAttribute('data-col'));
+          const onCommit = () => {
+            const val = inp.value;
+            if (!Array.isArray(rowObj.v)) rowObj.v = [DEFAULT_SOURCE, String(idx + 1), '', '', '', '', ''];
+            rowObj.v[colIdx] = val;
+            if (colIdx === 0) {
+              const normSrc = normalizeSource(val, CFG.defaultSource);
+              rowObj.src = normSrc;
+              rowObj.v[0] = normSrc;
+            }
+            touch(rowObj);
+            persist();
+          };
+          inp.addEventListener('change', onCommit);
+        });
+      });
+    }
+  }
+
   function renderMain() {
     const mainEl = $('#main');
     if (!mainEl) return;
 
-    if (V.route.page === 'overview' && !V.query) {
-      renderOverview(mainEl);
+    if (V.route.page === 'overview') {
+      if (V.query && V.query.trim()) {
+        renderGlobalSearchView(mainEl);
+      } else {
+        renderOverview(mainEl);
+      }
       return;
     }
 
     const currentEntry = nodeById.get(V.activeId) || flatNodes[0];
-    if (!currentEntry) return;
+    if (!currentEntry) {
+      renderOverview(mainEl);
+      return;
+    }
     V.activeId = currentEntry.node.id;
 
     const node = currentEntry.node;
     const breadcrumb = currentEntry.pathNodes.map(n => n.label).join(' / ');
     const filtered = getFilteredRows(node.id);
+    const syncInfo = getSyncStatusInfo();
 
     const srcFilterOpts = ['ALL', ...SRC_LIST].map(opt => {
       const label = opt === 'ALL' ? 'Tất cả nguồn' : opt;
@@ -954,23 +1439,23 @@
     mainEl.innerHTML = `
       <div class="view-header" style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;">
         <div>
-          <div style="font-size:12px;opacity:.7;">${esc(breadcrumb)}</div>
-          <h2 style="margin:2px 0 0;font-size:20px;">${esc(node.icon || '')} ${esc(node.label)} <small style="font-weight:400;opacity:.7;">(${filtered.length} dòng)</small></h2>
+          <div style="font-size:12px;opacity:.7;">${esc(breadcrumb)} · ☁ ${esc(syncInfo.syncText)} (${esc(syncInfo.accountLabel)})</div>
+          <h2 style="margin:2px 0 0;font-size:20px;">${esc(node.icon || '📄')} ${esc(node.label)} <small style="font-weight:400;opacity:.7;">(${filtered.length} dòng)</small></h2>
         </div>
         <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;">
-          <select id="filterSource" aria-label="Lọc theo nguồn" style="padding:6px 8px;border-radius:6px;border:1px solid rgba(0,0,0,.2);">
+          <select id="selSourceFilter" aria-label="Lọc theo nguồn" style="padding:6px 8px;border-radius:6px;border:1px solid rgba(0,0,0,.2);background:#fff;font-size:13px;">
             ${srcFilterOpts}
           </select>
-          <button type="button" id="btnAddFolderHere" class="btn">＋ Thư mục mới</button>
-          <button type="button" id="btnAddRow" class="btn accent">+ Thêm dòng</button>
-          <button type="button" id="btnExportSheets" class="btn">📗 Xuất Excel (tách sheet)</button>
+          <button type="button" id="btnSheetAddItem" class="btn accent">+ Thêm vật tư</button>
+          <button type="button" id="btnSheetAddFolder" class="btn">＋ Tạo thư mục con</button>
+          <button type="button" id="btnSheetOverview" class="btn">🏠 Tổng quan</button>
         </div>
       </div>
 
       ${renderHorizontalBar(currentEntry)}
 
       <div class="table-wrap responsive-table-wrap" style="overflow-x:auto;-webkit-overflow-scrolling:touch;border:1px solid rgba(0,0,0,.12);border-radius:8px;background:#fff;">
-        <table id="statsTable" class="data-table" style="width:100%;border-collapse:collapse;">
+        <table class="data-table" style="width:100%;border-collapse:collapse;">
           <thead>
             <tr>
               <th style="white-space:nowrap;">Nguồn</th>
@@ -990,264 +1475,80 @@
       </div>
     `;
 
+    $('#selSourceFilter', mainEl)?.addEventListener('change', e => {
+      V.sourceFilter = e.target.value || 'ALL';
+      renderMain();
+    });
+
+    $('#btnSheetAddItem', mainEl)?.addEventListener('click', () => openAddItemModal(node.id));
+    $('#btnSheetAddFolder', mainEl)?.addEventListener('click', () => createFolderUnder(node.id));
+    $('#btnSheetOverview', mainEl)?.addEventListener('click', () => {
+      V.route = { page: 'overview', id: null };
+      render();
+    });
+
     $$('[data-h-node]', mainEl).forEach(btn => {
       btn.addEventListener('click', () => {
-        V.activeId = btn.getAttribute('data-h-node');
-        V.route = { page: 'sheet', id: V.activeId };
-        render();
+        const targetId = btn.getAttribute('data-h-node');
+        if (targetId && nodeById.has(targetId)) {
+          V.activeId = targetId;
+          expandAncestorsOf(targetId);
+          V.route = { page: 'sheet', id: targetId };
+          render();
+        }
       });
     });
 
-    const filterEl = $('#filterSource', mainEl);
-    if (filterEl) {
-      filterEl.addEventListener('change', () => {
-        V.sourceFilter = filterEl.value;
-        renderMain();
-      });
-    }
-
-    const addFolderBtn = $('#btnAddFolderHere', mainEl);
-    if (addFolderBtn) {
-      addFolderBtn.addEventListener('click', () => createFolderUnder(node.id));
-    }
-
-    const addBtn = $('#btnAddRow', mainEl);
-    if (addBtn) {
-      addBtn.addEventListener('click', () => {
-        const rows = getRowsForNode(node.id);
-        const defaultSrc = V.sourceFilter !== 'ALL' ? V.sourceFilter : CFG.defaultSource;
-        rows.push(normalizeRow({
-          i: 'u' + uid(),
-          src: defaultSrc,
-          v: [defaultSrc, String(rows.length + 1), '', '', '', '', '']
-        }, rows.length, defaultSrc, STANDARD_COLS, node.id));
-        persist();
-        render();
-      });
-    }
-
-    const exportBtn = $('#btnExportSheets', mainEl);
-    if (exportBtn) {
-      exportBtn.addEventListener('click', () => exportExcelSeparateSheets(currentEntry.node));
-    }
-
-    $$('.cell-edit', mainEl).forEach(inp => {
-      inp.addEventListener('change', () => {
-        const tr = inp.closest('tr');
-        const idx = Number(tr && tr.getAttribute('data-row-idx'));
-        const col = Number(inp.getAttribute('data-col'));
-        const rows = getRowsForNode(node.id);
-        if (!rows[idx]) return;
-        const norm = normalizeRow(rows[idx], idx, CFG.defaultSource, STANDARD_COLS, node.id);
-        norm.v[col] = inp.value;
-        if (col === 0) norm.src = normalizeSource(inp.value, CFG.defaultSource);
-        rows[idx] = norm;
-        persist();
-        renderSidebar();
-      });
-    });
-
-    $$('.btn-row-edit', mainEl).forEach(btn => {
-      btn.addEventListener('click', () => {
-        V.edit = true;
-        const editBtn = $('#btnEdit');
-        if (editBtn) editBtn.setAttribute('aria-pressed', 'true');
-        renderMain();
-      });
-    });
-
-    $$('.row-move-select', mainEl).forEach(sel => {
-      sel.addEventListener('change', () => {
-        const destId = sel.value;
-        if (!destId) return;
-        const idx = Number(sel.getAttribute('data-idx'));
-        moveRowToNode(node.id, idx, destId);
-      });
-    });
-
-    $$('.btn-row-del', mainEl).forEach(btn => {
-      btn.addEventListener('click', () => {
-        const idx = Number(btn.getAttribute('data-idx'));
-        const rows = getRowsForNode(node.id);
-        if (!rows[idx]) return;
-        rows.splice(idx, 1);
-        persist();
-        render();
-      });
-    });
-  }
-
-  function exportExcelSeparateSheets(targetNode) {
-    if (typeof XLSX === 'undefined') {
-      toast('Chưa tải được thư viện Excel (XLSX).', 4000);
-      return;
-    }
-
-    const leaves = collectLeafNodes(targetNode);
-    const sheetTargets = leaves.length ? leaves : [targetNode];
-    const wb = XLSX.utils.book_new();
-    const usedNames = new Set();
-
-    for (const itemNode of sheetTargets) {
-      const rawTitle = CFG.sheetLabels[itemNode.id] || itemNode.label || itemNode.id;
-      const sheetName = sanitizeSheetName(rawTitle, usedNames);
-      const rows = getRowsForNode(itemNode.id);
-
-      const aoa = [STANDARD_COLS.slice()];
-      rows.forEach((r, idx) => {
-        const norm = normalizeRow(r, idx, CFG.defaultSource, STANDARD_COLS, itemNode.id);
-        aoa.push([
-          norm.v[0],
-          norm.v[1] || String(idx + 1),
-          norm.v[2],
-          norm.v[3],
-          norm.v[4],
-          norm.v[5],
-          norm.v[6]
-        ]);
-      });
-
-      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), sheetName);
-    }
-
-    const slug = fold(targetNode.label || 'thong-ke').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'thong-ke';
-    XLSX.writeFile(wb, `${slug}-cac-sheet.xlsx`);
-  }
-
-  function handleImportFile(ev) {
-    const file = ev.target && ev.target.files && ev.target.files[0];
-    ev.target.value = '';
-    if (!file) return;
-
-    if (typeof XLSX === 'undefined') {
-      toast('Chưa tải được thư viện XLSX để đọc tệp.', 4000);
-      return;
-    }
-
-    const reader = new FileReader();
-    reader.onload = e => {
-      try {
-        const wb = XLSX.read(e.target.result, { type: 'array' });
-        let importedCount = 0;
-
-        wb.SheetNames.forEach(sheetName => {
-          const ws = wb.Sheets[sheetName];
-          const aoa = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
-          if (!Array.isArray(aoa) || !aoa.length) return;
-
-          const fallbackTargetId =
-            resolveTargetNodeId(sheetName) ||
-            resolveTargetNodeId(aoa[0] && aoa[0][0]) ||
-            V.activeId ||
-            (flatNodes[0] && flatNodes[0].node.id);
-
-          for (let rIdx = 0; rIdx < aoa.length; rIdx++) {
-            const rowArr = aoa[rIdx];
-            if (!Array.isArray(rowArr) || !rowArr.some(c => String(c || '').trim() !== '')) continue;
-
-            const c0 = String(rowArr[0] || '').trim().toLowerCase();
-            const c1 = String(rowArr[1] || '').trim().toLowerCase();
-            if (c0 === 'nguồn' || c0 === 'nguon' || c1 === 'stt') continue;
-
-            const hasSourceCol = SRC_LIST.some(opt => fold(opt) === fold(rowArr[0]));
-            const src = hasSourceCol ? normalizeSource(rowArr[0], CFG.defaultSource) : CFG.defaultSource;
-            const tenVT = String(hasSourceCol ? rowArr[2] : (rowArr[2] || rowArr[1] || rowArr[0] || '')).trim();
-            const serial = String(hasSourceCol ? rowArr[3] : (rowArr[3] || '')).trim();
-            const maVT = String(hasSourceCol ? rowArr[4] : (rowArr[1] || '')).trim();
-            const partNo = String(hasSourceCol ? rowArr[5] : (rowArr[4] || '')).trim();
-            const ghiChu = String(hasSourceCol ? rowArr[6] : (rowArr[5] || '')).trim();
-
-            if (!tenVT && !serial && !maVT && !partNo) continue;
-
-            const draftRow = normalizeRow({
-              i: 'u' + uid(),
-              src,
-              v: [src, '0', tenVT, serial, maVT, partNo, ghiChu]
-            }, 0, src, STANDARD_COLS, fallbackTargetId);
-
-            const targetId = classifyRowTarget(sheetName, sheetName, draftRow, fallbackTargetId);
-            if (!targetId) continue;
-            const destRows = getRowsForNode(targetId);
-            draftRow.v[1] = String(destRows.length + 1);
-            destRows.push(draftRow);
-            importedCount++;
-          }
-        });
-
-        persist();
-        render();
-        toast(`Đã nhập ${importedCount} dòng dữ liệu.`, 3500);
-      } catch (err) {
-        toast('Lỗi đọc tệp: ' + (err && err.message ? err.message : err), 4500);
-      }
-    };
-    reader.readAsArrayBuffer(file);
+    bindMainTableEvents(mainEl, node.id);
   }
 
   function render() {
-    syncSTFromStore();
     renderSidebar();
     renderMain();
   }
 
-  function refreshFromSync() {
-    syncStoreFromST();
-    render();
-  }
-
-  function bindGlobal() {
+  function bindEvents() {
     const sb = $('#sidebar');
-    const overlay = $('#overlay');
-    const btnMenu = $('#btnMenu');
-
-    if (btnMenu && sb) {
-      btnMenu.addEventListener('click', () => {
-        sb.classList.toggle('open');
-        if (overlay) overlay.classList.toggle('show', sb.classList.contains('open'));
-      });
-    }
-    if (overlay && sb) {
-      overlay.addEventListener('click', () => {
-        sb.classList.remove('open');
-        overlay.classList.remove('show');
-      });
-    }
-
     if (sb) {
       sb.addEventListener('click', e => {
         const toggleBtn = e.target.closest('[data-toggle-node]');
         if (toggleBtn) {
+          e.stopPropagation();
           const nid = toggleBtn.getAttribute('data-toggle-node');
           V.treeCollapsed[nid] = !V.treeCollapsed[nid];
           renderSidebar();
           return;
         }
 
-        const createBtn = e.target.closest('[data-create-folder]');
-        if (createBtn) {
-          createFolderUnder(createBtn.getAttribute('data-create-folder'));
+        const goOv = e.target.closest('[data-go-overview]');
+        if (goOv) {
+          V.route = { page: 'overview', id: null };
+          render();
+          closeMobileSidebar();
+          return;
+        }
+
+        const createF = e.target.closest('[data-create-folder]');
+        if (createF) {
+          createFolderUnder(createF.getAttribute('data-create-folder'));
           return;
         }
 
         const nodeBtn = e.target.closest('[data-node-id]');
         if (nodeBtn) {
-          V.activeId = nodeBtn.getAttribute('data-node-id');
-          V.route = { page: 'sheet', id: V.activeId };
-          if (sb.classList.contains('open')) {
-            sb.classList.remove('open');
-            if (overlay) overlay.classList.remove('show');
+          const nid = nodeBtn.getAttribute('data-node-id');
+          if (nid && nodeById.has(nid)) {
+            const entry = nodeById.get(nid);
+            const hasChildren = entry && Array.isArray(entry.node.children) && entry.node.children.length > 0;
+            if (hasChildren) {
+              V.treeCollapsed[nid] = !V.treeCollapsed[nid];
+            }
+            V.activeId = nid;
+            expandAncestorsOf(nid);
+            V.route = { page: 'sheet', id: nid };
+            render();
+            if (!hasChildren) closeMobileSidebar();
           }
-          render();
-          return;
-        }
-
-        if (e.target.closest('[data-go-overview]')) {
-          V.route = { page: 'overview', id: null };
-          if (sb.classList.contains('open')) {
-            sb.classList.remove('open');
-            if (overlay) overlay.classList.remove('show');
-          }
-          render();
         }
       });
     }
@@ -1256,7 +1557,7 @@
     const gqClear = $('#gqClear');
     if (gq) {
       gq.addEventListener('input', () => {
-        V.query = gq.value;
+        V.query = gq.value || '';
         if (gqClear) gqClear.hidden = !V.query;
         renderMain();
       });
@@ -1271,65 +1572,137 @@
     }
 
     const btnEdit = $('#btnEdit');
+    const editbar = $('#editbar');
     if (btnEdit) {
       btnEdit.addEventListener('click', () => {
         V.edit = !V.edit;
         btnEdit.setAttribute('aria-pressed', String(V.edit));
-        const eb = $('#editbar');
-        if (eb) eb.hidden = !V.edit;
+        if (editbar) editbar.hidden = !V.edit;
         renderMain();
       });
     }
 
-    const btnPrint = $('#btnPrint');
-    if (btnPrint) btnPrint.addEventListener('click', () => window.print());
-
     const btnTheme = $('#btnTheme');
     if (btnTheme) {
       btnTheme.addEventListener('click', () => {
-        const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
-        document.documentElement.dataset.theme = next;
-        localStorage.setItem(LS('theme'), next);
+        document.body.classList.toggle('dark');
       });
     }
 
-    const importInput = $('#importFileInput');
-    if (importInput) importInput.addEventListener('change', handleImportFile);
+    const btnPrint = $('#btnPrint');
+    if (btnPrint) {
+      btnPrint.addEventListener('click', () => window.print());
+    }
 
-    $$('#menuExport [data-act]').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const act = btn.getAttribute('data-act');
-        const curEntry = nodeById.get(V.activeId) || flatNodes[0];
-        if (act === 'xlsx-all') {
-          if (typeof XLSX === 'undefined') return;
+    const menuExport = $('#menuExport');
+    if (menuExport) {
+      menuExport.addEventListener('click', e => {
+        const actBtn = e.target.closest('[data-act]');
+        if (!actBtn) return;
+        const act = actBtn.getAttribute('data-act');
+        if (act === 'reset') {
+          if (confirm('Khôi phục toàn bộ dữ liệu gốc? Mọi thay đổi chưa xuất sẽ mất.')) {
+            resetToBaseline();
+            render();
+            toast('Đã khôi phục dữ liệu gốc');
+          }
+        } else if (act === 'json-out') {
+          const blob = new Blob([JSON.stringify({
+            customFolders: customFoldersByParent,
+            sheets: ST.sheets,
+            slips: ST.slips
+          }, null, 2)], { type: 'application/json' });
+          const a = document.createElement('a');
+          a.href = URL.createObjectURL(blob);
+          a.download = 'vat-tu-tai-san-backup.json';
+          a.click();
+        } else if (act === 'json-in') {
+          $('#fileIn')?.click();
+        } else if (act === 'csv-cur') {
+          const targetId = V.activeId || (flatNodes[0] && flatNodes[0].node.id);
+          const rows = targetId ? getRowsForNode(targetId) : [];
+          const csvLines = [STANDARD_COLS.join(',')].concat(
+            rows.map((r, i) => normalizeRow(r, i, CFG.defaultSource, STANDARD_COLS, targetId).v
+              .map(cell => `"${String(cell ?? '').replace(/"/g, '""')}"`).join(','))
+          );
+          const blob = new Blob(['\ufeff' + csvLines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+          const a = document.createElement('a');
+          a.href = URL.createObjectURL(blob);
+          a.download = `${targetId || 'sheet'}.csv`;
+          a.click();
+        } else if (act === 'xlsx-cur' && typeof XLSX !== 'undefined') {
+          const targetId = V.activeId || (flatNodes[0] && flatNodes[0].node.id);
+          const entry = nodeById.get(targetId);
+          const rows = targetId ? getRowsForNode(targetId).map((r, i) => normalizeRow(r, i, CFG.defaultSource, STANDARD_COLS, targetId).v) : [];
+          const wb = XLSX.utils.book_new();
+          XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([STANDARD_COLS.slice(), ...rows]), sanitizeSheetName(entry ? entry.node.label : 'Sheet', new Set()));
+          XLSX.writeFile(wb, `${targetId || 'sheet'}.xlsx`);
+        } else if (act === 'xlsx-all' && typeof XLSX !== 'undefined') {
           const wb = XLSX.utils.book_new();
           const used = new Set();
           for (const entry of flatNodes) {
             const n = entry.node;
             if (Array.isArray(n.children) && n.children.length > 0) continue;
-            const sName = sanitizeSheetName(CFG.sheetLabels[n.id] || n.label, used);
             const rows = getRowsForNode(n.id).map((r, i) => normalizeRow(r, i, CFG.defaultSource, STANDARD_COLS, n.id).v);
-            XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([STANDARD_COLS.slice(), ...rows]), sName);
+            XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([STANDARD_COLS.slice(), ...rows]), sanitizeSheetName(n.label, used));
           }
-          XLSX.writeFile(wb, 'vat-tu-tai-san-all-sheets.xlsx');
-        } else if (act === 'xlsx-cur' && curEntry) {
-          exportExcelSeparateSheets(curEntry.node);
-        } else if (act === 'json-out') {
-          syncSTFromStore();
-          const blob = new Blob([JSON.stringify({ sheets: ST.sheets, slips: ST.slips, customFolders: customFoldersByParent }, null, 2)], { type: 'application/json' });
-          const a = document.createElement('a');
-          a.href = URL.createObjectURL(blob);
-          a.download = 'sao-luu-vat-tu-tai-san.json';
-          a.click();
-          setTimeout(() => URL.revokeObjectURL(a.href), 500);
-        } else if (act === 'reset') {
-          if (confirm('Khôi phục dữ liệu gốc? Mọi chỉnh sửa trên máy sẽ mất.')) {
-            resetToBaseline();
-            render();
-            toast('Đã khôi phục dữ liệu gốc');
-          }
+          XLSX.writeFile(wb, 'vat-tu-tai-san-all.xlsx');
         }
+        menuExport.removeAttribute('open');
       });
+    }
+
+    const fileIn = $('#fileIn');
+    if (fileIn) {
+      fileIn.addEventListener('change', () => {
+        const f = fileIn.files && fileIn.files[0];
+        if (!f) return;
+        const reader = new FileReader();
+        reader.onload = () => {
+          try {
+            const parsed = JSON.parse(String(reader.result || '{}'));
+            if (parsed.customFolders) customFoldersByParent = parsed.customFolders;
+            rebuildTreeIndex();
+            initCollapsedState(true);
+            if (Array.isArray(parsed.sheets)) {
+              ensureIds(parsed.sheets);
+              storeData = buildStoreFromSheets(parsed.sheets);
+            }
+            if (parsed.slips) ST.slips = parsed.slips;
+            persist();
+            render();
+            toast('Đã nhập sao lưu JSON');
+          } catch (_) {
+            toast('File JSON không hợp lệ', 3500);
+          }
+        };
+        reader.readAsText(f);
+        fileIn.value = '';
+      });
+    }
+
+    const btnMenu = $('#btnMenu');
+    const sidebar = $('#sidebar');
+    const overlay = $('#overlay');
+    function closeMobileSidebar() {
+      if (sidebar) sidebar.classList.remove('open');
+      if (overlay) overlay.classList.remove('show');
+    }
+    if (btnMenu) {
+      btnMenu.addEventListener('click', () => {
+        if (sidebar) sidebar.classList.toggle('open');
+        if (overlay) overlay.classList.toggle('show');
+      });
+    }
+    if (overlay) {
+      overlay.addEventListener('click', closeMobileSidebar);
+    }
+
+    document.addEventListener('keydown', e => {
+      if (e.key === '/' && document.activeElement !== gq && !/INPUT|TEXTAREA|SELECT/.test((document.activeElement && document.activeElement.tagName) || '')) {
+        e.preventDefault();
+        gq?.focus();
+      }
     });
 
     window.addEventListener('hashchange', () => {
@@ -1338,98 +1711,51 @@
     });
   }
 
+  function boot() {
+    try {
+      const tEl = $('#appTitle');
+      const sEl = $('#appSub');
+      if (tEl) tEl.textContent = CFG.title || 'Tài sản – Vật tư Truyền dẫn LAB';
+      if (sEl) sEl.textContent = CFG.subtitle || '';
+
+      if (window.APP_DATA && Array.isArray(window.APP_DATA.sheets)) {
+        DATA = window.APP_DATA;
+      }
+
+      loadState();
+      parseHash();
+      bindEvents();
+      render();
+    } catch (e) {
+      renderOverview($('#main') || document.body);
+      toast('Đã tải giao diện dự phòng', 3500);
+    } finally {
+      hideBoot();
+      if (window.Sync && typeof window.Sync.init === 'function') {
+        window.Sync.init(window.LabApp);
+      }
+    }
+  }
+
   window.LabApp = {
-    BUILD,
+    ver: BUILD,
     CFG,
+    DATA,
+    ST,
+    V,
     esc,
-    uid,
-    fold,
-    tokensOf,
-    toast,
+    normalizeSource,
     sheetById,
     labelOf,
     isStock,
     stockRows,
-    normalizeSource,
-    normalizeRow,
-    SOURCE_OPTIONS: SRC_LIST,
-    STANDARD_COLS,
-    get DATA() { return DATA; },
-    get ST() { return ST; },
-    get V() { return V; },
+    touch,
     saveLocal,
-    persist,
     resetToBaseline,
-    refresh: refreshFromSync,
-    render,
-    keepScroll: fn => { const y = window.scrollY; fn(); window.scrollTo(0, y); },
-    touch: () => {}
+    refresh: render,
+    toast,
+    openAddItemModal
   };
-
-  function start(data) {
-    DATA = Object.assign({ meta: { source: 'LAB', generated: '', version: '' }, sheets: [] }, data || {});
-    loadState();
-    parseHash();
-
-    const appTitle = $('#appTitle');
-    const appSub = $('#appSub');
-    if (appTitle) appTitle.textContent = CFG.title;
-    if (appSub) appSub.textContent = CFG.subtitle;
-    const dirtyEl = $('#dirty');
-    if (dirtyEl) dirtyEl.hidden = !ST.dirty;
-
-    try { if (window.Slips && typeof window.Slips.init === 'function') window.Slips.init(window.LabApp); } catch (_) {}
-    try { if (window.Sync && typeof window.Sync.init === 'function') window.Sync.init(window.LabApp); } catch (_) {}
-
-    bindGlobal();
-    render();
-
-    const boot = $('#boot');
-    const topbar = $('#topbar');
-    const layout = $('#layout');
-    if (boot) boot.remove();
-    if (topbar) topbar.hidden = false;
-    if (layout) layout.hidden = false;
-  }
-
-  async function decrypt(enc, pw) {
-    const b64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
-    const km = await crypto.subtle.importKey('raw', new TextEncoder().encode(pw), 'PBKDF2', false, ['deriveKey']);
-    const key = await crypto.subtle.deriveKey({ name: 'PBKDF2', salt: b64(enc.salt), iterations: enc.iter, hash: 'SHA-256' }, km, { name: 'AES-GCM', length: 256 }, false, ['decrypt']);
-    const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: b64(enc.iv) }, key, b64(enc.ct));
-    return JSON.parse(new TextDecoder().decode(pt));
-  }
-
-  function unlock() {
-    const bootEl = $('#boot');
-    if (!bootEl) return;
-    bootEl.innerHTML = `<form class="lock" id="lockForm"><h2>🔒 ${esc(CFG.title)}</h2><p>Dữ liệu được bảo vệ bằng mật khẩu.</p>
-      <input type="password" id="pw" placeholder="Nhập mật khẩu" autocomplete="current-password" autofocus><div class="err" id="pwErr"></div><button>Mở khoá</button></form>`;
-    $('#lockForm').addEventListener('submit', async ev => {
-      ev.preventDefault();
-      const err = $('#pwErr');
-      if (err) err.textContent = 'Đang giải mã…';
-      try {
-        if (!window.crypto || !crypto.subtle) throw new Error('nocrypto');
-        start(await decrypt(window.LAB_DATA_ENC, $('#pw').value));
-      } catch (e) {
-        if (err) err.textContent = e.message === 'nocrypto' ? 'Trình duyệt cần mở bằng https://' : 'Sai mật khẩu.';
-      }
-    });
-  }
-
-  function boot() {
-    const t = localStorage.getItem(LS('theme')) || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
-    document.documentElement.dataset.theme = t;
-
-    if (window.LAB_DATA) {
-      start(window.LAB_DATA);
-    } else if (window.LAB_DATA_ENC) {
-      unlock();
-    } else {
-      start({ meta: { source: 'LAB', generated: '', version: '' }, sheets: [] });
-    }
-  }
 
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', boot);
