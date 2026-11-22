@@ -6,7 +6,7 @@
 <meta name="theme-color" content="#0b3a5b">
 <title>Tài sản – Vật tư Truyền dẫn LAB</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E📡%3C/text%3E%3C/svg%3E">
-<link rel="stylesheet" href="assets/style.css?v=2026.11.22-4">
+<link rel="stylesheet" href="assets/style.css?v=2026.11.21-4">
 <style>
   .data-table th,
   .data-table td {
@@ -41,31 +41,6 @@
     background: #fff;
     color: inherit;
   }
-  .device-sync-pill {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    padding: 4px 9px;
-    border-radius: 999px;
-    font-size: 12px;
-    font-weight: 600;
-    background: rgba(11, 58, 91, 0.09);
-    color: #0b3a5b;
-    border: 1px solid rgba(11, 58, 91, 0.22);
-    white-space: nowrap;
-  }
-  .btn-add-folder-featured {
-    background: #f59e0b !important;
-    color: #111827 !important;
-    border: 2px solid #b45309 !important;
-    font-weight: 700 !important;
-    padding: 7px 14px !important;
-    box-shadow: 0 3px 10px rgba(245, 158, 11, 0.45);
-  }
-  .btn-add-folder-featured:hover {
-    background: #d97706 !important;
-    color: #fff !important;
-  }
   @media (max-width: 768px) {
     .data-table th,
     .data-table td {
@@ -74,9 +49,6 @@
     }
     .view-header h2 {
       font-size: 17px !important;
-    }
-    .device-sync-pill {
-      display: none;
     }
   }
 </style>
@@ -93,14 +65,12 @@
   </a>
   <label class="search">
     <span aria-hidden="true">🔍</span>
-    <input id="gq" type="search" title="Phím tắt: / — Tìm tất cả từ khóa tại Trang chủ, hoặc trong thư mục đang mở" placeholder="Tìm mã VT, tên vật tư, serial, part number…" autocomplete="off" spellcheck="false">
+    <input id="gq" type="search" title="Phím tắt: /" placeholder="Tìm serial, part number, tên vật tư…" autocomplete="off" spellcheck="false">
     <button id="gqClear" type="button" class="search-clear" hidden aria-label="Xoá tìm kiếm">✕</button>
   </label>
   <div class="actions">
     <span id="dirty" class="dirty" hidden title="Bạn đã chỉnh sửa dữ liệu – chỉ lưu trên trình duyệt này">● Đã chỉnh sửa</span>
-    <span id="deviceSyncBadge" class="device-sync-pill" title="Trạng thái đồng bộ nhiều thiết bị (admin / khach)">📱 Đa thiết bị</span>
     <button id="btnSync" class="btn ghost sync-off" type="button" title="Đồng bộ nhiều thiết bị"><i>☁</i> <span>Chỉ trên máy</span></button>
-    <button id="btnTopAddItem" class="btn accent" type="button" title="Thêm vật tư mới (có danh sách sổ Mã VT, Tên VT, Serial, Part number)">＋ <span>Thêm vật tư</span></button>
     <button id="btnPXK" class="btn accent" type="button" title="Tạo phiếu xuất kho">📤 <span>Phiếu xuất</span></button>
     <button id="btnPNK" class="btn accent" type="button" title="Tạo phiếu nhập kho">📥 <span>Phiếu nhập</span></button>
     <button id="btnEdit" class="btn" type="button" aria-pressed="false">✏️ <span>Chỉnh sửa</span></button>
@@ -141,51 +111,13 @@
 <div id="printRoot"></div>
 <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
-<script>
-  document.addEventListener('DOMContentLoaded', function () {
-    const topAddBtn = document.getElementById('btnTopAddItem');
-    if (topAddBtn) {
-      topAddBtn.addEventListener('click', function () {
-        if (window.LabApp && typeof window.LabApp.openAddItemModal === 'function') {
-          const activeId = (window.LabApp.V && window.LabApp.V.activeId) || null;
-          window.LabApp.openAddItemModal(activeId);
-        }
-      });
-    }
-
-    const badge = document.getElementById('deviceSyncBadge');
-    const syncBtn = document.getElementById('btnSync');
-    if (badge) {
-      badge.addEventListener('click', function () {
-        if (window.Sync && typeof window.Sync.open === 'function') window.Sync.open();
-      });
-      badge.style.cursor = 'pointer';
-    }
-
-    const refreshBadge = function () {
-      if (!badge) return;
-      const role = localStorage.getItem('lab_user_role') || '';
-      const user = localStorage.getItem('lab_username') || '';
-      const who = user ? `${user}${role ? ' (' + role + ')' : ''}` : (role === 'guest' ? 'khach' : 'admin / khach');
-      const stateTxt = syncBtn && syncBtn.querySelector('span') ? syncBtn.querySelector('span').textContent.trim() : 'Đa thiết bị';
-      badge.textContent = `📱 ${stateTxt} · ${who}`;
-    };
-
-    refreshBadge();
-    if (syncBtn && typeof MutationObserver !== 'undefined') {
-      new MutationObserver(refreshBadge).observe(syncBtn, { childList: true, subtree: true, attributes: true });
-    }
-  });
-</script>
-
-<script src="assets/config.js?v=2026.11.22-4"></script>
+<script src="assets/config.js?v=2026.11.21-4"></script>
 <script src="assets/data.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js" defer></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js" defer></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdfjs-dist/3.11.174/pdf.min.js" defer></script>
-<script src="assets/app.js?v=2026.11.22-4" defer></script>
-<script src="assets/slips.js?v=2026.11.22-4" defer></script>
-<script src="assets/sync.js?v=2026.11.22-4" defer></script>
+<script src="assets/app.js?v=2026.11.21-4" defer></script>
+<script src="assets/slips.js?v=2026.11.21-4" defer></script>
+<script src="assets/sync.js?v=2026.11.21-4" defer></script>
 </body>
 </html>
-```[cite: 16]
