@@ -1,79 +1,84 @@
 /* =====================================================================
-   assets/sync.js – ĐỒNG BỘ DỮ LIỆU ĐA THIẾT BỊ (Firebase Realtime DB + Auth)
+   assets/sync.js – ĐỒNG BỘ DỮ LIỆU ĐA THIẾT BỊ & PHÂN QUYỀN (Admin vs Guest)
+   Phiên bản: 2026.11.21-5
    ===================================================================== */
 (function () {
   'use strict';
 
-  const BUILD = '2026.11.21-5';
-  const COLS = ['rows', 'slips', 'blocks'];
+  var BUILD = '2026.11.21-5';
+  var SOURCE_OPTIONS = ['Vật tư', 'Tài sản', 'Đo kiểm', 'Sửa chữa', 'Không rõ nguồn'];
+  var DEFAULT_SOURCE = 'Không rõ nguồn';
+  var STANDARD_COLS = ['Nguồn', 'STT', 'Tên Vật Tư', 'Serial', 'Mã VT', 'Part number', 'Ghi chú'];
 
-  let A = null;
-  let ad = null;
-
-  const S = {
-    st: 'off', // off | loading | need-auth | synced | syncing | offline | error
-    user: null,
-    role: 'admin',
-    M: { rows: {}, slips: {}, blocks: {} },
-    since: { rows: 0, slips: 0, blocks: 0 },
-    inited: false,
-    baseline: null,
-    subscribed: false,
-    pushing: false,
-    retry: 0,
-    lastOk: 0,
-    err: '',
-    pushT: null,
-    retryT: null,
-    reconciling: false,
-    loginOpen: false
+  var A = null, CS = null, ad = null;
+  var S = {
+    st: 'off', user: null, M: null, since: null, inited: false, baseline: null,
+    subscribed: false, pushing: false, retry: 0, lastOk: 0, err: '',
+    pending: 0, conflicts: 0, ready: { rows: false, blocks: false },
+    remoteSeen: 0, applyT: null, pushT: null, retryT: null, reconciling: false, loginShown: false
   };
+  var COLS = ['rows', 'blocks'];
 
-  const $ = (s, el = document) => el.querySelector(s);
-  const esc = s => (A && typeof A.esc === 'function')
-    ? A.esc(s == null ? '' : s)
-    : String(s == null ? '' : s).replace(/[&<>"']/g, c => ({
-        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
-      }[c]));
-  const clone = o => JSON.parse(JSON.stringify(o));
-
-  function cfgSync() {
-    return (A && A.CFG && A.CFG.sync) || (window.APP_CONFIG && window.APP_CONFIG.sync) || {};
+  function $(s, el) { return (el || document).querySelector(s); }
+  function esc(s) {
+    return A && typeof A.esc === 'function'
+      ? A.esc(s == null ? '' : s)
+      : String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+          return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+        });
+  }
+  function clone(o) {
+    try { return JSON.parse(JSON.stringify(o)); } catch (e) { return o; }
   }
 
-  function authUsersMap() {
-    return (A && A.CFG && A.CFG.authUsers) || (window.APP_CONFIG && window.APP_CONFIG.authUsers) || {};
+  function normSrc(val, fallback) {
+    if (A && typeof A.normalizeSource === 'function') return A.normalizeSource(val, fallback || DEFAULT_SOURCE);
+    var def = fallback || DEFAULT_SOURCE;
+    if (!val) return def;
+    var raw = String(val).trim();
+    var hit = SOURCE_OPTIONS.filter(function (x) { return x.toLowerCase() === raw.toLowerCase(); })[0];
+    return hit || def;
   }
 
-  function storagePrefix() {
-    const sk = (A && A.CFG && A.CFG.storageKey) || (window.APP_CONFIG && window.APP_CONFIG.storageKey) || 'vat-tu-tai-san-lab-v2';
-    const ws = (cfgSync().workspace) || 'default';
-    return `${sk}:sync:${ws}:`;
-  }
-
-  function enabled() {
-    const c = cfgSync();
-    return Boolean(
-      c &&
-      c.provider === 'firebase' &&
-      c.firebase &&
-      c.firebase.apiKey &&
-      c.firebase.databaseURL
-    );
+  function normVec(v, fallbackSrc) {
+    var src = normSrc(fallbackSrc || (Array.isArray(v) ? v[0] : ''), DEFAULT_SOURCE);
+    var arr = Array.isArray(v) ? v.slice() : [];
+    var hasSrcFirst = arr.length >= 7 && SOURCE_OPTIONS.some(function (opt) {
+      return opt.toLowerCase() === String(arr[0] || '').trim().toLowerCase();
+    });
+    if (hasSrcFirst) {
+      return [
+        src,
+        String(arr[1] != null && arr[1] !== '' ? arr[1] : '1'),
+        String(arr[2] || ''),
+        String(arr[3] || ''),
+        String(arr[4] || ''),
+        String(arr[5] || ''),
+        String(arr[6] || '')
+      ];
+    }
+    return [
+      src,
+      String(arr[0] != null && arr[0] !== '' ? arr[0] : '1'),
+      String(arr[2] || ''),
+      String(arr[3] || ''),
+      String(arr[1] || ''),
+      String(arr[4] || ''),
+      String(arr[5] || '')
+    ];
   }
 
   function stable(v) {
     if (v === undefined || v === null) return 'null';
     if (typeof v !== 'object') return JSON.stringify(v);
     if (Array.isArray(v)) return '[' + v.map(stable).join(',') + ']';
-    return '{' + Object.keys(v).sort().map(k => JSON.stringify(k) + ':' + stable(v[k])).join(',') + '}';
+    return '{' + Object.keys(v).sort().map(function (k) { return JSON.stringify(k) + ':' + stable(v[k]); }).join(',') + '}';
   }
 
-  function hashStr(str) {
-    let h1 = 0xdeadbeef;
-    let h2 = 0x41c6ce57;
-    for (let i = 0; i < str.length; i++) {
-      const ch = str.charCodeAt(i);
+  function hash(str) {
+    var h1 = 0xdeadbeef, h2 = 0x41c6ce57, i, ch;
+    for (i = 0; i < str.length; i++) {
+      ch = str.charCodeAt(i);
       h1 = Math.imul(h1 ^ ch, 2654435761);
       h2 = Math.imul(h2 ^ ch, 1597334677);
     }
@@ -82,667 +87,844 @@
     return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36);
   }
 
-  const sig = obj => hashStr(stable(obj));
+  function nz(o) { return o && Object.keys(o).length ? o : null; }
+
+  function rowSig(r, sid, bt) {
+    var src = normSrc(r && (r.src || (r.v && r.v[0])), DEFAULT_SOURCE);
+    var vec = normVec(r && r.v, src);
+    return hash(stable([
+      sid || (r && r.sid) || '',
+      bt || (r && r.bt) || '',
+      src,
+      vec,
+      nz(r && r.f),
+      (r && r.p && r.p.length) ? r.p : null,
+      nz(r && r.s)
+    ]));
+  }
+
+  function blockSig(b) {
+    return hash(stable([
+      (b && b.title) || '',
+      (b && b.ord) || 0,
+      STANDARD_COLS
+    ]));
+  }
+
+  function enc(key) { return encodeURIComponent(key); }
+
+  function ws() { return (CS && CS.workspace) || 'lab-xvt'; }
+  function metaKey() { return ((A && A.CFG && A.CFG.storageKey) || 'lab-xvt-v1') + ':sync:' + ws(); }
 
   function loadMeta() {
     try {
-      const raw = localStorage.getItem(storagePrefix() + 'meta');
-      if (!raw) return null;
-      return JSON.parse(raw);
-    } catch (_) {
-      return null;
-    }
+      var m = JSON.parse(localStorage.getItem(metaKey()) || 'null');
+      var ver = (A && A.DATA && A.DATA.meta && A.DATA.meta.version) || '';
+      if (m && m.ver === ver) return m;
+    } catch (e) { }
+    return null;
   }
 
   function saveMeta() {
     try {
-      localStorage.setItem(storagePrefix() + 'meta', JSON.stringify({
+      localStorage.setItem(metaKey(), JSON.stringify({
+        ver: (A && A.DATA && A.DATA.meta && A.DATA.meta.version) || '',
         since: S.since,
         M: S.M,
-        inited: S.inited,
-        lastOk: S.lastOk
+        inited: S.inited
       }));
-    } catch (_) {}
+    } catch (e) { }
   }
 
-  function snapshotNow() {
-    const rows = {};
-    const blocks = {};
-    const sheets = (A && A.ST && Array.isArray(A.ST.sheets)) ? A.ST.sheets : [];
+  function enabled() {
+    var c = (A && A.CFG && A.CFG.sync) || {};
+    if (c.provider === 'off') return false;
+    return !!((c.provider === 'firebase' && c.firebase && c.firebase.projectId) ||
+              (c.provider === 'server' && c.server && c.server.url));
+  }
 
-    sheets.forEach(s => {
-      (s.blocks || []).forEach((b, bi) => {
-        const bid = `${s.id}::${bi}`;
-        blocks[bid] = {
-          id: bid,
-          sheetId: s.id,
-          title: b.title || '',
-          cols: Array.isArray(b.cols) ? b.cols.slice() : [],
-          hr: b.hr != null ? b.hr : 1,
-          ord: b.ord != null ? b.ord : bi,
-          deleted: false
-        };
-        (b.rows || []).forEach((r, ri) => {
-          const rid = r.i || `${bid}:${r.r || ri + 1}`;
-          rows[rid] = {
-            id: rid,
-            sheetId: s.id,
-            blockId: bid,
-            r: r.r != null ? r.r : ri + 1,
-            src: r.src || (Array.isArray(r.v) ? r.v[0] : ''),
-            v: Array.isArray(r.v) ? r.v.slice() : [],
-            f: r.f ? clone(r.f) : undefined,
-            deleted: false
-          };
-        });
-      });
-    });
-
-    const slips = {};
-    const rawSlips = (A && A.ST && Array.isArray(A.ST.slips)) ? A.ST.slips : [];
-    rawSlips.forEach((sl, idx) => {
-      if (!sl) return;
-      const sid = sl.id || `slip-${idx}`;
-      slips[sid] = Object.assign({}, clone(sl), { id: sid, deleted: false });
-    });
-
-    return { rows, slips, blocks };
+  function deviceId() {
+    var k = ((A && A.CFG && A.CFG.storageKey) || 'lab-xvt-v1') + ':device', v = null;
+    try {
+      v = localStorage.getItem(k);
+      if (!v) {
+        v = 'd' + Math.random().toString(36).slice(2, 8);
+        localStorage.setItem(k, v);
+      }
+    } catch (e) { v = 'dx'; }
+    return v;
   }
 
   function buildBaseline() {
-    const snap = snapshotNow();
-    const base = { rows: {}, slips: {}, blocks: {} };
-    COLS.forEach(col => {
-      Object.keys(snap[col]).forEach(id => {
-        base[col][id] = sig(snap[col][id]);
+    var rows = new Map(), blocks = new Set();
+    var sheets = (A && A.DATA && A.DATA.sheets) || [];
+    sheets.forEach(function (s) {
+      (s.blocks || []).forEach(function (b, bi) {
+        blocks.add(s.id + '|' + b.title);
+        (b.rows || []).forEach(function (r) {
+          rows.set(s.id + ':' + bi + ':' + r.r, { sid: s.id, bt: b.title, sig: rowSig(r, s.id, b.title) });
+        });
       });
     });
-    return base;
+    return { rows: rows, blocks: blocks };
   }
 
-  function updateButtonUI() {
-    const btn = $('#btnSync');
-    if (!btn) return;
-
-    const span = btn.querySelector('span');
-    btn.classList.remove('sync-off', 'sync-ok', 'sync-busy', 'sync-err');
-
-    if (!enabled()) {
-      btn.classList.add('sync-off');
-      btn.title = 'Chưa cấu hình đồng bộ nhiều thiết bị';
-      if (span) span.textContent = 'Chỉ trên máy';
-      return;
-    }
-
-    if (S.st === 'loading' || S.st === 'syncing') {
-      btn.classList.add('sync-busy');
-      btn.title = 'Đang đồng bộ dữ liệu với đám mây...';
-      if (span) span.textContent = 'Đang đồng bộ';
-    } else if (S.st === 'synced') {
-      btn.classList.add('sync-ok');
-      btn.title = `Đã đồng bộ nhiều thiết bị (${S.user && (S.user.email || S.user.uid) || 'online'})`;
-      if (span) span.textContent = 'Đã đồng bộ';
-    } else if (S.st === 'need-auth') {
-      btn.classList.add('sync-off');
-      btn.title = 'Bấm để đăng nhập đồng bộ nhiều thiết bị';
-      if (span) span.textContent = 'Đăng nhập đồng bộ';
-    } else if (S.st === 'offline') {
-      btn.classList.add('sync-err');
-      btn.title = 'Mất kết nối mạng – đang lưu cục bộ';
-      if (span) span.textContent = 'Ngoại tuyến';
-    } else if (S.st === 'error') {
-      btn.classList.add('sync-err');
-      btn.title = S.err || 'Lỗi đồng bộ';
-      if (span) span.textContent = 'Lỗi đồng bộ';
-    } else {
-      btn.classList.add('sync-off');
-      btn.title = 'Chỉ lưu trên máy này – bấm để kết nối đồng bộ';
-      if (span) span.textContent = 'Chỉ trên máy';
-    }
-  }
-
-  function setState(nextSt, errMsg = '') {
-    S.st = nextSt;
-    if (errMsg) S.err = errMsg;
-    else if (nextSt === 'synced' || nextSt === 'syncing') S.err = '';
-    updateButtonUI();
-    if (S.loginOpen) renderModal();
-  }
-
-  function loadScriptOnce(url) {
-    return new Promise((resolve, reject) => {
-      const existing = Array.from(document.scripts).find(sc => sc.src === url);
-      if (existing) {
-        if (existing.dataset.loaded === '1' || window.firebase) return resolve();
-        existing.addEventListener('load', () => resolve(), { once: true });
-        existing.addEventListener('error', () => reject(new Error('Không tải được ' + url)), { once: true });
-        return;
-      }
-      const sc = document.createElement('script');
-      sc.src = url;
-      sc.async = true;
-      sc.onload = () => {
-        sc.dataset.loaded = '1';
-        resolve();
-      };
-      sc.onerror = () => reject(new Error('Không tải được ' + url));
-      document.head.appendChild(sc);
-    });
-  }
-
-  async function ensureFirebaseSDK() {
-    if (window.firebase && window.firebase.apps) return window.firebase;
-    const base = 'https://www.gstatic.com/firebasejs/10.12.2';
-    await loadScriptOnce(`${base}/firebase-app-compat.js`);
-    await loadScriptOnce(`${base}/firebase-auth-compat.js`);
-    await loadScriptOnce(`${base}/firebase-database-compat.js`);
-    return window.firebase;
-  }
-
-  function createFirebaseAdapter() {
-    let app = null;
-    let auth = null;
-    let db = null;
-    let listeners = [];
-
-    function detachListeners() {
-      listeners.forEach(fn => {
-        try { if (typeof fn === 'function') fn(); } catch (_) {}
+  function localRows() {
+    var m = new Map();
+    var sheets = (A && A.ST && A.ST.sheets) || [];
+    sheets.forEach(function (s) {
+      (s.blocks || []).forEach(function (b, bi) {
+        (b.rows || []).forEach(function (r) {
+          if (r.i) m.set(r.i, { s: s, b: b, bi: bi, row: r });
+        });
       });
-      listeners = [];
-      S.subscribed = false;
-    }
+    });
+    return m;
+  }
 
-    function wsRoot() {
-      const ws = (cfgSync().workspace) || 'default';
-      return db.ref(`workspaces/${ws}`);
-    }
-
+  function rowData(e) {
+    var r = e.row;
+    var src = normSrc(r.src || (r.v && r.v[0]), DEFAULT_SOURCE);
+    var vec = normVec(r.v, src);
     return {
-      async init(onUser) {
-        const fb = await ensureFirebaseSDK();
-        const fbCfg = cfgSync().firebase;
-        const appName = 'lab-sync-' + ((cfgSync().workspace) || 'default');
-        app = fb.apps.find(x => x.name === appName) || fb.initializeApp(fbCfg, appName);
-        auth = fb.auth(app);
-        db = fb.database(app);
-
-        auth.onAuthStateChanged(async user => {
-          if (user) {
-            await onUser(user);
-            return;
-          }
-          // Thử đăng nhập ẩn danh tự động nếu Firebase Auth cho phép
-          try {
-            const cred = await auth.signInAnonymously();
-            if (cred && cred.user) {
-              await onUser(cred.user);
-              return;
-            }
-          } catch (_) {}
-          await onUser(null);
-        });
-      },
-
-      async signInWithEmail(email, password) {
-        if (!auth) throw new Error('Firebase Auth chưa sẵn sàng.');
-        const cred = await auth.signInWithEmailAndPassword(email, password);
-        return cred.user;
-      },
-
-      async signInGuestOrAnon() {
-        if (!auth) throw new Error('Firebase Auth chưa sẵn sàng.');
-        const cred = await auth.signInAnonymously();
-        return cred.user;
-      },
-
-      async signOut() {
-        detachListeners();
-        if (auth) await auth.signOut();
-      },
-
-      subscribe(onRemoteItem) {
-        if (!db || S.subscribed) return;
-        S.subscribed = true;
-        const root = wsRoot();
-
-        COLS.forEach(col => {
-          const ref = root.child(col);
-          const handler = snap => {
-            if (!snap.exists()) return;
-            const val = snap.val();
-            if (!val || typeof val !== 'object') return;
-            Object.keys(val).forEach(key => {
-              onRemoteItem(col, key, val[key]);
-            });
-          };
-          ref.on('value', handler, err => {
-            S.err = 'Lỗi đọc dữ liệu từ Firebase: ' + (err && err.message ? err.message : err);
-            setState('error');
-          });
-          listeners.push(() => ref.off('value', handler));
-        });
-      },
-
-      async pushBatch(col, updatesObj) {
-        if (!db || !updatesObj || !Object.keys(updatesObj).length) return;
-        const root = wsRoot();
-        await root.child(col).update(updatesObj);
-      },
-
-      async pullAll() {
-        if (!db) return;
-        const root = wsRoot();
-        const snap = await root.once('value');
-        if (!snap.exists()) return;
-        const data = snap.val() || {};
-        COLS.forEach(col => {
-          const mapObj = data[col];
-          if (mapObj && typeof mapObj === 'object') {
-            Object.keys(mapObj).forEach(k => applyRemoteRecord(col, k, mapObj[k]));
-          }
-        });
-      }
+      rid: r.i,
+      sid: e.s.id,
+      bt: e.b.title,
+      r: r.r || 0,
+      ct: r.ct || 0,
+      src: src,
+      v: vec,
+      f: nz(r.f),
+      p: (r.p && r.p.length) ? r.p.slice() : null,
+      s: nz(r.s),
+      del: false
     };
   }
 
-  function applyRemoteRecord(col, id, rec) {
-    if (!rec || typeof rec !== 'object' || !A || !A.ST) return;
-    const ts = Number(rec._ts || rec.updatedAt || Date.now());
-    const prevTs = Number((S.M[col] && S.M[col][id]) || 0);
-    if (ts < prevTs && S.inited) return;
-
-    S.reconciling = true;
-    try {
-      if (col === 'blocks') {
-        const sheets = Array.isArray(A.ST.sheets) ? A.ST.sheets : [];
-        let sh = sheets.find(s => s.id === rec.sheetId);
-        if (!sh && rec.sheetId) {
-          sh = {
-            id: rec.sheetId,
-            name: rec.title || rec.sheetId,
-            blocks: []
-          };
-          sheets.push(sh);
-        }
-        if (sh) {
-          const parts = String(id).split('::');
-          const bIdx = Math.max(0, Number(parts[1] != null ? parts[1] : (rec.ord || 0)));
-          if (rec.deleted) {
-            if (sh.blocks[bIdx]) sh.blocks.splice(bIdx, 1);
-          } else {
-            const existing = sh.blocks[bIdx] || { title: rec.title || '', cols: A.STANDARD_COLS || [], rows: [] };
-            existing.title = rec.title != null ? rec.title : existing.title;
-            if (Array.isArray(rec.cols) && rec.cols.length) existing.cols = rec.cols.slice();
-            if (rec.hr != null) existing.hr = rec.hr;
-            if (rec.ord != null) existing.ord = rec.ord;
-            if (!Array.isArray(existing.rows)) existing.rows = [];
-            sh.blocks[bIdx] = existing;
-          }
-        }
-      } else if (col === 'rows') {
-        const sheets = Array.isArray(A.ST.sheets) ? A.ST.sheets : [];
-        const parts = String(rec.blockId || '').split('::');
-        const targetSheetId = rec.sheetId || parts[0];
-        const targetBlockIdx = Math.max(0, Number(parts[1] || 0));
-
-        let sh = sheets.find(s => s.id === targetSheetId);
-        if (!sh && targetSheetId) {
-          sh = { id: targetSheetId, name: targetSheetId, blocks: [] };
-          sheets.push(sh);
-        }
-        if (sh) {
-          if (!Array.isArray(sh.blocks) || !sh.blocks.length) {
-            sh.blocks = [{ title: sh.name || targetSheetId, cols: A.STANDARD_COLS || [], rows: [] }];
-          }
-          const blk = sh.blocks[targetBlockIdx] || sh.blocks[0];
-          if (!Array.isArray(blk.rows)) blk.rows = [];
-          const foundIdx = blk.rows.findIndex(r => r && r.i === id);
-
-          if (rec.deleted) {
-            if (foundIdx >= 0) blk.rows.splice(foundIdx, 1);
-          } else {
-            const rowObj = {
-              i: id,
-              r: rec.r != null ? rec.r : (foundIdx >= 0 ? foundIdx + 1 : blk.rows.length + 1),
-              src: rec.src || (Array.isArray(rec.v) ? rec.v[0] : ''),
-              v: Array.isArray(rec.v) ? rec.v.slice() : [],
-              f: rec.f ? clone(rec.f) : undefined
-            };
-            if (foundIdx >= 0) blk.rows[foundIdx] = Object.assign({}, blk.rows[foundIdx], rowObj);
-            else blk.rows.push(rowObj);
-          }
-        }
-      } else if (col === 'slips') {
-        if (!Array.isArray(A.ST.slips)) A.ST.slips = [];
-        const idx = A.ST.slips.findIndex(s => s && s.id === id);
-        if (rec.deleted) {
-          if (idx >= 0) A.ST.slips.splice(idx, 1);
-        } else {
-          const cleanSlip = clone(rec);
-          delete cleanSlip.deleted;
-          cleanSlip.id = id;
-          if (idx >= 0) A.ST.slips[idx] = cleanSlip;
-          else A.ST.slips.push(cleanSlip);
-        }
+  function computeOps() {
+    if (!S.baseline || !S.M || !A || !A.ST) return [];
+    var ops = [], base = S.baseline, lr = localRows(), M = S.M;
+    lr.forEach(function (e, rid) {
+      var sig = rowSig(e.row, e.s.id, e.b.title), last = M.rows[rid];
+      var need = last !== undefined ? last !== sig : (!base.rows.has(rid) || base.rows.get(rid).sig !== sig);
+      if (need) ops.push({ col: 'rows', key: rid, sig: sig, data: rowData(e) });
+    });
+    base.rows.forEach(function (b, rid) {
+      if (!lr.has(rid) && M.rows[rid] !== 'DEL') {
+        ops.push({ col: 'rows', key: rid, sig: 'DEL', data: { rid: rid, sid: b.sid, bt: b.bt, del: true } });
       }
+    });
+    Object.keys(M.rows).forEach(function (rid) {
+      if (!lr.has(rid) && !base.rows.has(rid) && M.rows[rid] !== 'DEL') {
+        ops.push({ col: 'rows', key: rid, sig: 'DEL', data: { rid: rid, sid: '', bt: '', del: true } });
+      }
+    });
+    (A.ST.sheets || []).forEach(function (s) {
+      (s.blocks || []).forEach(function (b) {
+        var key = s.id + '|' + b.title;
+        if (base.blocks.has(key)) return;
+        var sig = blockSig(b);
+        if (M.blocks[key] !== sig) {
+          ops.push({
+            col: 'blocks',
+            key: key,
+            sig: sig,
+            data: { sid: s.id, title: b.title, cols: STANDARD_COLS.slice(), ord: b.ord || 0, del: false }
+          });
+        }
+      });
+    });
+    return ops;
+  }
 
-      if (!S.M[col]) S.M[col] = {};
-      S.M[col][id] = ts;
-      if (!S.baseline) S.baseline = { rows: {}, slips: {}, blocks: {} };
-      if (!S.baseline[col]) S.baseline[col] = {};
-      S.baseline[col][id] = rec.deleted ? '__DELETED__' : sig(rec);
-      if (ts > (S.since[col] || 0)) S.since[col] = ts;
-
-      if (typeof A.saveLocal === 'function') A.saveLocal();
-      if (typeof A.refresh === 'function') A.refresh();
-    } finally {
-      S.reconciling = false;
+  function applyRoleUI() {
+    var currentRole = localStorage.getItem('lab_user_role');
+    var isGuest = currentRole === 'guest';
+    var btnEdit = $('#btnEdit');
+    if (btnEdit) btnEdit.style.display = isGuest ? 'none' : '';
+    if (isGuest) {
+      document.querySelectorAll('#main button, #main .tbtn, #main select.row-move-select').forEach(function (el) {
+        var text = (el.textContent || '').toLowerCase();
+        var idClass = ((el.id || '') + ' ' + (el.className || '')).toLowerCase();
+        if (text.includes('thêm') || text.includes('xoá') || text.includes('chuyển') || idClass.includes('admin') || el.classList.contains('row-move-select')) {
+          if (!text.includes('xem')) {
+            el.style.opacity = '0.35';
+            el.style.pointerEvents = 'none';
+            el.title = 'Tài khoản Khách chỉ có quyền xem.';
+          }
+        }
+      });
     }
   }
 
-  async function pushNow() {
-    if (!enabled() || !ad || !S.user || S.reconciling) return;
-    if (!navigator.onLine) {
-      setState('offline');
+  function setState(st) {
+    S.st = st;
+    var b = $('#btnSync');
+    if (b) {
+      var map = {
+        off: ['☁', 'Chỉ trên máy', 'off'],
+        login: ['🔒', 'Đăng nhập', 'login'],
+        syncing: ['🔄', 'Đang đồng bộ…', 'syncing'],
+        ok: ['☁✓', 'Đã đồng bộ', 'ok'],
+        offline: ['⚠', 'Chờ mạng', 'bad'],
+        error: ['⚠', 'Lỗi đồng bộ', 'bad'],
+        loading: ['🔄', 'Đang kết nối…', 'syncing']
+      };
+      var m = map[st] || map.off;
+      var n = S.pending > 0 && (st === 'offline' || st === 'error') ? ' (' + S.pending + ')' : '';
+      b.className = 'btn ghost sync-' + m[2];
+      b.innerHTML = '<i>' + m[0] + '</i> <span>' + m[1] + n + '</span>';
+      b.title = 'Đồng bộ: ' + m[1] + (S.lastOk ? ' – lần cuối ' + new Date(S.lastOk).toLocaleTimeString('vi-VN') : '') + (S.err ? '\n' + S.err : '');
+    }
+    var p = $('#syncPanel');
+    if (p) renderPanel();
+    applyRoleUI();
+  }
+
+  function schedule(delay) {
+    if (!A || !ad || !S.user || !S.subscribed || (!S.inited && !S.reconciling)) {
+      if (ad && S.user && !S.inited) setState(S.st);
       return;
     }
-    if (S.pushing) return;
+    S.pending = computeOps().length;
+    setState(S.st === 'ok' && S.pending > 0 ? 'syncing' : S.st);
+    clearTimeout(S.pushT);
+    S.pushT = setTimeout(push, delay == null ? 600 : delay);
+  }
+
+  function push() {
+    if (localStorage.getItem('lab_user_role') === 'guest') return Promise.resolve();
+    if (S.pushing || !ad || !S.user || !S.subscribed || !S.inited) return Promise.resolve();
+
+    var ops = computeOps();
+    S.pending = ops.length;
+    if (!ops.length) {
+      if (S.st !== 'loading') setState('ok');
+      return Promise.resolve();
+    }
 
     S.pushing = true;
     setState('syncing');
+    var chunks = [];
+    for (var i = 0; i < ops.length; i += 250) chunks.push(ops.slice(i, i + 250));
 
-    try {
-      const nowSnap = snapshotNow();
-      if (!S.baseline) S.baseline = { rows: {}, slips: {}, blocks: {} };
-      const nowTs = Date.now();
-      const devId = (S.user && S.user.uid) || 'web';
-
-      for (const col of COLS) {
-        if (!S.baseline[col]) S.baseline[col] = {};
-        if (!S.M[col]) S.M[col] = {};
-        const updates = {};
-
-        // 1. Thêm mới hoặc cập nhật
-        Object.keys(nowSnap[col]).forEach(id => {
-          const item = nowSnap[col][id];
-          const curSig = sig(item);
-          if (S.baseline[col][id] !== curSig) {
-            const payload = Object.assign({}, item, {
-              deleted: false,
-              _ts: nowTs,
-              _by: devId
-            });
-            updates[id] = payload;
-            S.baseline[col][id] = curSig;
-            S.M[col][id] = nowTs;
-          }
+    return chunks.reduce(function (p, ch) {
+      return p.then(function () {
+        return ad.commit(ch.map(function (o) {
+          return { col: o.col, id: enc(o.key), data: o.data };
+        })).then(function () {
+          ch.forEach(function (o) { S.M[o.col][o.key] = o.sig; });
+          saveMeta();
         });
+      });
+    }, Promise.resolve()).then(function () {
+      S.pushing = false;
+      S.retry = 0;
+      S.lastOk = Date.now();
+      S.err = '';
+      S.pending = 0;
+      if (A && A.ST) {
+        A.ST.dirty = false;
+        var dirtyEl = $('#dirty');
+        if (dirtyEl) dirtyEl.hidden = true;
+        if (A.saveLocal) A.saveLocal();
+      }
+      setState('ok');
+      if (computeOps().length) schedule(300);
+    }).catch(function (e) {
+      S.pushing = false;
+      S.err = ad.errText ? ad.errText(e) : String((e && e.message) || e);
+      S.pending = ops.length;
+      setState(navigator.onLine === false ? 'offline' : 'error');
+      retryLater();
+    });
+  }
 
-        // 2. Đánh dấu xoá nếu từng có trong baseline nhưng hiện không còn
-        Object.keys(S.baseline[col]).forEach(id => {
-          if (S.baseline[col][id] !== '__DELETED__' && !nowSnap[col][id]) {
-            updates[id] = {
-              id,
-              deleted: true,
-              _ts: nowTs,
-              _by: devId
-            };
-            S.baseline[col][id] = '__DELETED__';
-            S.M[col][id] = nowTs;
-          }
-        });
+  function pushNow() { return push(); }
+  function active() { return !!(ad && S.user && S.subscribed && S.inited); }
 
-        if (Object.keys(updates).length > 0) {
-          await ad.pushBatch(col, updates);
-          S.since[col] = Math.max(S.since[col] || 0, nowTs);
+  function retryLater() {
+    clearTimeout(S.retryT);
+    S.retry++;
+    var wait = Math.min(60000, 3000 * Math.pow(2, Math.min(S.retry, 4)));
+    S.retryT = setTimeout(function () { push(); }, wait);
+  }
+
+  function ensureSheet(sid, title) {
+    if (!sid || !A || !A.ST || !Array.isArray(A.ST.sheets)) return null;
+    var s = A.sheetById(sid);
+    if (s) return s;
+    s = {
+      id: sid,
+      name: title || sid,
+      categoryId: sid,
+      group: 0,
+      blocks: []
+    };
+    A.ST.sheets.push(s);
+    return s;
+  }
+
+  function ensureBlock(sid, title) {
+    var s = ensureSheet(sid, title);
+    if (!s) return null;
+    if (!Array.isArray(s.blocks)) s.blocks = [];
+    for (var i = 0; i < s.blocks.length; i++) {
+      if (s.blocks[i].title === title) {
+        s.blocks[i].cols = STANDARD_COLS.slice();
+        return s.blocks[i];
+      }
+    }
+    var b = { title: title || s.name || sid, hr: 0, cols: STANDARD_COLS.slice(), rows: [], ord: 0 };
+    s.blocks.push(b);
+    return b;
+  }
+
+  function sortRuntimeBlocks(s) {
+    var base = S.baseline.blocks, keep = [], rt = [];
+    s.blocks.forEach(function (b) { (base.has(s.id + '|' + b.title) ? keep : rt).push(b); });
+    rt.sort(function (a, b) { return (a.ord || 0) - (b.ord || 0) || (a.title < b.title ? -1 : 1); });
+    s.blocks.length = 0;
+    keep.concat(rt).forEach(function (b) { s.blocks.push(b); });
+  }
+
+  function placeNew(b, row) {
+    var k = b.rows.length;
+    while (k > 0 && b.rows[k - 1].ct && row.ct && b.rows[k - 1].ct > row.ct) k--;
+    b.rows.splice(k, 0, row);
+  }
+
+  function applyRow(d) {
+    var data = d.data, rid = data.rid;
+    if (!rid) return false;
+    var rs = data.del ? 'DEL' : rowSig(data, data.sid, data.bt);
+    var idx = localRows(), cur = idx.get(rid);
+    var ls = cur ? rowSig(cur.row, cur.s.id, cur.b.title) : 'DEL';
+    var last = S.M.rows[rid], base = S.baseline.rows.get(rid);
+    var dirty = last !== undefined ? last !== ls : (base ? base.sig !== ls : ls !== 'DEL');
+
+    if (rs === ls) { S.M.rows[rid] = rs; return false; }
+    if (dirty && S.inited && S.pushing) { S.conflicts++; return false; }
+
+    if (rs === 'DEL') {
+      if (cur) {
+        var k = cur.b.rows.indexOf(cur.row);
+        if (k >= 0) cur.b.rows.splice(k, 1);
+      }
+      S.M.rows[rid] = 'DEL';
+      return true;
+    }
+
+    var src = normSrc(data.src || (data.v && data.v[0]), DEFAULT_SOURCE);
+    var vec = normVec(data.v, src);
+
+    if (cur) {
+      if (data.sid && data.bt && (cur.s.id !== data.sid || cur.b.title !== data.bt)) {
+        var oldIdx = cur.b.rows.indexOf(cur.row);
+        if (oldIdx >= 0) cur.b.rows.splice(oldIdx, 1);
+        var targetBlock = ensureBlock(data.sid, data.bt);
+        if (targetBlock) {
+          var movedRow = Object.assign({}, cur.row, { src: src, v: vec });
+          placeNew(targetBlock, movedRow);
+          cur.row = movedRow;
         }
       }
-
-      S.inited = true;
-      S.lastOk = nowTs;
-      S.retry = 0;
-      saveMeta();
-      setState('synced');
-    } catch (err) {
-      S.err = 'Lỗi đẩy dữ liệu lên đám mây: ' + (err && err.message ? err.message : err);
-      setState('error');
-      S.retry++;
-      clearTimeout(S.retryT);
-      S.retryT = setTimeout(() => pushNow(), Math.min(30000, 1500 * Math.pow(2, Math.min(S.retry, 5))));
-    } finally {
-      S.pushing = false;
+      var r = cur.row;
+      r.src = src;
+      r.v = vec;
+      delete r.c; delete r.x; delete r.n;
+      ['f', 's'].forEach(function (k) { if (nz(data[k])) r[k] = clone(data[k]); else delete r[k]; });
+      if (data.p && data.p.length) r.p = data.p.slice(); else delete r.p;
+      if (A.touch) A.touch(r);
+    } else {
+      var b = ensureBlock(data.sid, data.bt);
+      if (!b) return false;
+      var row = {
+        r: data.r || 0,
+        i: rid,
+        ct: data.ct || 0,
+        src: src,
+        v: vec
+      };
+      if (nz(data.f)) row.f = clone(data.f);
+      if (nz(data.s)) row.s = clone(data.s);
+      if (data.p && data.p.length) row.p = data.p.slice();
+      placeNew(b, row);
     }
+    S.M.rows[rid] = rs;
+    return true;
   }
 
-  function schedule(delay = 400) {
-    if (!enabled() || S.reconciling) return;
-    clearTimeout(S.pushT);
-    S.pushT = setTimeout(() => {
-      if (S.user) {
-        pushNow();
-      } else {
-        updateButtonUI();
-      }
-    }, delay);
-  }
-
-  function active() {
-    return Boolean(enabled() && S.user && (S.st === 'synced' || S.st === 'syncing'));
-  }
-
-  async function onUser(user) {
-    S.user = user || null;
-    if (!user) {
-      S.subscribed = false;
-      setState(navigator.onLine ? 'need-auth' : 'offline');
-      return;
+  function applyBlock(d) {
+    var data = d.data;
+    if (data.del || !data.sid) return false;
+    var s = ensureSheet(data.sid, data.title);
+    if (!s) return false;
+    var key = data.sid + '|' + data.title, b = null, i;
+    for (i = 0; i < s.blocks.length; i++) if (s.blocks[i].title === data.title) b = s.blocks[i];
+    var changed = false;
+    if (!b) {
+      b = { title: data.title, hr: 0, cols: STANDARD_COLS.slice(), rows: [], ord: data.ord || 0 };
+      s.blocks.push(b);
+      changed = true;
+    } else if (blockSig(b) !== blockSig(data) || (data.ord && b.ord !== data.ord)) {
+      b.cols = STANDARD_COLS.slice();
+      b.ord = data.ord || b.ord;
+      changed = true;
     }
+    sortRuntimeBlocks(s);
+    S.M.blocks[key] = blockSig(data);
+    return changed;
+  }
 
-    const users = authUsersMap();
-    const matched = Object.values(users).find(u => u && String(u.email || '').toLowerCase() === String(user.email || '').toLowerCase());
-    S.role = (matched && matched.role) || (user.isAnonymous ? 'guest' : 'admin');
+  function onDocs(col, docs) {
+    if (COLS.indexOf(col) < 0) return;
+    var changed = 0, maxUpd = S.since[col] || 0;
+    docs.sort(function (a, b) { return (a.upd || 0) - (b.upd || 0); });
+    S.reconciling = true;
     try {
-      localStorage.setItem('lab_user_role', S.role);
-    } catch (_) {}
-
-    if (!navigator.onLine) {
-      setState('offline');
-      return;
-    }
-
-    setState('syncing');
-    try {
-      if (ad && typeof ad.pullAll === 'function') {
-        await ad.pullAll();
-      }
-      if (ad && typeof ad.subscribe === 'function') {
-        ad.subscribe((col, id, rec) => applyRemoteRecord(col, id, rec));
-      }
-      await pushNow();
-      setState('synced');
-    } catch (err) {
-      S.err = 'Không khởi tạo được đồng bộ: ' + (err && err.message ? err.message : err);
-      setState('error');
-    }
-  }
-
-  function closePanel() {
-    S.loginOpen = false;
-    const host = $('#mdSync');
-    if (host) host.innerHTML = '';
-  }
-
-  function renderModal() {
-    let host = $('#mdSync');
-    if (!host) {
-      host = document.createElement('div');
-      host.id = 'mdSync';
-      document.body.appendChild(host);
-    }
-    if (!S.loginOpen) {
-      host.innerHTML = '';
-      return;
-    }
-
-    const users = authUsersMap();
-    const presets = Object.keys(users);
-    const presetHtml = presets.map(k => {
-      const u = users[k];
-      return `<button type="button" class="btn" data-preset="${esc(k)}" style="padding:5px 9px;font-size:12px;">${esc(u.name || k)} (${esc(u.email)})</button>`;
-    }).join('');
-
-    const statusLabel = {
-      'off': 'Chưa bật đồng bộ',
-      'loading': 'Đang tải thư viện...',
-      'need-auth': 'Cần đăng nhập để đồng bộ nhiều thiết bị',
-      'syncing': 'Đang đồng bộ...',
-      'synced': 'Đã đồng bộ nhiều thiết bị',
-      'offline': 'Mất kết nối mạng',
-      'error': 'Có lỗi kết nối'
-    }[S.st] || S.st;
-
-    host.innerHTML = `
-      <div class="modal-backdrop" id="syncBackdrop" style="position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:9999;padding:12px;">
-        <div class="modal" style="width:100%;max-width:440px;background:#fff;color:#111;border-radius:10px;padding:16px;box-shadow:0 12px 30px rgba(0,0,0,.25);">
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
-            <h3 style="margin:0;font-size:17px;">☁ Đồng bộ dữ liệu nhiều thiết bị</h3>
-            <button type="button" id="btnCloseSyncModal" style="border:0;background:transparent;font-size:18px;cursor:pointer;">✕</button>
-          </div>
-
-          <div style="font-size:13px;padding:8px 10px;border-radius:6px;background:rgba(11,58,91,.07);margin-bottom:12px;">
-            <div><b>Trạng thái:</b> ${esc(statusLabel)}</div>
-            ${S.user ? `<div><b>Tài khoản:</b> ${esc(S.user.email || ('Khách (' + S.user.uid.slice(0, 6) + ')'))} · <b>Quyền:</b> ${esc(S.role)}</div>` : ''}
-            ${S.lastOk ? `<div><b>Lần đồng bộ cuối:</b> ${esc(new Date(S.lastOk).toLocaleTimeString('vi-VN'))}</div>` : ''}
-            ${S.err ? `<div style="color:#b91c1c;margin-top:4px;"><b>Chi tiết:</b> ${esc(S.err)}</div>` : ''}
-          </div>
-
-          ${!S.user ? `
-            <form id="syncLoginForm" style="display:flex;flex-direction:column;gap:8px;">
-              ${presetHtml ? `<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:4px;">${presetHtml}</div>` : ''}
-              <label style="font-size:12px;font-weight:600;">Email đăng nhập Firebase</label>
-              <input id="syncEmail" type="email" placeholder="admin@lab-xvt.local" required style="padding:7px 9px;border:1px solid #cbd5e1;border-radius:6px;">
-              <label style="font-size:12px;font-weight:600;">Mật khẩu</label>
-              <input id="syncPass" type="password" placeholder="Nhập mật khẩu" required style="padding:7px 9px;border:1px solid #cbd5e1;border-radius:6px;">
-              <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:6px;">
-                <button type="submit" class="btn accent">🔑 Đăng nhập đồng bộ</button>
-                <button type="button" id="btnSyncGuest" class="btn">👤 Vào chế độ Khách</button>
-              </div>
-            </form>
-          ` : `
-            <div style="display:flex;flex-wrap:wrap;gap:8px;">
-              <button type="button" id="btnSyncPushNow" class="btn accent">🔄 Đồng bộ ngay</button>
-              <button type="button" id="btnSyncSignOut" class="btn">Đăng xuất</button>
-            </div>
-          `}
-        </div>
-      </div>
-    `;
-
-    $('#btnCloseSyncModal', host)?.addEventListener('click', closePanel);
-    $('#syncBackdrop', host)?.addEventListener('click', e => {
-      if (e.target && e.target.id === 'syncBackdrop') closePanel();
-    });
-
-    host.querySelectorAll('[data-preset]').forEach(b => {
-      b.addEventListener('click', () => {
-        const key = b.getAttribute('data-preset');
-        const u = users[key];
-        const inp = $('#syncEmail', host);
-        if (inp && u && u.email) inp.value = u.email;
-        $('#syncPass', host)?.focus();
+      docs.forEach(function (d) {
+        S.remoteSeen++;
+        if (d.upd && d.upd > maxUpd) maxUpd = d.upd;
+        var ok = col === 'rows' ? applyRow(d) : applyBlock(d);
+        if (ok) changed++;
       });
-    });
+    } finally {
+      S.reconciling = false;
+    }
+    if (maxUpd > 0) S.since[col] = Math.max(0, maxUpd - 1);
+    saveMeta();
 
-    $('#syncLoginForm', host)?.addEventListener('submit', async e => {
-      e.preventDefault();
-      const email = ($('#syncEmail', host)?.value || '').trim();
-      const pass = $('#syncPass', host)?.value || '';
-      if (!email || !pass || !ad) return;
-      setState('loading');
-      try {
-        await ad.signInWithEmail(email, pass);
-        if (A && typeof A.toast === 'function') A.toast('Đã đăng nhập đồng bộ nhiều thiết bị');
-      } catch (err) {
-        S.err = 'Đăng nhập thất bại: ' + (err && err.message ? err.message : err);
-        setState('error');
+    if (changed) {
+      S.changed = (S.changed || 0) + changed;
+      if (A && A.saveLocal) A.saveLocal();
+      safeRender();
+      if (S.inited && A && A.toast) {
+        A.toast('☁ Đã đồng bộ ' + changed + ' thay đổi từ thiết bị khác', 2500);
       }
-    });
+    }
+    if (!S.ready[col]) {
+      S.ready[col] = true;
+      maybeReconcile();
+    }
+    if (S.inited && !S.pushing && computeOps().length) {
+      schedule(500);
+    }
+  }
 
-    $('#btnSyncGuest', host)?.addEventListener('click', async () => {
-      if (!ad) return;
-      setState('loading');
-      try {
-        await ad.signInGuestOrAnon();
-        if (A && typeof A.toast === 'function') A.toast('Đã kết nối chế độ Khách');
-      } catch (err) {
-        S.err = 'Không vào được chế độ Khách: ' + (err && err.message ? err.message : err);
-        setState('error');
+  function safeRender() {
+    clearTimeout(S.applyT);
+    S.applyT = setTimeout(function tryRender() {
+      var ae = document.activeElement;
+      if (ae && ae.closest && ae.closest('#main') && (ae.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName))) {
+        S.applyT = setTimeout(tryRender, 1500);
+        return;
       }
-    });
+      if (A && typeof A.refresh === 'function') A.refresh();
+      applyRoleUI();
+    }, 200);
+  }
 
-    $('#btnSyncPushNow', host)?.addEventListener('click', () => pushNow());
-    $('#btnSyncSignOut', host)?.addEventListener('click', async () => {
-      if (ad && typeof ad.signOut === 'function') await ad.signOut();
-      S.user = null;
-      setState('need-auth');
-    });
+  function maybeReconcile() {
+    if (S.inited || S.reconciling || !(S.ready.rows && S.ready.blocks)) return;
+    S.reconciling = true;
+    var ops = computeOps(), hasRemote = S.remoteSeen > 0;
+    if (ops.length && hasRemote && localStorage.getItem('lab_user_role') !== 'guest') {
+      var merge = confirm(
+        'Thiết bị này đang có ' + ops.length + ' thay đổi chưa đồng bộ, trong khi đám mây đã có dữ liệu.\n\n' +
+        'OK  = GỘP: giữ thay đổi của thiết bị này và đẩy lên đám mây\n' +
+        'Hủy = BỎ dữ liệu trên thiết bị này, dùng dữ liệu của đám mây'
+      );
+      if (!merge) {
+        discardLocalAndResync();
+        return;
+      }
+    }
+    S.inited = true;
+    S.reconciling = false;
+    saveMeta();
+    push();
+  }
+
+  function discardLocalAndResync() {
+    stopSub();
+    if (A && A.resetToBaseline) A.resetToBaseline();
+    S.M = { rows: {}, blocks: {} };
+    S.since = { rows: 0, blocks: 0 };
+    S.ready = { rows: false, blocks: false };
+    S.remoteSeen = 0;
+    S.reconciling = false;
+    S.inited = true;
+    saveMeta();
+    if (A && A.saveLocal) A.saveLocal();
+    if (A && A.refresh) A.refresh();
+    startSub();
+  }
+
+  function startSub() {
+    if (!ad || S.subscribed) return;
+    S.subscribed = true;
+    setState('loading');
+    ad.subscribe(
+      S.since,
+      onDocs,
+      function (e) {
+        S.err = ad.errText ? ad.errText(e) : String((e && e.message) || e);
+        setState(navigator.onLine === false ? 'offline' : 'error');
+        if (e && (e.code === 'permission-denied' || e.status === 401)) {
+          S.subscribed = false;
+          stopSub();
+          setState('login');
+        }
+      },
+      function () {
+        if (S.st === 'loading' || S.st === 'error' || S.st === 'offline') {
+          S.err = '';
+          setState(S.pending ? 'syncing' : 'ok');
+        }
+      }
+    );
+  }
+
+  function stopSub() {
+    try { if (ad && ad.unsubscribe) ad.unsubscribe(); } catch (e) { }
+    S.subscribed = false;
+  }
+
+  function onUser(u) {
+    S.user = u;
+    if (!u) {
+      stopSub();
+      setState('login');
+      if (!S.loginShown) {
+        S.loginShown = true;
+        openPanel();
+      }
+      return;
+    }
+    S.err = '';
+    startSub();
+    if (S.inited) schedule(300);
+    if ($('#syncPanel')) renderPanel();
+    applyRoleUI();
+  }
+
+  function fbErr(e) {
+    var c = (e && (e.code || e.message)) || '';
+    if (/invalid-credential|wrong-password|user-not-found|invalid-email|invalid-login/.test(c)) return 'Sai tên đăng nhập hoặc mật khẩu.';
+    if (/too-many-requests/.test(c)) return 'Đăng nhập sai quá nhiều lần – hãy thử lại sau ít phút.';
+    if (/network-request-failed|unavailable|offline/.test(c)) return 'Không có kết nối tới máy chủ Firebase.';
+    if (/permission-denied/.test(c)) return 'Không có quyền truy cập dữ liệu.';
+    return String(c || 'lỗi không rõ');
+  }
+
+  function firebaseAdapter() {
+    var cfg = CS.firebase;
+    var base = CS.sdkBase || 'https://www.gstatic.com/firebasejs/10.12.2/';
+    var auth = null, db = null, FS = null, AU = null, unsubs = [];
+
+    var o = {
+      name: 'firebase',
+      needsEmail: false,
+      errText: fbErr,
+      init: function (cb) {
+        return Promise.all([
+          import(base + 'firebase-app.js'),
+          import(base + 'firebase-auth.js'),
+          import(base + 'firebase-firestore.js')
+        ]).then(function (m) {
+          var app = m[0].getApps().length ? m[0].getApp() : m[0].initializeApp(cfg);
+          AU = m[1];
+          FS = m[2];
+          auth = AU.getAuth(app);
+          db = FS.getFirestore(app);
+
+          AU.onAuthStateChanged(auth, function (u) {
+            if (u) {
+              cb({ id: u.uid, name: localStorage.getItem('lab_username') || u.email });
+              setTimeout(applyRoleUI, 300);
+            } else {
+              cb(null);
+            }
+          });
+        });
+      },
+      signIn: function (usernameInput, pw) {
+        var username = usernameInput.trim().toLowerCase();
+        var authUsers = (A && A.CFG && A.CFG.authUsers) || {};
+        var userInfo = authUsers[username];
+
+        if (!userInfo) {
+          return Promise.reject(new Error("Tên đăng nhập không tồn tại! Chỉ dùng 'admin' hoặc 'khach'."));
+        }
+
+        localStorage.setItem('lab_user_role', userInfo.role);
+        localStorage.setItem('lab_username', username);
+
+        return AU.signInWithEmailAndPassword(auth, userInfo.email, pw);
+      },
+      signOut: function () {
+        localStorage.removeItem('lab_user_role');
+        localStorage.removeItem('lab_username');
+        return AU.signOut(auth).then(function () {
+          location.reload();
+        });
+      },
+      subscribe: function (since, onDocsCb, onErr, onOk) {
+        o.unsubscribe();
+        COLS.forEach(function (name) {
+          var sinceMs = since[name] || 0;
+          var colRef = FS.collection(db, 'workspaces', ws(), name);
+          var q = sinceMs > 0
+            ? FS.query(colRef, FS.where('upd', '>', FS.Timestamp.fromMillis(sinceMs)))
+            : FS.query(colRef);
+
+          unsubs.push(FS.onSnapshot(q, function (snap) {
+            var docs = [];
+            snap.docChanges().forEach(function (ch) {
+              if (ch.type === 'removed') return;
+              var d = ch.doc;
+              if (d.metadata && d.metadata.hasPendingWrites) return;
+              var data = d.data();
+              var u = data.upd && data.upd.toMillis ? data.upd.toMillis() : Date.now();
+              docs.push({ id: d.id, data: data, upd: u });
+            });
+            onDocsCb(name, docs);
+            if (onOk) onOk();
+          }, onErr));
+        });
+      },
+      pollNow: function (onDocsCb) {
+        var handler = typeof onDocsCb === 'function' ? onDocsCb : onDocs;
+        if (!db || typeof handler !== 'function') return;
+        COLS.forEach(function (name) {
+          var sinceMs = S.since[name] || 0;
+          var colRef = FS.collection(db, 'workspaces', ws(), name);
+          var q = sinceMs > 0
+            ? FS.query(colRef, FS.where('upd', '>', FS.Timestamp.fromMillis(sinceMs)))
+            : FS.query(colRef);
+          FS.getDocs(q).then(function (snap) {
+            var docs = [];
+            snap.forEach(function (d) {
+              var data = d.data();
+              var u = data.upd && data.upd.toMillis ? data.upd.toMillis() : Date.now();
+              docs.push({ id: d.id, data: data, upd: u });
+            });
+            if (docs.length) handler(name, docs);
+          }).catch(function () { });
+        });
+      },
+      unsubscribe: function () {
+        unsubs.forEach(function (u) { try { u(); } catch (e) { } });
+        unsubs = [];
+      },
+      commit: function (ops) {
+        if (localStorage.getItem('lab_user_role') === 'guest') {
+          return Promise.reject(new Error('Tài khoản khách không có quyền ghi dữ liệu.'));
+        }
+        var batch = FS.writeBatch(db), by = deviceId();
+        ops.forEach(function (op) {
+          batch.set(
+            FS.doc(db, 'workspaces', ws(), op.col, op.id),
+            Object.assign({}, op.data, { upd: FS.serverTimestamp(), by: by })
+          );
+        });
+        return batch.commit();
+      },
+      exists: function (colName, id) {
+        return FS.getDoc(FS.doc(db, 'workspaces', ws(), colName, id)).then(function (s) { return s.exists(); });
+      }
+    };
+    return o;
+  }
+
+  function lockBody() {
+    document.body.classList.toggle(
+      'modal-open',
+      !!document.querySelector('#mdSync .modal, #mdView .modal')
+    );
   }
 
   function openPanel() {
-    S.loginOpen = true;
-    renderModal();
+    var root = $('#mdSync');
+    if (!root) {
+      var mRoot = $('#modalRoot');
+      if (mRoot) {
+        root = document.createElement('div');
+        root.id = 'mdSync';
+        mRoot.appendChild(root);
+        bindPanel();
+      } else {
+        return;
+      }
+    }
+    root.innerHTML =
+      '<div class="modal-back sync-back"><div class="modal modal-sync" role="dialog" aria-modal="true" aria-label="Đồng bộ">' +
+      '<div class="modal-head"><h2>☁ Đồng bộ & Phân quyền</h2>' +
+      '<button class="modal-x" data-sy="close" aria-label="Đóng">✕</button></div>' +
+      '<div class="modal-body" id="syncPanel"></div></div></div>';
+    renderPanel();
+    lockBody();
+  }
+
+  function closePanel() {
+    var root = $('#mdSync');
+    if (root) root.innerHTML = '';
+    lockBody();
+    applyRoleUI();
+  }
+
+  function when(t) { return t ? new Date(t).toLocaleString('vi-VN') : '—'; }
+
+  function renderPanel() {
+    var p = $('#syncPanel');
+    if (!p) return;
+    var h = '';
+    if (!enabled()) {
+      h = '<p><b>Hiện dữ liệu chỉ lưu trên máy này</b>.</p>';
+    } else if (!S.user) {
+      h = '<p>Đăng nhập bằng tên để đồng bộ giữa các thiết bị (Nhập <b>admin</b> hoặc <b>khach</b>).</p>' +
+        '<form id="syLogin" class="sy-form">' +
+        '<label class="fld"><span>Tên đăng nhập (admin / khach)</span><input type="text" id="syEmail" autocomplete="username" placeholder="admin" required></label>' +
+        '<label class="fld"><span>Mật khẩu</span><input type="password" id="syPass" autocomplete="current-password" required></label>' +
+        '<div class="sy-err" id="syErr">' + esc(S.err || '') + '</div>' +
+        '<div class="sy-btns"><button class="tbtn primary" type="submit">Đăng nhập</button>' +
+        '<button class="tbtn" type="button" data-sy="close">Để sau</button></div></form>';
+    } else {
+      var stMap = {
+        loading: 'Đang kết nối…',
+        syncing: 'Đang đồng bộ…',
+        ok: 'Đã đồng bộ',
+        offline: 'Chờ có mạng',
+        error: 'Lỗi đồng bộ',
+        login: 'Chưa đăng nhập'
+      };
+      var st = stMap[S.st] || S.st;
+      h = '<div class="sy-stat sy-' + (S.st === 'ok' ? 'ok' : 'wait') + '"><b>' + st + '</b>' +
+        (S.err ? '<div class="sy-err">' + esc(S.err) + '</div>' : '') + '</div>' +
+        '<table class="plain sy-tbl">' +
+        '<tr><td>Tài khoản</td><td><b>' + esc(S.user.name || '') + ' (' + esc(localStorage.getItem('lab_user_role') || 'admin') + ')</b></td></tr>' +
+        '<tr><td>Lần đồng bộ cuối</td><td>' + when(S.lastOk) + '</td></tr>' +
+        '<tr><td>Thay đổi chờ đẩy lên</td><td>' + (S.pending || 0) + '</td></tr>' +
+        '</table>' +
+        '<div class="sy-btns">' +
+        '<button class="tbtn primary" data-sy="now">🔄 Đồng bộ ngay</button>' +
+        '<button class="tbtn danger" data-sy="out">Đăng xuất</button>' +
+        '<button class="tbtn" data-sy="close">Đóng</button></div>';
+    }
+    p.innerHTML = h;
+  }
+
+  function bindPanel() {
+    var root = $('#mdSync');
+    if (!root) return;
+    root.addEventListener('click', function (e) {
+      var b = e.target.closest('[data-sy]');
+      if (!b) return;
+      var a = b.dataset.sy;
+      if (a === 'close') closePanel();
+      else if (a === 'now') {
+        S.err = '';
+        S.retry = 0;
+        if (ad && ad.pollNow) ad.pollNow(onDocs);
+        push();
+      } else if (a === 'out') {
+        if (confirm('Đăng xuất khỏi đồng bộ?')) ad.signOut();
+      }
+    });
+    root.addEventListener('submit', function (e) {
+      if (e.target.id !== 'syLogin') return;
+      e.preventDefault();
+      var em = $('#syEmail') ? $('#syEmail').value.trim() : '';
+      var pw = $('#syPass') ? $('#syPass').value : '';
+      var err = $('#syErr');
+      var btn = e.target.querySelector('button[type=submit]');
+      if (err) err.textContent = '';
+      if (btn) { btn.disabled = true; btn.textContent = 'Đang đăng nhập…'; }
+      Promise.resolve(ad.signIn(em, pw)).then(function () {
+        closePanel();
+        applyRoleUI();
+      }).catch(function (x) {
+        if (err) err.textContent = ad.errText ? ad.errText(x) : String(x);
+        if (btn) { btn.disabled = false; btn.textContent = 'Đăng nhập'; }
+      });
+    });
   }
 
   function init(app) {
-    A = app || window.LabApp;
-    const btn = $('#btnSync');
-    if (btn && !btn.dataset.syncBound) {
-      btn.dataset.syncBound = '1';
-      btn.addEventListener('click', () => openPanel());
-    }
+    try {
+      if (A) return;
+      A = app;
+      CS = (A && A.CFG && A.CFG.sync) || {};
 
-    window.addEventListener('online', () => {
-      if (S.user) pushNow();
-      else if (enabled()) setState('need-auth');
-    });
+      var root = $('#modalRoot');
+      if (root && !$('#mdSync')) {
+        var d = document.createElement('div');
+        d.id = 'mdSync';
+        root.appendChild(d);
+        bindPanel();
+      }
 
-    window.addEventListener('offline', () => {
-      if (enabled()) setState('offline');
-    });
+      var btn = $('#btnSync');
+      if (btn) btn.addEventListener('click', function () { openPanel(); });
 
-    document.addEventListener('keydown', e => {
-      if (e.key === 'Escape' && S.loginOpen) closePanel();
-    });
+      document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape' && $('#mdSync .modal') && !$('#mdView .modal')) {
+          closePanel();
+        }
+      });
 
-    if (!enabled()) {
-      setState('off');
-      return;
-    }
+      window.addEventListener('online', function () {
+        if (ad && S.user) {
+          S.err = '';
+          S.retry = 0;
+          schedule(200);
+          if (ad.pollNow) ad.pollNow(onDocs);
+        }
+      });
+      window.addEventListener('offline', function () {
+        if (ad && S.user) setState('offline');
+      });
+      document.addEventListener('visibilitychange', function () {
+        if (!document.hidden && ad && S.user) {
+          schedule(200);
+          if (ad.pollNow) ad.pollNow(onDocs);
+        }
+      });
 
-    S.baseline = buildBaseline();
-    const meta = loadMeta();
-    if (meta) {
-      if (meta.since && typeof meta.since === 'object') S.since = Object.assign({ rows: 0, slips: 0, blocks: 0 }, meta.since);
-      if (meta.M && typeof meta.M === 'object') S.M = Object.assign({ rows: {}, slips: {}, blocks: {} }, meta.M);
-      S.inited = !!meta.inited;
-      S.lastOk = Number(meta.lastOk || 0);
-    }
+      if (!enabled()) {
+        setState('off');
+        return;
+      }
 
-    setState('loading');
-    ad = createFirebaseAdapter();
-    Promise.resolve(ad.init(onUser)).catch(err => {
-      S.err = 'Không khởi tạo được Firebase: ' + (err && err.message ? err.message : err);
+      S.baseline = buildBaseline();
+      var m = loadMeta();
+      S.since = (m && m.since) || { rows: 0, blocks: 0 };
+      S.M = (m && m.M) || { rows: {}, blocks: {} };
+      S.inited = m ? !!m.inited : false;
+      COLS.forEach(function (c) {
+        if (!S.M[c]) S.M[c] = {};
+        if (S.since[c] == null) S.since[c] = 0;
+      });
+
+      ad = firebaseAdapter();
+      setState('loading');
+      Promise.resolve(ad.init(onUser)).catch(function (e) {
+        S.err = 'Không tải được thư viện đồng bộ: ' + ((e && e.message) || e) + ' (kiểm tra mạng / cấu hình).';
+        setState('error');
+      });
+    } catch (e) {
+      S.err = 'Lỗi khởi tạo Sync: ' + ((e && e.message) || e);
       setState('error');
-    });
+    }
   }
 
   window.Sync = {
     ver: BUILD,
-    init,
-    schedule,
-    pushNow,
-    active,
+    init: init,
+    schedule: schedule,
+    pushNow: pushNow,
+    active: active,
     open: openPanel
   };
 })();
