@@ -1,12 +1,12 @@
 /* =====================================================================
    assets/slips.js – MODULE TIỆN ÍCH VẬT TƯ / TÀI SẢN LAB
-   Phiên bản: 2026.11.22-3
+   Phiên bản: 2026.11.22-4
    ===================================================================== */
 (function () {
   'use strict';
 
   var A = null;
-  var BUILD = '2026.11.22-3';
+  var BUILD = '2026.11.22-4';
 
   var SOURCE_OPTIONS = ['Vật tư', 'Tài sản', 'Đo kiểm', 'Sửa chữa', 'Không rõ nguồn'];
   var DEFAULT_SOURCE = 'Không rõ nguồn';
