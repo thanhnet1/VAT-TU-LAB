@@ -386,4 +386,3 @@ window.APP_CONFIG = {
     }
   }
 };
-```[cite: 15]
