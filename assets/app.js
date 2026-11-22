@@ -9,7 +9,7 @@
 (function () {
   'use strict';
 
-  const BUILD = '2026.11.21-4';
+  const BUILD = '2026.11.21-1';
   const SOURCE_OPTIONS = ['Vật tư', 'Tài sản', 'Đo kiểm', 'Sửa chữa', 'Không rõ nguồn'];
   const DEFAULT_SOURCE = 'Không rõ nguồn';
   const STANDARD_COLS = ['Nguồn', 'STT', 'Tên Vật Tư', 'Serial', 'Mã VT', 'Part number', 'Ghi chú'];
