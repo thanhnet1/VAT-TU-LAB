@@ -32,11 +32,14 @@ window.APP_CONFIG = {
     'Vật tư & Tài sản khác'
   ],
 
-  // Cấu hình hành vi giao diện & tìm kiếm
-  features: {
-    globalSearchOnOverview: true,
-    scopedSearchInFolder: true,
-    showAddItemButton: true,
+  // Cấu hình đồng bộ đa thiết bị, tìm kiếm ngữ cảnh, thêm vật tư & nút tạo thư mục
+  uiFeatures: {
+    showDeviceSyncStatus: true,
+    syncAccounts: ['admin', 'khach'],
+    globalSearchAllKeywords: true,
+    scopedSearchInActiveFolder: true,
+    enableAddItemModal: true,
+    dropdownFields: ['maVT', 'tenVT', 'serial', 'partNo'],
     highlightAddFolderOnOverview: true,
     showTreeFolderButtons: false
   },
@@ -383,4 +386,4 @@ window.APP_CONFIG = {
     }
   }
 };
-```[cite: 16]
+```[cite: 15]
