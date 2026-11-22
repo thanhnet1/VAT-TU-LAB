@@ -1321,4 +1321,487 @@
       <div class="view-header" style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;">
         <div>
           <div style="font-size:12px;opacity:.7;">${esc(breadcrumb)}</div>
-          <h2 style="margin
+          <h2 style="margin:2px 0 0;font-size:20px;">${esc(node.icon || '')} ${esc(node.label)} <small style="font-weight:400;opacity:.7;">(${filtered.length} dòng)</small></h2>
+        </div>
+        <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;">
+          <select id="filterSource" aria-label="Lọc theo nguồn" style="padding:6px 8px;border-radius:6px;border:1px solid rgba(0,0,0,.2);">
+            ${srcFilterOpts}
+          </select>
+          <button type="button" id="btnAddItem" class="btn accent">+ Thêm vật tư</button>
+          <button type="button" id="btnAddRow" class="btn">+ Thêm dòng nhanh</button>
+          <button type="button" id="btnExportSheets" class="btn">📗 Xuất Excel (tách sheet)</button>
+        </div>
+      </div>
+
+      ${renderHorizontalBar(currentEntry)}
+
+      <div class="table-wrap responsive-table-wrap" style="overflow-x:auto;-webkit-overflow-scrolling:touch;border:1px solid rgba(0,0,0,.12);border-radius:8px;background:#fff;">
+        <table id="statsTable" class="data-table" style="width:100%;border-collapse:collapse;">
+          <thead>
+            <tr>
+              <th style="white-space:nowrap;">Nguồn</th>
+              <th style="white-space:nowrap;">STT</th>
+              <th style="white-space:nowrap;">Tên Vật Tư</th>
+              <th style="white-space:nowrap;">Serial</th>
+              <th style="white-space:nowrap;">Mã VT</th>
+              <th style="white-space:nowrap;">Part number</th>
+              <th style="white-space:nowrap;">Ghi chú</th>
+              <th style="white-space:nowrap;">Thao tác</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${renderTableRows(node.id, filtered)}
+          </tbody>
+        </table>
+      </div>
+    `;
+
+    $$('[data-h-node]', mainEl).forEach(btn => {
+      btn.addEventListener('click', () => {
+        V.activeId = btn.getAttribute('data-h-node');
+        V.route = { page: 'sheet', id: V.activeId };
+        render();
+      });
+    });
+
+    const filterEl = $('#filterSource', mainEl);
+    if (filterEl) {
+      filterEl.addEventListener('change', () => {
+        V.sourceFilter = filterEl.value;
+        renderMain();
+      });
+    }
+
+    const addItemBtn = $('#btnAddItem', mainEl);
+    if (addItemBtn) {
+      addItemBtn.addEventListener('click', () => openAddItemModal(node.id));
+    }
+
+    const addBtn = $('#btnAddRow', mainEl);
+    if (addBtn) {
+      addBtn.addEventListener('click', () => {
+        const rows = getRowsForNode(node.id);
+        const defaultSrc = V.sourceFilter !== 'ALL' ? V.sourceFilter : CFG.defaultSource;
+        rows.push(normalizeRow({
+          i: 'u' + uid(),
+          src: defaultSrc,
+          v: [defaultSrc, String(rows.length + 1), '', '', '', '', '']
+        }, rows.length, defaultSrc, STANDARD_COLS, node.id));
+        persist();
+        render();
+      });
+    }
+
+    const exportBtn = $('#btnExportSheets', mainEl);
+    if (exportBtn) {
+      exportBtn.addEventListener('click', () => exportExcelSeparateSheets(currentEntry.node));
+    }
+
+    $$('.cell-edit', mainEl).forEach(inp => {
+      inp.addEventListener('change', () => {
+        const tr = inp.closest('tr');
+        const idx = Number(tr && tr.getAttribute('data-row-idx'));
+        const col = Number(inp.getAttribute('data-col'));
+        const rows = getRowsForNode(node.id);
+        if (!rows[idx]) return;
+        const norm = normalizeRow(rows[idx], idx, CFG.defaultSource, STANDARD_COLS, node.id);
+        norm.v[col] = inp.value;
+        if (col === 0) norm.src = normalizeSource(inp.value, CFG.defaultSource);
+        rows[idx] = norm;
+        persist();
+        renderSidebar();
+      });
+    });
+
+    $$('.btn-row-edit', mainEl).forEach(btn => {
+      btn.addEventListener('click', () => {
+        V.edit = true;
+        const editBtn = $('#btnEdit');
+        if (editBtn) editBtn.setAttribute('aria-pressed', 'true');
+        renderMain();
+      });
+    });
+
+    $$('.row-move-select', mainEl).forEach(sel => {
+      sel.addEventListener('change', () => {
+        const destId = sel.value;
+        if (!destId) return;
+        const idx = Number(sel.getAttribute('data-idx'));
+        moveRowToNode(node.id, idx, destId);
+      });
+    });
+
+    $$('.btn-row-del', mainEl).forEach(btn => {
+      btn.addEventListener('click', () => {
+        const idx = Number(btn.getAttribute('data-idx'));
+        const rows = getRowsForNode(node.id);
+        if (!rows[idx]) return;
+        rows.splice(idx, 1);
+        persist();
+        render();
+      });
+    });
+  }
+
+  function exportExcelSeparateSheets(targetNode) {
+    if (typeof XLSX === 'undefined') {
+      toast('Chưa tải được thư viện Excel (XLSX).', 4000);
+      return;
+    }
+
+    const leaves = collectLeafNodes(targetNode);
+    const sheetTargets = leaves.length ? leaves : [targetNode];
+    const wb = XLSX.utils.book_new();
+    const usedNames = new Set();
+
+    for (const itemNode of sheetTargets) {
+      const rawTitle = CFG.sheetLabels[itemNode.id] || itemNode.label || itemNode.id;
+      const sheetName = sanitizeSheetName(rawTitle, usedNames);
+      const rows = getRowsForNode(itemNode.id);
+
+      const aoa = [STANDARD_COLS.slice()];
+      rows.forEach((r, idx) => {
+        const norm = normalizeRow(r, idx, CFG.defaultSource, STANDARD_COLS, itemNode.id);
+        aoa.push([
+          norm.v[0],
+          norm.v[1] || String(idx + 1),
+          norm.v[2],
+          norm.v[3],
+          norm.v[4],
+          norm.v[5],
+          norm.v[6]
+        ]);
+      });
+
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), sheetName);
+    }
+
+    const slug = fold(targetNode.label || 'thong-ke').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'thong-ke';
+    XLSX.writeFile(wb, `${slug}-cac-sheet.xlsx`);
+  }
+
+  function handleImportFile(ev) {
+    const file = ev.target && ev.target.files && ev.target.files[0];
+    ev.target.value = '';
+    if (!file) return;
+
+    if (typeof XLSX === 'undefined') {
+      toast('Chưa tải được thư viện XLSX để đọc tệp.', 4000);
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = e => {
+      try {
+        const wb = XLSX.read(e.target.result, { type: 'array' });
+        let importedCount = 0;
+
+        wb.SheetNames.forEach(sheetName => {
+          const ws = wb.Sheets[sheetName];
+          const aoa = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+          if (!Array.isArray(aoa) || !aoa.length) return;
+
+          const fallbackTargetId =
+            resolveTargetNodeId(sheetName) ||
+            resolveTargetNodeId(aoa[0] && aoa[0][0]) ||
+            V.activeId ||
+            (flatNodes[0] && flatNodes[0].node.id);
+
+          for (let rIdx = 0; rIdx < aoa.length; rIdx++) {
+            const rowArr = aoa[rIdx];
+            if (!Array.isArray(rowArr) || !rowArr.some(c => String(c || '').trim() !== '')) continue;
+
+            const c0 = String(rowArr[0] || '').trim().toLowerCase();
+            const c1 = String(rowArr[1] || '').trim().toLowerCase();
+            if (c0 === 'nguồn' || c0 === 'nguon' || c1 === 'stt') continue;
+
+            const hasSourceCol = SRC_LIST.some(opt => fold(opt) === fold(rowArr[0]));
+            const src = hasSourceCol ? normalizeSource(rowArr[0], CFG.defaultSource) : CFG.defaultSource;
+            const tenVT = String(hasSourceCol ? rowArr[2] : (rowArr[2] || rowArr[1] || rowArr[0] || '')).trim();
+            const serial = String(hasSourceCol ? rowArr[3] : (rowArr[3] || '')).trim();
+            const maVT = String(hasSourceCol ? rowArr[4] : (rowArr[1] || '')).trim();
+            const partNo = String(hasSourceCol ? rowArr[5] : (rowArr[4] || '')).trim();
+            const ghiChu = String(hasSourceCol ? rowArr[6] : (rowArr[5] || '')).trim();
+
+            if (!tenVT && !serial && !maVT && !partNo) continue;
+
+            const draftRow = normalizeRow({
+              i: 'u' + uid(),
+              src,
+              v: [src, '0', tenVT, serial, maVT, partNo, ghiChu]
+            }, 0, src, STANDARD_COLS, fallbackTargetId);
+
+            const targetId = classifyRowTarget(sheetName, sheetName, draftRow, fallbackTargetId);
+            if (!targetId) continue;
+            const destRows = getRowsForNode(targetId);
+            draftRow.v[1] = String(destRows.length + 1);
+            destRows.push(draftRow);
+            importedCount++;
+          }
+        });
+
+        persist();
+        render();
+        toast(`Đã nhập ${importedCount} dòng dữ liệu.`, 3500);
+      } catch (err) {
+        toast('Lỗi đọc tệp: ' + (err && err.message ? err.message : err), 4500);
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  }
+
+  function render() {
+    syncSTFromStore();
+    renderSidebar();
+    renderMain();
+  }
+
+  function refreshFromSync() {
+    syncStoreFromST();
+    render();
+  }
+
+  function bindGlobal() {
+    const sb = $('#sidebar');
+    const overlay = $('#overlay');
+    const btnMenu = $('#btnMenu');
+
+    if (btnMenu && sb) {
+      btnMenu.addEventListener('click', () => {
+        sb.classList.toggle('open');
+        if (overlay) overlay.classList.toggle('show', sb.classList.contains('open'));
+      });
+    }
+    if (overlay && sb) {
+      overlay.addEventListener('click', () => {
+        sb.classList.remove('open');
+        overlay.classList.remove('show');
+      });
+    }
+
+    if (sb) {
+      sb.addEventListener('click', e => {
+        const toggleBtn = e.target.closest('[data-toggle-node]');
+        if (toggleBtn) {
+          const nid = toggleBtn.getAttribute('data-toggle-node');
+          V.treeCollapsed[nid] = !V.treeCollapsed[nid];
+          renderSidebar();
+          return;
+        }
+
+        const createBtn = e.target.closest('[data-create-folder]');
+        if (createBtn) {
+          createFolderUnder(createBtn.getAttribute('data-create-folder'));
+          return;
+        }
+
+        const nodeBtn = e.target.closest('[data-node-id]');
+        if (nodeBtn) {
+          V.activeId = nodeBtn.getAttribute('data-node-id');
+          V.route = { page: 'sheet', id: V.activeId };
+          if (sb.classList.contains('open')) {
+            sb.classList.remove('open');
+            if (overlay) overlay.classList.remove('show');
+          }
+          render();
+          return;
+        }
+
+        if (e.target.closest('[data-go-overview]')) {
+          V.route = { page: 'overview', id: null };
+          if (sb.classList.contains('open')) {
+            sb.classList.remove('open');
+            if (overlay) overlay.classList.remove('show');
+          }
+          render();
+        }
+      });
+    }
+
+    const gq = $('#gq');
+    const gqClear = $('#gqClear');
+    if (gq) {
+      gq.addEventListener('input', () => {
+        V.query = gq.value;
+        if (gqClear) gqClear.hidden = !V.query;
+        renderMain();
+      });
+    }
+    if (gqClear) {
+      gqClear.addEventListener('click', () => {
+        V.query = '';
+        if (gq) gq.value = '';
+        gqClear.hidden = true;
+        renderMain();
+      });
+    }
+
+    const btnEdit = $('#btnEdit');
+    if (btnEdit) {
+      btnEdit.addEventListener('click', () => {
+        V.edit = !V.edit;
+        btnEdit.setAttribute('aria-pressed', String(V.edit));
+        const eb = $('#editbar');
+        if (eb) eb.hidden = !V.edit;
+        renderMain();
+      });
+    }
+
+    const btnPrint = $('#btnPrint');
+    if (btnPrint) btnPrint.addEventListener('click', () => window.print());
+
+    const btnTheme = $('#btnTheme');
+    if (btnTheme) {
+      btnTheme.addEventListener('click', () => {
+        const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+        document.documentElement.dataset.theme = next;
+        localStorage.setItem(LS('theme'), next);
+      });
+    }
+
+    const importInput = $('#importFileInput');
+    if (importInput) importInput.addEventListener('change', handleImportFile);
+
+    $$('#menuExport [data-act]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const act = btn.getAttribute('data-act');
+        const curEntry = nodeById.get(V.activeId) || flatNodes[0];
+        if (act === 'xlsx-all') {
+          if (typeof XLSX === 'undefined') return;
+          const wb = XLSX.utils.book_new();
+          const used = new Set();
+          for (const entry of flatNodes) {
+            const n = entry.node;
+            if (Array.isArray(n.children) && n.children.length > 0) continue;
+            const sName = sanitizeSheetName(CFG.sheetLabels[n.id] || n.label, used);
+            const rows = getRowsForNode(n.id).map((r, i) => normalizeRow(r, i, CFG.defaultSource, STANDARD_COLS, n.id).v);
+            XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([STANDARD_COLS.slice(), ...rows]), sName);
+          }
+          XLSX.writeFile(wb, 'vat-tu-tai-san-all-sheets.xlsx');
+        } else if (act === 'xlsx-cur' && curEntry) {
+          exportExcelSeparateSheets(curEntry.node);
+        } else if (act === 'json-out') {
+          syncSTFromStore();
+          const blob = new Blob([JSON.stringify({ sheets: ST.sheets, slips: ST.slips, customFolders: customFoldersByParent }, null, 2)], { type: 'application/json' });
+          const a = document.createElement('a');
+          a.href = URL.createObjectURL(blob);
+          a.download = 'sao-luu-vat-tu-tai-san.json';
+          a.click();
+          setTimeout(() => URL.revokeObjectURL(a.href), 500);
+        } else if (act === 'reset') {
+          if (confirm('Khôi phục dữ liệu gốc? Mọi chỉnh sửa trên máy sẽ mất.')) {
+            resetToBaseline();
+            render();
+            toast('Đã khôi phục dữ liệu gốc');
+          }
+        }
+      });
+    });
+
+    window.addEventListener('hashchange', () => {
+      parseHash();
+      render();
+    });
+  }
+
+  window.LabApp = {
+    BUILD,
+    CFG,
+    esc,
+    uid,
+    fold,
+    tokensOf,
+    toast,
+    sheetById,
+    labelOf,
+    isStock,
+    stockRows,
+    normalizeSource,
+    normalizeRow,
+    SOURCE_OPTIONS: SRC_LIST,
+    STANDARD_COLS,
+    openAddItemModal,
+    addStructuredItem,
+    get DATA() { return DATA; },
+    get ST() { return ST; },
+    get V() { return V; },
+    saveLocal,
+    persist,
+    resetToBaseline,
+    refresh: refreshFromSync,
+    render,
+    keepScroll: fn => { const y = window.scrollY; fn(); window.scrollTo(0, y); },
+    touch: () => {}
+  };
+
+  function start(data) {
+    DATA = Object.assign({ meta: { source: 'LAB', generated: '', version: '' }, sheets: [] }, data || {});
+    loadState();
+    parseHash();
+
+    const appTitle = $('#appTitle');
+    const appSub = $('#appSub');
+    if (appTitle) appTitle.textContent = CFG.title;
+    if (appSub) appSub.textContent = CFG.subtitle;
+    const dirtyEl = $('#dirty');
+    if (dirtyEl) dirtyEl.hidden = !ST.dirty;
+
+    try { if (window.Slips && typeof window.Slips.init === 'function') window.Slips.init(window.LabApp); } catch (_) {}
+    try { if (window.Sync && typeof window.Sync.init === 'function') window.Sync.init(window.LabApp); } catch (_) {}
+
+    bindGlobal();
+    render();
+
+    const boot = $('#boot');
+    const topbar = $('#topbar');
+    const layout = $('#layout');
+    if (boot) boot.remove();
+    if (topbar) topbar.hidden = false;
+    if (layout) layout.hidden = false;
+  }
+
+  async function decrypt(enc, pw) {
+    const b64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
+    const km = await crypto.subtle.importKey('raw', new TextEncoder().encode(pw), 'PBKDF2', false, ['deriveKey']);
+    const key = await crypto.subtle.deriveKey({ name: 'PBKDF2', salt: b64(enc.salt), iterations: enc.iter, hash: 'SHA-256' }, km, { name: 'AES-GCM', length: 256 }, false, ['decrypt']);
+    const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: b64(enc.iv) }, key, b64(enc.ct));
+    return JSON.parse(new TextDecoder().decode(pt));
+  }
+
+  function unlock() {
+    const bootEl = $('#boot');
+    if (!bootEl) return;
+    bootEl.innerHTML = `<form class="lock" id="lockForm"><h2>🔒 ${esc(CFG.title)}</h2><p>Dữ liệu được bảo vệ bằng mật khẩu.</p>
+      <input type="password" id="pw" placeholder="Nhập mật khẩu" autocomplete="current-password" autofocus><div class="err" id="pwErr"></div><button>Mở khoá</button></form>`;
+    $('#lockForm').addEventListener('submit', async ev => {
+      ev.preventDefault();
+      const err = $('#pwErr');
+      if (err) err.textContent = 'Đang giải mã…';
+      try {
+        if (!window.crypto || !crypto.subtle) throw new Error('nocrypto');
+        start(await decrypt(window.LAB_DATA_ENC, $('#pw').value));
+      } catch (e) {
+        if (err) err.textContent = e.message === 'nocrypto' ? 'Trình duyệt cần mở bằng https://' : 'Sai mật khẩu.';
+      }
+    });
+  }
+
+  function boot() {
+    const t = localStorage.getItem(LS('theme')) || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+    document.documentElement.dataset.theme = t;
+
+    if (window.LAB_DATA) {
+      start(window.LAB_DATA);
+    } else if (window.LAB_DATA_ENC) {
+      unlock();
+    } else {
+      start({ meta: { source: 'LAB', generated: '', version: '' }, sheets: [] });
+    }
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', boot);
+  } else {
+    boot();
+  }
+})();
