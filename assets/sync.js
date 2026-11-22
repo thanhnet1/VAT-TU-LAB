@@ -15,7 +15,8 @@
     st: 'off', user: null, M: null, since: null, inited: false, baseline: null,
     subscribed: false, pushing: false, retry: 0, lastOk: 0, err: '',
     pending: 0, conflicts: 0, ready: { rows: false, blocks: false },
-    remoteSeen: 0, applyT: null, pushT: null, retryT: null, reconciling: false, loginShown: false
+    remoteSeen: 0, applyT: null, pushT: null, retryT: null, bootGuardT: null,
+    reconciling: false, loginShown: false
   };
   var COLS = ['rows', 'blocks'];
 
@@ -29,6 +30,15 @@
   }
   function clone(o) {
     try { return JSON.parse(JSON.stringify(o)); } catch (e) { return o; }
+  }
+
+  function hideBootSafely() {
+    var boot = $('#boot');
+    if (boot) boot.style.display = 'none';
+    var topbar = $('#topbar');
+    if (topbar) topbar.hidden = false;
+    var layout = $('#layout');
+    if (layout) layout.hidden = false;
   }
 
   function normSrc(val, fallback) {
@@ -460,6 +470,7 @@
 
   function onDocs(col, docs) {
     if (COLS.indexOf(col) < 0) return;
+    hideBootSafely();
     var changed = 0, maxUpd = S.since[col] || 0;
     docs.sort(function (a, b) { return (a.upd || 0) - (b.upd || 0); });
     docs.forEach(function (d) {
@@ -485,6 +496,8 @@
     }
     if (S.inited && !S.pushing && computeOps().length) {
       schedule(500);
+    } else if (S.inited && !S.pushing && S.st === 'loading') {
+      setState('ok');
     }
   }
 
@@ -519,7 +532,11 @@
     S.inited = true;
     S.reconciling = false;
     saveMeta();
-    push();
+    if (ops.length) {
+      push();
+    } else {
+      setState('ok');
+    }
   }
 
   function discardLocalAndResync() {
@@ -537,6 +554,31 @@
     startSub();
   }
 
+  function withTimeout(promise, ms, label) {
+    return new Promise(function (resolve, reject) {
+      var done = false;
+      var timer = setTimeout(function () {
+        if (done) return;
+        done = true;
+        reject(new Error((label || 'Thao tác') + ' quá thời gian (' + Math.round(ms / 1000) + 's).'));
+      }, ms);
+      Promise.resolve(promise).then(
+        function (v) {
+          if (done) return;
+          done = true;
+          clearTimeout(timer);
+          resolve(v);
+        },
+        function (e) {
+          if (done) return;
+          done = true;
+          clearTimeout(timer);
+          reject(e);
+        }
+      );
+    });
+  }
+
   function startSub() {
     if (!ad || S.subscribed) return;
     S.subscribed = true;
@@ -545,6 +587,7 @@
       S.since,
       onDocs,
       function (e) {
+        hideBootSafely();
         S.err = ad.errText ? ad.errText(e) : String((e && e.message) || e);
         setState(navigator.onLine === false ? 'offline' : 'error');
         if (e && (e.code === 'permission-denied' || e.status === 401)) {
@@ -554,6 +597,7 @@
         }
       },
       function () {
+        hideBootSafely();
         if (S.st === 'loading' || S.st === 'error' || S.st === 'offline') {
           S.err = '';
           setState(S.pending ? 'syncing' : 'ok');
@@ -568,6 +612,7 @@
   }
 
   function onUser(u) {
+    hideBootSafely();
     S.user = u;
     if (!u) {
       stopSub();
@@ -604,24 +649,47 @@
       needsEmail: false,
       errText: fbErr,
       init: function (cb) {
-        return Promise.all([
-          import(base + 'firebase-app.js'),
-          import(base + 'firebase-auth.js'),
-          import(base + 'firebase-firestore.js')
-        ]).then(function (m) {
+        var authSettled = false;
+        return withTimeout(
+          Promise.all([
+            import(base + 'firebase-app.js'),
+            import(base + 'firebase-auth.js'),
+            import(base + 'firebase-firestore.js')
+          ]),
+          10000,
+          'Tải thư viện Firebase'
+        ).then(function (m) {
           var app = m[0].getApps().length ? m[0].getApp() : m[0].initializeApp(cfg);
           AU = m[1];
           FS = m[2];
           auth = AU.getAuth(app);
           db = FS.getFirestore(app);
 
-          AU.onAuthStateChanged(auth, function (u) {
-            if (u) {
-              cb({ id: u.uid, name: localStorage.getItem('lab_username') || u.email });
-              setTimeout(applyRoleUI, 300);
-            } else {
+          return new Promise(function (resolve) {
+            var guard = setTimeout(function () {
+              if (!authSettled) {
+                authSettled = true;
+                cb(auth.currentUser ? { id: auth.currentUser.uid, name: localStorage.getItem('lab_username') || auth.currentUser.email } : null);
+              }
+              resolve();
+            }, 6000);
+
+            AU.onAuthStateChanged(auth, function (u) {
+              clearTimeout(guard);
+              authSettled = true;
+              if (u) {
+                cb({ id: u.uid, name: localStorage.getItem('lab_username') || u.email });
+                setTimeout(applyRoleUI, 300);
+              } else {
+                cb(null);
+              }
+              resolve();
+            }, function () {
+              clearTimeout(guard);
+              authSettled = true;
               cb(null);
-            }
+              resolve();
+            });
           });
         });
       },
@@ -648,6 +716,7 @@
       },
       subscribe: function (since, onDocsCb, onErr, onOk) {
         o.unsubscribe();
+        var okCount = 0;
         COLS.forEach(function (name) {
           var sinceMs = since[name] || 0;
           var colRef = FS.collection(db, 'workspaces', ws(), name);
@@ -666,7 +735,8 @@
               docs.push({ id: d.id, data: data, upd: u });
             });
             onDocsCb(name, docs);
-            if (onOk) onOk();
+            okCount++;
+            if (okCount >= COLS.length && onOk) onOk();
           }, onErr));
         });
       },
@@ -686,7 +756,7 @@
               var u = data.upd && data.upd.toMillis ? data.upd.toMillis() : Date.now();
               docs.push({ id: d.id, data: data, upd: u });
             });
-            if (docs.length) handler(name, docs);
+            handler(name, docs);
           }).catch(function () { });
         });
       },
@@ -722,6 +792,7 @@
   }
 
   function openPanel() {
+    hideBootSafely();
     var root = $('#mdSync');
     if (!root) {
       var mRoot = $('#modalRoot');
@@ -834,6 +905,14 @@
       A = app;
       CS = (A && A.CFG && A.CFG.sync) || {};
 
+      clearTimeout(S.bootGuardT);
+      S.bootGuardT = setTimeout(function () {
+        hideBootSafely();
+        if (S.st === 'loading') {
+          setState(navigator.onLine === false ? 'offline' : (S.user ? 'ok' : 'login'));
+        }
+      }, 7000);
+
       var root = $('#modalRoot');
       if (root && !$('#mdSync')) {
         var d = document.createElement('div');
@@ -870,6 +949,7 @@
       });
 
       if (!enabled()) {
+        hideBootSafely();
         setState('off');
         return;
       }
@@ -887,10 +967,12 @@
       ad = firebaseAdapter();
       setState('loading');
       Promise.resolve(ad.init(onUser)).catch(function (e) {
+        hideBootSafely();
         S.err = 'Không tải được thư viện đồng bộ: ' + ((e && e.message) || e) + ' (kiểm tra mạng / cấu hình).';
         setState('error');
       });
     } catch (e) {
+      hideBootSafely();
       S.err = 'Lỗi khởi tạo Sync: ' + ((e && e.message) || e);
       setState('error');
     }
