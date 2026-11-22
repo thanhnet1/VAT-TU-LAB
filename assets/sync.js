@@ -14,10 +14,11 @@
   var S = {
     st: 'off', user: null, M: null, since: null, inited: false, baseline: null,
     subscribed: false, pushing: false, retry: 0, lastOk: 0, err: '',
-    pending: 0, conflicts: 0, ready: { rows: false, blocks: false },
-    remoteSeen: 0, applyT: null, pushT: null, retryT: null, reconciling: false, loginShown: false
+    pending: 0, conflicts: 0, ready: { rows: false, blocks: false, folders: false },
+    remoteSeen: 0, applyT: null, pushT: null, retryT: null, pollT: null,
+    reconciling: false, loginShown: false
   };
-  var COLS = ['rows', 'blocks'];
+  var COLS = ['rows', 'blocks', 'folders'];
 
   function $(s, el) { return (el || document).querySelector(s); }
   function esc(s) {
@@ -105,6 +106,15 @@
     return hash(stable([STANDARD_COLS]));
   }
 
+  function folderSig(f) {
+    return hash(stable([
+      String((f && f.parentId) || ''),
+      String((f && f.id) || ''),
+      String((f && f.label) || ''),
+      String((f && f.icon) || '📄')
+    ]));
+  }
+
   function enc(key) { return encodeURIComponent(key); }
 
   function ws() { return (CS && CS.workspace) || 'lab-xvt'; }
@@ -132,7 +142,7 @@
 
   function enabled() {
     var c = (A && A.CFG && A.CFG.sync) || {};
-    if (c.provider === 'off') return false;
+    if (c.provider === 'off' || c.autoSync === false) return false;
     return !!((c.provider === 'firebase' && c.firebase && c.firebase.projectId) ||
               (c.provider === 'server' && c.server && c.server.url));
   }
@@ -176,6 +186,24 @@
     return m;
   }
 
+  function localFolders() {
+    var out = new Map();
+    var map = (A && A.ST && A.ST.customFolders) || {};
+    Object.keys(map).forEach(function (pid) {
+      var arr = Array.isArray(map[pid]) ? map[pid] : [];
+      arr.forEach(function (item) {
+        if (!item || !item.id) return;
+        out.set(item.id, {
+          id: item.id,
+          parentId: pid,
+          label: item.label || item.id,
+          icon: item.icon || '📄'
+        });
+      });
+    });
+    return out;
+  }
+
   function rowData(e) {
     var r = e.row;
     var src = normSrc(r.src || (r.v && r.v[0]), DEFAULT_SOURCE);
@@ -197,22 +225,46 @@
 
   function computeOps() {
     if (!S.baseline || !S.M || !A || !A.ST) return [];
-    var ops = [], base = S.baseline, lr = localRows(), M = S.M;
+    var ops = [], base = S.baseline, lr = localRows(), lf = localFolders(), M = S.M;
+
+    if (!M.folders) M.folders = {};
+
+    lf.forEach(function (fObj, fid) {
+      var sig = folderSig(fObj);
+      if (M.folders[fid] !== sig) {
+        ops.push({
+          col: 'folders',
+          key: fid,
+          sig: sig,
+          data: {
+            id: fObj.id,
+            parentId: fObj.parentId,
+            label: fObj.label,
+            icon: fObj.icon,
+            del: false
+          }
+        });
+      }
+    });
+
     lr.forEach(function (e, rid) {
       var sig = rowSig(e.row), last = M.rows[rid];
       var need = last !== undefined ? last !== sig : (!base.rows.has(rid) || base.rows.get(rid).sig !== sig);
       if (need) ops.push({ col: 'rows', key: rid, sig: sig, data: rowData(e) });
     });
+
     base.rows.forEach(function (b, rid) {
       if (!lr.has(rid) && M.rows[rid] !== 'DEL') {
         ops.push({ col: 'rows', key: rid, sig: 'DEL', data: { rid: rid, sid: b.sid, bt: b.bt, del: true } });
       }
     });
+
     Object.keys(M.rows).forEach(function (rid) {
       if (!lr.has(rid) && !base.rows.has(rid) && M.rows[rid] !== 'DEL') {
         ops.push({ col: 'rows', key: rid, sig: 'DEL', data: { rid: rid, sid: '', bt: '', del: true } });
       }
     });
+
     (A.ST.sheets || []).forEach(function (s) {
       (s.blocks || []).forEach(function (b) {
         var key = s.id + '|' + b.title;
@@ -228,6 +280,7 @@
         }
       });
     });
+
     return ops;
   }
 
@@ -276,12 +329,13 @@
   }
 
   function schedule(delay) {
+    var debounce = delay == null ? (Number(CS && CS.debounceMs) || 250) : delay;
     if (!A || !ad || !S.user || !S.subscribed || (!S.inited && !S.reconciling)) {
       if (ad && S.user && !S.inited) setState(S.st);
       return;
     }
     clearTimeout(S.pushT);
-    S.pushT = setTimeout(push, delay == null ? 900 : delay);
+    S.pushT = setTimeout(push, debounce);
   }
 
   function push() {
@@ -305,7 +359,10 @@
         return ad.commit(ch.map(function (o) {
           return { col: o.col, id: enc(o.key), data: o.data };
         })).then(function () {
-          ch.forEach(function (o) { S.M[o.col][o.key] = o.sig; });
+          ch.forEach(function (o) {
+            if (!S.M[o.col]) S.M[o.col] = {};
+            S.M[o.col][o.key] = o.sig;
+          });
           saveMeta();
         });
       });
@@ -333,6 +390,11 @@
   }
 
   function pushNow() { return push(); }
+  function pullNow() {
+    if (ad && S.user && typeof ad.pollNow === 'function') {
+      ad.pollNow(onDocs);
+    }
+  }
   function active() { return !!(ad && S.user && S.subscribed && S.inited); }
 
   function retryLater() {
@@ -443,6 +505,58 @@
     return changed;
   }
 
+  function applyFolder(d) {
+    var data = d.data;
+    if (!data || !data.id) return false;
+    if (!S.M.folders) S.M.folders = {};
+    if (!A.ST.customFolders) A.ST.customFolders = {};
+
+    var pid = data.parentId || 'thiet-bi-ip';
+    var arr = Array.isArray(A.ST.customFolders[pid]) ? A.ST.customFolders[pid] : [];
+    var idx = arr.findIndex(function (x) { return x && x.id === data.id; });
+
+    if (data.del) {
+      if (idx >= 0) {
+        arr.splice(idx, 1);
+        A.ST.customFolders[pid] = arr;
+        S.M.folders[data.id] = 'DEL';
+        return true;
+      }
+      return false;
+    }
+
+    var folderObj = {
+      id: data.id,
+      label: data.label || data.id,
+      icon: data.icon || '📄',
+      isCustom: true,
+      isDynamicGroup: true,
+      allowCreate: true
+    };
+    var nextSig = folderSig({
+      id: folderObj.id,
+      parentId: pid,
+      label: folderObj.label,
+      icon: folderObj.icon
+    });
+
+    if (idx >= 0) {
+      var prevSig = folderSig({
+        id: arr[idx].id,
+        parentId: pid,
+        label: arr[idx].label,
+        icon: arr[idx].icon
+      });
+      if (prevSig === nextSig && S.M.folders[data.id] === nextSig) return false;
+      arr[idx] = Object.assign({}, arr[idx], folderObj);
+    } else {
+      arr.push(folderObj);
+    }
+    A.ST.customFolders[pid] = arr;
+    S.M.folders[data.id] = nextSig;
+    return true;
+  }
+
   function onDocs(col, docs) {
     if (COLS.indexOf(col) < 0) return;
     var changed = 0, maxUpd = S.since[col] || 0;
@@ -450,10 +564,13 @@
     docs.forEach(function (d) {
       S.remoteSeen++;
       if (d.upd && d.upd > maxUpd) maxUpd = d.upd;
-      var ok = col === 'rows' ? applyRow(d) : applyBlock(d);
+      var ok = false;
+      if (col === 'rows') ok = applyRow(d);
+      else if (col === 'blocks') ok = applyBlock(d);
+      else if (col === 'folders') ok = applyFolder(d);
       if (ok) changed++;
     });
-    if (maxUpd > 0) S.since[col] = Math.max(0, maxUpd - 1);
+    if (maxUpd > 0) S.since[col] = maxUpd;
     saveMeta();
 
     if (changed) {
@@ -469,7 +586,7 @@
       maybeReconcile();
     }
     if (S.inited && !S.pushing && computeOps().length) {
-      schedule(500);
+      schedule(400);
     }
   }
 
@@ -483,11 +600,11 @@
       }
       if (A && typeof A.refresh === 'function') A.refresh();
       applyRoleUI();
-    }, 200);
+    }, 150);
   }
 
   function maybeReconcile() {
-    if (S.inited || S.reconciling || !(S.ready.rows && S.ready.blocks)) return;
+    if (S.inited || S.reconciling || !(S.ready.rows && S.ready.blocks && S.ready.folders)) return;
     S.reconciling = true;
     var ops = computeOps(), hasRemote = S.remoteSeen > 0;
     if (ops.length && hasRemote && localStorage.getItem('lab_user_role') !== 'guest') {
@@ -510,9 +627,9 @@
   function discardLocalAndResync() {
     stopSub();
     if (A && A.resetToBaseline) A.resetToBaseline();
-    S.M = { rows: {}, blocks: {} };
-    S.since = { rows: 0, blocks: 0 };
-    S.ready = { rows: false, blocks: false };
+    S.M = { rows: {}, blocks: {}, folders: {} };
+    S.since = { rows: 0, blocks: 0, folders: 0 };
+    S.ready = { rows: false, blocks: false, folders: false };
     S.remoteSeen = 0;
     S.reconciling = false;
     S.inited = true;
@@ -522,10 +639,27 @@
     startSub();
   }
 
+  function startPollLoop() {
+    clearInterval(S.pollT);
+    var ms = Number(CS && CS.pollIntervalMs) || 15000;
+    if (ms < 5000) ms = 5000;
+    S.pollT = setInterval(function () {
+      if (!document.hidden && ad && S.user && S.subscribed && !S.pushing && typeof ad.pollNow === 'function') {
+        ad.pollNow(onDocs);
+      }
+    }, ms);
+  }
+
+  function stopPollLoop() {
+    clearInterval(S.pollT);
+    S.pollT = null;
+  }
+
   function startSub() {
     if (!ad || S.subscribed) return;
     S.subscribed = true;
     setState('loading');
+    startPollLoop();
     ad.subscribe(
       S.since,
       onDocs,
@@ -539,6 +673,7 @@
         }
       },
       function () {
+        S.lastOk = Date.now();
         if (S.st === 'loading' || S.st === 'error' || S.st === 'offline') {
           S.err = '';
           setState(S.pending ? 'syncing' : 'ok');
@@ -548,6 +683,7 @@
   }
 
   function stopSub() {
+    stopPollLoop();
     try { if (ad && ad.unsubscribe) ad.unsubscribe(); } catch (e) { }
     S.subscribed = false;
   }
@@ -780,6 +916,10 @@
     var root = $('#mdSync');
     if (!root) return;
     root.addEventListener('click', function (e) {
+      if (e.target && e.target.classList && e.target.classList.contains('modal-back')) {
+        closePanel();
+        return;
+      }
       var b = e.target.closest('[data-sy]');
       if (!b) return;
       var a = b.dataset.sy;
@@ -860,8 +1000,8 @@
 
       S.baseline = buildBaseline();
       var m = loadMeta();
-      S.since = (m && m.since) || { rows: 0, blocks: 0 };
-      S.M = (m && m.M) || { rows: {}, blocks: {} };
+      S.since = (m && m.since) || { rows: 0, blocks: 0, folders: 0 };
+      S.M = (m && m.M) || { rows: {}, blocks: {}, folders: {} };
       S.inited = m ? !!m.inited : false;
       COLS.forEach(function (c) {
         if (!S.M[c]) S.M[c] = {};
@@ -884,7 +1024,10 @@
     ver: BUILD,
     init: init,
     schedule: schedule,
+    push: push,
     pushNow: pushNow,
+    pull: pullNow,
+    syncNow: pullNow,
     active: active,
     open: openPanel
   };
