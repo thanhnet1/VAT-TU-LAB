@@ -1,15 +1,15 @@
 /* =====================================================================
    assets/app.js – VẬT TƯ – TÀI SẢN
-   - Tổng quan thống kê + màu phân biệt trạng thái + trạng thái tài khoản/đồng bộ
+   - Tổng quan thống kê + màu phân biệt trạng thái + trạng thái đồng bộ
    - Cây thư mục sổ/thu gọn gọn gàng + tạo thư mục mới khi cần
    - Tìm kiếm toàn bộ tại Trang chủ, tìm trong thư mục tại từng thư mục
-   - Nút "+ Thêm vật tư" theo cấu trúc chuẩn + chuyển vật tư sang thư mục khác
-   - Bảng cân đối trên cả điện thoại và máy tính
+   - Nút "+ Thêm vật tư" với danh sách sổ Mã VT / Tên VT / Serial / Part number
+   - Nút chuyển vật tư sang thư mục khác + Bảng cân đối mobile & desktop
    ===================================================================== */
 (function () {
   'use strict';
 
-  const BUILD = '2026.11.22-3';
+  const BUILD = '2026.11.22-4';
   const SOURCE_OPTIONS = ['Vật tư', 'Tài sản', 'Đo kiểm', 'Sửa chữa', 'Không rõ nguồn'];
   const DEFAULT_SOURCE = 'Không rõ nguồn';
   const STANDARD_COLS = ['Nguồn', 'STT', 'Tên Vật Tư', 'Serial', 'Mã VT', 'Part number', 'Ghi chú'];
@@ -96,20 +96,25 @@
     toast._t = setTimeout(() => el.classList.remove('show'), ms);
   }
 
-  function getAccountSummary() {
+  function getSyncStatusInfo() {
     const role = localStorage.getItem('lab_user_role') || '';
     const username = localStorage.getItem('lab_username') || '';
-    if (username) {
-      return {
-        loggedIn: true,
-        label: `${username}${role ? ' (' + role + ')' : ''}`,
-        role: role || 'admin'
-      };
-    }
-    if (role === 'guest') {
-      return { loggedIn: true, label: 'khach (guest)', role: 'guest' };
-    }
-    return { loggedIn: false, label: 'Chưa đăng nhập', role: '' };
+    const accountLabel = username
+      ? `${username}${role ? ' (' + role + ')' : ''}`
+      : (role === 'guest' ? 'khach (guest)' : 'admin / khach');
+
+    const btnSync = $('#btnSync');
+    const isConnected = !!(btnSync && !btnSync.classList.contains('sync-off') && !btnSync.classList.contains('sync-login'));
+    const syncText = btnSync && btnSync.querySelector('span')
+      ? btnSync.querySelector('span').textContent.trim()
+      : (isConnected ? 'Đã đồng bộ' : 'Chỉ trên máy');
+
+    return {
+      accountLabel,
+      role: role || '',
+      syncText,
+      isConnected
+    };
   }
 
   function sanitizeSheetName(name, usedNames) {
@@ -397,7 +402,7 @@
 
   let DATA = { meta: { source: 'LAB', generated: '', version: '' }, sheets: [] };
   let storeData = {};
-  let ST = { sheets: [], slips: [], dirty: false };
+  let ST = { sheets: [], slips: { xuat: [], nhap: [] }, dirty: false };
   const V = {
     route: { page: 'overview', id: null },
     activeId: (flatNodes[0] && flatNodes[0].node.id) || null,
@@ -439,7 +444,9 @@
           ensureIds(saved.sheets);
           storeData = buildStoreFromSheets(saved.sheets);
           syncSTFromStore();
-          ST.slips = Array.isArray(saved.slips) ? saved.slips : [];
+          ST.slips = saved.slips && typeof saved.slips === 'object'
+            ? Object.assign({ xuat: [], nhap: [] }, saved.slips)
+            : { xuat: [], nhap: [] };
           ST.dirty = !!saved.dirty;
           return;
         }
@@ -452,7 +459,7 @@
     ensureIds(rawSheets);
     storeData = buildStoreFromSheets(rawSheets);
     syncSTFromStore();
-    ST.slips = [];
+    ST.slips = { xuat: [], nhap: [] };
     ST.dirty = false;
   }
 
@@ -489,7 +496,7 @@
     ensureIds(rawSheets);
     storeData = buildStoreFromSheets(rawSheets);
     syncSTFromStore();
-    ST.slips = [];
+    ST.slips = { xuat: [], nhap: [] };
     ST.dirty = false;
     const d = $('#dirty');
     if (d) d.hidden = true;
@@ -555,6 +562,51 @@
     return results;
   }
 
+  function collectCatalogLookups() {
+    const maVTSet = new Set();
+    const tenVTSet = new Set();
+    const serialSet = new Set();
+    const partNoSet = new Set();
+    const catalogItems = [];
+
+    for (const entry of flatNodes) {
+      const n = entry.node;
+      if (Array.isArray(n.children) && n.children.length > 0) continue;
+      const rows = getRowsForNode(n.id);
+      rows.forEach((r, idx) => {
+        const norm = normalizeRow(r, idx, CFG.defaultSource, STANDARD_COLS, n.id);
+        const v = norm.v || [];
+        const ten = String(v[2] || '').trim();
+        const ser = String(v[3] || '').trim();
+        const ma = String(v[4] || '').trim();
+        const part = String(v[5] || '').trim();
+        const note = String(v[6] || '').trim();
+        if (ma) maVTSet.add(ma);
+        if (ten) tenVTSet.add(ten);
+        if (ser) serialSet.add(ser);
+        if (part) partNoSet.add(part);
+        if (ma || ten || ser || part) {
+          catalogItems.push({
+            src: norm.src,
+            tenVT: ten,
+            serial: ser,
+            maVT: ma,
+            partNo: part,
+            ghiChu: note
+          });
+        }
+      });
+    }
+
+    return {
+      maVTList: Array.from(maVTSet).sort((a, b) => a.localeCompare(b, 'vi')),
+      tenVTList: Array.from(tenVTSet).sort((a, b) => a.localeCompare(b, 'vi')),
+      serialList: Array.from(serialSet).sort((a, b) => a.localeCompare(b, 'vi')),
+      partNoList: Array.from(partNoSet).sort((a, b) => a.localeCompare(b, 'vi')),
+      catalogItems
+    };
+  }
+
   function addStructuredItem(payload) {
     const targetNodeId = payload.targetNodeId || V.activeId || (flatNodes[0] && flatNodes[0].node.id);
     if (!targetNodeId) return;
@@ -603,37 +655,68 @@
       `<option value="${esc(s)}" ${s === defaultSrc ? 'selected' : ''}>${esc(s)}</option>`
     ).join('');
 
+    const lookups = collectCatalogLookups();
+    const toOpts = arr => arr.map(val => `<option value="${esc(val)}">${esc(val)}</option>`).join('');
+
     host.innerHTML = `
       <div class="modal-backdrop" id="addItemBackdrop" style="position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:9998;padding:12px;">
-        <div class="modal" style="width:100%;max-width:480px;background:#fff;color:#111;border-radius:10px;padding:16px;box-shadow:0 12px 30px rgba(0,0,0,.25);">
+        <div class="modal" style="width:100%;max-width:520px;background:#fff;color:#111;border-radius:10px;padding:16px;box-shadow:0 12px 30px rgba(0,0,0,.25);max-height:92vh;overflow-y:auto;">
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
             <h3 style="margin:0;font-size:17px;">📦 Thêm vật tư / tài sản</h3>
             <button type="button" id="btnCloseAddItem" style="border:0;background:transparent;font-size:18px;cursor:pointer;">✕</button>
           </div>
-          <form id="addItemForm" style="display:flex;flex-direction:column;gap:8px;">
+          <form id="addItemForm" style="display:flex;flex-direction:column;gap:9px;">
             <label style="font-size:12px;font-weight:600;">Thư mục lưu trữ
               <select id="aiFolder" style="width:100%;margin-top:3px;padding:7px 8px;border:1px solid #cbd5e1;border-radius:6px;">${folderOpts}</select>
             </label>
             <label style="font-size:12px;font-weight:600;">Nguồn
               <select id="aiSrc" style="width:100%;margin-top:3px;padding:7px 8px;border:1px solid #cbd5e1;border-radius:6px;">${srcOpts}</select>
             </label>
-            <label style="font-size:12px;font-weight:600;">Tên Vật Tư
-              <input id="aiTen" type="text" placeholder="Ví dụ: Card XTC10 / Module quang..." style="width:100%;margin-top:3px;padding:7px 8px;border:1px solid #cbd5e1;border-radius:6px;">
-            </label>
+
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-              <label style="font-size:12px;font-weight:600;">Serial
-                <input id="aiSerial" type="text" placeholder="S/N" style="width:100%;margin-top:3px;padding:7px 8px;border:1px solid #cbd5e1;border-radius:6px;">
+              <label style="font-size:12px;font-weight:600;">Mã vật tư (danh sách sổ)
+                <input id="aiMaVT" list="dlMaVT" type="text" placeholder="Chọn hoặc nhập Mã VT..." style="width:100%;margin-top:3px;padding:7px 8px;border:1px solid #cbd5e1;border-radius:6px;">
+                <select id="selMaVT" aria-label="Chọn nhanh Mã vật tư" style="width:100%;margin-top:4px;padding:5px 6px;border:1px solid #e2e8f0;border-radius:6px;font-size:12px;background:#f8fafc;">
+                  <option value="">-- Danh sách Mã vật tư --</option>
+                  ${toOpts(lookups.maVTList)}
+                </select>
+                <datalist id="dlMaVT">${toOpts(lookups.maVTList)}</datalist>
               </label>
-              <label style="font-size:12px;font-weight:600;">Mã VT
-                <input id="aiMaVT" type="text" placeholder="Mã vật tư" style="width:100%;margin-top:3px;padding:7px 8px;border:1px solid #cbd5e1;border-radius:6px;">
+
+              <label style="font-size:12px;font-weight:600;">Tên vật tư (danh sách sổ)
+                <input id="aiTen" list="dlTenVT" type="text" placeholder="Chọn hoặc nhập Tên Vật Tư..." style="width:100%;margin-top:3px;padding:7px 8px;border:1px solid #cbd5e1;border-radius:6px;">
+                <select id="selTenVT" aria-label="Chọn nhanh Tên vật tư" style="width:100%;margin-top:4px;padding:5px 6px;border:1px solid #e2e8f0;border-radius:6px;font-size:12px;background:#f8fafc;">
+                  <option value="">-- Danh sách Tên vật tư --</option>
+                  ${toOpts(lookups.tenVTList)}
+                </select>
+                <datalist id="dlTenVT">${toOpts(lookups.tenVTList)}</datalist>
               </label>
             </div>
-            <label style="font-size:12px;font-weight:600;">Part number
-              <input id="aiPartNo" type="text" placeholder="Part number" style="width:100%;margin-top:3px;padding:7px 8px;border:1px solid #cbd5e1;border-radius:6px;">
-            </label>
+
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+              <label style="font-size:12px;font-weight:600;">Serial (danh sách sổ)
+                <input id="aiSerial" list="dlSerial" type="text" placeholder="Chọn hoặc nhập Serial..." style="width:100%;margin-top:3px;padding:7px 8px;border:1px solid #cbd5e1;border-radius:6px;">
+                <select id="selSerial" aria-label="Chọn nhanh Serial" style="width:100%;margin-top:4px;padding:5px 6px;border:1px solid #e2e8f0;border-radius:6px;font-size:12px;background:#f8fafc;">
+                  <option value="">-- Danh sách Serial --</option>
+                  ${toOpts(lookups.serialList)}
+                </select>
+                <datalist id="dlSerial">${toOpts(lookups.serialList)}</datalist>
+              </label>
+
+              <label style="font-size:12px;font-weight:600;">Part number (danh sách sổ)
+                <input id="aiPartNo" list="dlPartNo" type="text" placeholder="Chọn hoặc nhập Part number..." style="width:100%;margin-top:3px;padding:7px 8px;border:1px solid #cbd5e1;border-radius:6px;">
+                <select id="selPartNo" aria-label="Chọn nhanh Part number" style="width:100%;margin-top:4px;padding:5px 6px;border:1px solid #e2e8f0;border-radius:6px;font-size:12px;background:#f8fafc;">
+                  <option value="">-- Danh sách Part number --</option>
+                  ${toOpts(lookups.partNoList)}
+                </select>
+                <datalist id="dlPartNo">${toOpts(lookups.partNoList)}</datalist>
+              </label>
+            </div>
+
             <label style="font-size:12px;font-weight:600;">Ghi chú
               <input id="aiGhiChu" type="text" placeholder="Tình trạng, vị trí, ghi chú..." style="width:100%;margin-top:3px;padding:7px 8px;border:1px solid #cbd5e1;border-radius:6px;">
             </label>
+
             <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:8px;">
               <button type="button" id="btnCancelAddItem" class="btn">Huỷ</button>
               <button type="submit" class="btn accent">+ Lưu vật tư</button>
@@ -650,21 +733,54 @@
       if (e.target && e.target.id === 'addItemBackdrop') closeModal();
     });
 
+    const maInp = $('#aiMaVT', host);
+    const tenInp = $('#aiTen', host);
+    const serInp = $('#aiSerial', host);
+    const partInp = $('#aiPartNo', host);
+    const noteInp = $('#aiGhiChu', host);
+
+    function autofillFromMatch(fieldKey, val) {
+      if (!val) return;
+      const hit = lookups.catalogItems.find(item => fold(item[fieldKey]) === fold(val));
+      if (!hit) return;
+      if (maInp && !maInp.value.trim() && hit.maVT) maInp.value = hit.maVT;
+      if (tenInp && !tenInp.value.trim() && hit.tenVT) tenInp.value = hit.tenVT;
+      if (serInp && !serInp.value.trim() && hit.serial) serInp.value = hit.serial;
+      if (partInp && !partInp.value.trim() && hit.partNo) partInp.value = hit.partNo;
+      if (noteInp && !noteInp.value.trim() && hit.ghiChu) noteInp.value = hit.ghiChu;
+    }
+
+    const bindDropdown = (selId, inp, fieldKey) => {
+      const sel = $(selId, host);
+      if (!sel || !inp) return;
+      sel.addEventListener('change', () => {
+        if (!sel.value) return;
+        inp.value = sel.value;
+        autofillFromMatch(fieldKey, sel.value);
+      });
+      inp.addEventListener('change', () => autofillFromMatch(fieldKey, inp.value));
+    };
+
+    bindDropdown('#selMaVT', maInp, 'maVT');
+    bindDropdown('#selTenVT', tenInp, 'tenVT');
+    bindDropdown('#selSerial', serInp, 'serial');
+    bindDropdown('#selPartNo', partInp, 'partNo');
+
     $('#addItemForm', host)?.addEventListener('submit', e => {
       e.preventDefault();
       addStructuredItem({
         targetNodeId: $('#aiFolder', host)?.value || chosenId,
         src: $('#aiSrc', host)?.value || defaultSrc,
-        tenVT: $('#aiTen', host)?.value || '',
-        serial: $('#aiSerial', host)?.value || '',
-        maVT: $('#aiMaVT', host)?.value || '',
-        partNo: $('#aiPartNo', host)?.value || '',
-        ghiChu: $('#aiGhiChu', host)?.value || ''
+        tenVT: tenInp ? tenInp.value : '',
+        serial: serInp ? serInp.value : '',
+        maVT: maInp ? maInp.value : '',
+        partNo: partInp ? partInp.value : '',
+        ghiChu: noteInp ? noteInp.value : ''
       });
       closeModal();
     });
 
-    $('#aiTen', host)?.focus();
+    tenInp?.focus();
   }
 
   function moveRowToNode(fromNodeId, rowIdx, toNodeId) {
@@ -734,7 +850,7 @@
     const sb = $('#sidebar');
     if (!sb) return;
 
-    const acc = getAccountSummary();
+    const syncInfo = getSyncStatusInfo();
     const treeTargetParent = V.activeId || (activeTree[0] && activeTree[0].id) || 'truyen-dan-thiet-bi';
 
     const renderNodes = (nodes, depth = 0) => {
@@ -768,9 +884,9 @@
     const ovActive = V.route.page === 'overview' && !V.query ? 'active' : '';
     sb.innerHTML = `
       <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;padding:6px 8px;margin-bottom:8px;border-radius:8px;background:rgba(11,58,91,.07);font-size:12px;">
-        <span>👤 <b>${esc(acc.label)}</b></span>
-        <button type="button" id="btnSidebarOpenSync" style="border:1px solid rgba(11,58,91,.25);background:#fff;color:#0b3a5b;border-radius:5px;padding:2px 7px;font-size:11.5px;font-weight:600;cursor:pointer;">
-          ${acc.loggedIn ? 'Đồng bộ' : 'Đăng nhập'}
+        <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">☁ <b>${esc(syncInfo.syncText)}</b> · ${esc(syncInfo.accountLabel)}</span>
+        <button type="button" id="btnSidebarOpenSync" style="border:1px solid rgba(11,58,91,.25);background:#fff;color:#0b3a5b;border-radius:5px;padding:2px 7px;font-size:11.5px;font-weight:600;cursor:pointer;flex-shrink:0;">
+          Đổi
         </button>
       </div>
       <div class="tree-root">
@@ -894,7 +1010,7 @@
     mainEl.innerHTML = `
       <div class="view-header" style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px;">
         <div>
-          <div style="font-size:12px;opacity:.7;">Tìm kiếm toàn bộ danh mục</div>
+          <div style="font-size:12px;opacity:.7;">Tìm kiếm toàn bộ danh mục tại Trang chủ</div>
           <h2 style="margin:2px 0 0;font-size:20px;">🔍 Kết quả tìm kiếm: "${esc(V.query)}" <small style="font-weight:400;opacity:.7;">(${results.length} dòng)</small></h2>
         </div>
         <div style="display:flex;flex-wrap:wrap;gap:8px;">
@@ -944,7 +1060,7 @@
     const { counts, total, folderCount, colorEntries } = computeStats();
     const meta = (DATA && DATA.meta) || {};
     const meaningEntries = Object.entries(CFG.colorMeaning || {});
-    const acc = getAccountSummary();
+    const syncInfo = getSyncStatusInfo();
 
     const sourceCards = SRC_LIST.map(src => {
       const style = SOURCE_BADGE_STYLE[src] || SOURCE_BADGE_STYLE['Không rõ nguồn'];
@@ -1010,13 +1126,13 @@
           <h2 style="margin:0;font-size:20px;">📊 Tổng quan Vật tư – Tài sản</h2>
           <div style="font-size:12px;opacity:.75;">
             Nguồn dữ liệu: ${esc(meta.source || 'LAB')} · Cập nhật: ${esc(meta.generated || '')} ·
-            Tài khoản đồng bộ: <b>${esc(acc.label)}</b>
+            Đồng bộ đa thiết bị: <b>${esc(syncInfo.syncText)}</b> (${esc(syncInfo.accountLabel)})
           </div>
         </div>
         <div style="display:flex;flex-wrap:wrap;gap:8px;">
-          <button type="button" id="btnOverviewAddFolder" class="btn" style="background:#f59e0b;color:#111827;border-color:#d97706;font-weight:700;box-shadow:0 2px 8px rgba(245,158,11,.35);">＋ Tạo thư mục mới</button>
+          <button type="button" id="btnOverviewAddFolder" class="btn" style="background:#f59e0b;color:#111827;border:2px solid #b45309;font-weight:700;padding:7px 13px;box-shadow:0 3px 10px rgba(245,158,11,.42);">＋ Tạo thư mục mới</button>
           <button type="button" id="btnOverviewAddItem" class="btn accent">+ Thêm vật tư</button>
-          <button type="button" id="btnOverviewSync" class="btn">☁ Đồng bộ (${esc(acc.loggedIn ? acc.role : 'admin/khach')})</button>
+          <button type="button" id="btnOverviewSync" class="btn">☁ Đồng bộ (${esc(syncInfo.accountLabel)})</button>
           <button type="button" id="btnOverviewExportAll" class="btn">📗 Xuất Excel toàn bộ</button>
         </div>
       </div>
@@ -1110,7 +1226,7 @@
       return `
         <tr>
           <td colspan="8" style="text-align:center;padding:18px;opacity:.7;">
-            Không có dữ liệu vật tư / tài sản phù hợp.
+            Không có dữ liệu vật tư / tài sản phù hợp trong thư mục này.
           </td>
         </tr>
       `;
@@ -1205,485 +1321,4 @@
       <div class="view-header" style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;">
         <div>
           <div style="font-size:12px;opacity:.7;">${esc(breadcrumb)}</div>
-          <h2 style="margin:2px 0 0;font-size:20px;">${esc(node.icon || '')} ${esc(node.label)} <small style="font-weight:400;opacity:.7;">(${filtered.length} dòng)</small></h2>
-        </div>
-        <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;">
-          <select id="filterSource" aria-label="Lọc theo nguồn" style="padding:6px 8px;border-radius:6px;border:1px solid rgba(0,0,0,.2);">
-            ${srcFilterOpts}
-          </select>
-          <button type="button" id="btnAddItem" class="btn accent">+ Thêm vật tư</button>
-          <button type="button" id="btnAddRow" class="btn">+ Thêm dòng nhanh</button>
-          <button type="button" id="btnExportSheets" class="btn">📗 Xuất Excel (tách sheet)</button>
-        </div>
-      </div>
-
-      ${renderHorizontalBar(currentEntry)}
-
-      <div class="table-wrap responsive-table-wrap" style="overflow-x:auto;-webkit-overflow-scrolling:touch;border:1px solid rgba(0,0,0,.12);border-radius:8px;background:#fff;">
-        <table id="statsTable" class="data-table" style="width:100%;border-collapse:collapse;">
-          <thead>
-            <tr>
-              <th style="white-space:nowrap;">Nguồn</th>
-              <th style="white-space:nowrap;">STT</th>
-              <th style="white-space:nowrap;">Tên Vật Tư</th>
-              <th style="white-space:nowrap;">Serial</th>
-              <th style="white-space:nowrap;">Mã VT</th>
-              <th style="white-space:nowrap;">Part number</th>
-              <th style="white-space:nowrap;">Ghi chú</th>
-              <th style="white-space:nowrap;">Thao tác</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${renderTableRows(node.id, filtered)}
-          </tbody>
-        </table>
-      </div>
-    `;
-
-    $$('[data-h-node]', mainEl).forEach(btn => {
-      btn.addEventListener('click', () => {
-        V.activeId = btn.getAttribute('data-h-node');
-        V.route = { page: 'sheet', id: V.activeId };
-        render();
-      });
-    });
-
-    const filterEl = $('#filterSource', mainEl);
-    if (filterEl) {
-      filterEl.addEventListener('change', () => {
-        V.sourceFilter = filterEl.value;
-        renderMain();
-      });
-    }
-
-    const addItemBtn = $('#btnAddItem', mainEl);
-    if (addItemBtn) {
-      addItemBtn.addEventListener('click', () => openAddItemModal(node.id));
-    }
-
-    const addBtn = $('#btnAddRow', mainEl);
-    if (addBtn) {
-      addBtn.addEventListener('click', () => {
-        const rows = getRowsForNode(node.id);
-        const defaultSrc = V.sourceFilter !== 'ALL' ? V.sourceFilter : CFG.defaultSource;
-        rows.push(normalizeRow({
-          i: 'u' + uid(),
-          src: defaultSrc,
-          v: [defaultSrc, String(rows.length + 1), '', '', '', '', '']
-        }, rows.length, defaultSrc, STANDARD_COLS, node.id));
-        persist();
-        render();
-      });
-    }
-
-    const exportBtn = $('#btnExportSheets', mainEl);
-    if (exportBtn) {
-      exportBtn.addEventListener('click', () => exportExcelSeparateSheets(currentEntry.node));
-    }
-
-    $$('.cell-edit', mainEl).forEach(inp => {
-      inp.addEventListener('change', () => {
-        const tr = inp.closest('tr');
-        const idx = Number(tr && tr.getAttribute('data-row-idx'));
-        const col = Number(inp.getAttribute('data-col'));
-        const rows = getRowsForNode(node.id);
-        if (!rows[idx]) return;
-        const norm = normalizeRow(rows[idx], idx, CFG.defaultSource, STANDARD_COLS, node.id);
-        norm.v[col] = inp.value;
-        if (col === 0) norm.src = normalizeSource(inp.value, CFG.defaultSource);
-        rows[idx] = norm;
-        persist();
-        renderSidebar();
-      });
-    });
-
-    $$('.btn-row-edit', mainEl).forEach(btn => {
-      btn.addEventListener('click', () => {
-        V.edit = true;
-        const editBtn = $('#btnEdit');
-        if (editBtn) editBtn.setAttribute('aria-pressed', 'true');
-        renderMain();
-      });
-    });
-
-    $$('.row-move-select', mainEl).forEach(sel => {
-      sel.addEventListener('change', () => {
-        const destId = sel.value;
-        if (!destId) return;
-        const idx = Number(sel.getAttribute('data-idx'));
-        moveRowToNode(node.id, idx, destId);
-      });
-    });
-
-    $$('.btn-row-del', mainEl).forEach(btn => {
-      btn.addEventListener('click', () => {
-        const idx = Number(btn.getAttribute('data-idx'));
-        const rows = getRowsForNode(node.id);
-        if (!rows[idx]) return;
-        rows.splice(idx, 1);
-        persist();
-        render();
-      });
-    });
-  }
-
-  function exportExcelSeparateSheets(targetNode) {
-    if (typeof XLSX === 'undefined') {
-      toast('Chưa tải được thư viện Excel (XLSX).', 4000);
-      return;
-    }
-
-    const leaves = collectLeafNodes(targetNode);
-    const sheetTargets = leaves.length ? leaves : [targetNode];
-    const wb = XLSX.utils.book_new();
-    const usedNames = new Set();
-
-    for (const itemNode of sheetTargets) {
-      const rawTitle = CFG.sheetLabels[itemNode.id] || itemNode.label || itemNode.id;
-      const sheetName = sanitizeSheetName(rawTitle, usedNames);
-      const rows = getRowsForNode(itemNode.id);
-
-      const aoa = [STANDARD_COLS.slice()];
-      rows.forEach((r, idx) => {
-        const norm = normalizeRow(r, idx, CFG.defaultSource, STANDARD_COLS, itemNode.id);
-        aoa.push([
-          norm.v[0],
-          norm.v[1] || String(idx + 1),
-          norm.v[2],
-          norm.v[3],
-          norm.v[4],
-          norm.v[5],
-          norm.v[6]
-        ]);
-      });
-
-      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), sheetName);
-    }
-
-    const slug = fold(targetNode.label || 'thong-ke').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'thong-ke';
-    XLSX.writeFile(wb, `${slug}-cac-sheet.xlsx`);
-  }
-
-  function handleImportFile(ev) {
-    const file = ev.target && ev.target.files && ev.target.files[0];
-    ev.target.value = '';
-    if (!file) return;
-
-    if (typeof XLSX === 'undefined') {
-      toast('Chưa tải được thư viện XLSX để đọc tệp.', 4000);
-      return;
-    }
-
-    const reader = new FileReader();
-    reader.onload = e => {
-      try {
-        const wb = XLSX.read(e.target.result, { type: 'array' });
-        let importedCount = 0;
-
-        wb.SheetNames.forEach(sheetName => {
-          const ws = wb.Sheets[sheetName];
-          const aoa = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
-          if (!Array.isArray(aoa) || !aoa.length) return;
-
-          const fallbackTargetId =
-            resolveTargetNodeId(sheetName) ||
-            resolveTargetNodeId(aoa[0] && aoa[0][0]) ||
-            V.activeId ||
-            (flatNodes[0] && flatNodes[0].node.id);
-
-          for (let rIdx = 0; rIdx < aoa.length; rIdx++) {
-            const rowArr = aoa[rIdx];
-            if (!Array.isArray(rowArr) || !rowArr.some(c => String(c || '').trim() !== '')) continue;
-
-            const c0 = String(rowArr[0] || '').trim().toLowerCase();
-            const c1 = String(rowArr[1] || '').trim().toLowerCase();
-            if (c0 === 'nguồn' || c0 === 'nguon' || c1 === 'stt') continue;
-
-            const hasSourceCol = SRC_LIST.some(opt => fold(opt) === fold(rowArr[0]));
-            const src = hasSourceCol ? normalizeSource(rowArr[0], CFG.defaultSource) : CFG.defaultSource;
-            const tenVT = String(hasSourceCol ? rowArr[2] : (rowArr[2] || rowArr[1] || rowArr[0] || '')).trim();
-            const serial = String(hasSourceCol ? rowArr[3] : (rowArr[3] || '')).trim();
-            const maVT = String(hasSourceCol ? rowArr[4] : (rowArr[1] || '')).trim();
-            const partNo = String(hasSourceCol ? rowArr[5] : (rowArr[4] || '')).trim();
-            const ghiChu = String(hasSourceCol ? rowArr[6] : (rowArr[5] || '')).trim();
-
-            if (!tenVT && !serial && !maVT && !partNo) continue;
-
-            const draftRow = normalizeRow({
-              i: 'u' + uid(),
-              src,
-              v: [src, '0', tenVT, serial, maVT, partNo, ghiChu]
-            }, 0, src, STANDARD_COLS, fallbackTargetId);
-
-            const targetId = classifyRowTarget(sheetName, sheetName, draftRow, fallbackTargetId);
-            if (!targetId) continue;
-            const destRows = getRowsForNode(targetId);
-            draftRow.v[1] = String(destRows.length + 1);
-            destRows.push(draftRow);
-            importedCount++;
-          }
-        });
-
-        persist();
-        render();
-        toast(`Đã nhập ${importedCount} dòng dữ liệu.`, 3500);
-      } catch (err) {
-        toast('Lỗi đọc tệp: ' + (err && err.message ? err.message : err), 4500);
-      }
-    };
-    reader.readAsArrayBuffer(file);
-  }
-
-  function render() {
-    syncSTFromStore();
-    renderSidebar();
-    renderMain();
-  }
-
-  function refreshFromSync() {
-    syncStoreFromST();
-    render();
-  }
-
-  function bindGlobal() {
-    const sb = $('#sidebar');
-    const overlay = $('#overlay');
-    const btnMenu = $('#btnMenu');
-
-    if (btnMenu && sb) {
-      btnMenu.addEventListener('click', () => {
-        sb.classList.toggle('open');
-        if (overlay) overlay.classList.toggle('show', sb.classList.contains('open'));
-      });
-    }
-    if (overlay && sb) {
-      overlay.addEventListener('click', () => {
-        sb.classList.remove('open');
-        overlay.classList.remove('show');
-      });
-    }
-
-    if (sb) {
-      sb.addEventListener('click', e => {
-        const toggleBtn = e.target.closest('[data-toggle-node]');
-        if (toggleBtn) {
-          const nid = toggleBtn.getAttribute('data-toggle-node');
-          V.treeCollapsed[nid] = !V.treeCollapsed[nid];
-          renderSidebar();
-          return;
-        }
-
-        const createBtn = e.target.closest('[data-create-folder]');
-        if (createBtn) {
-          createFolderUnder(createBtn.getAttribute('data-create-folder'));
-          return;
-        }
-
-        const nodeBtn = e.target.closest('[data-node-id]');
-        if (nodeBtn) {
-          V.activeId = nodeBtn.getAttribute('data-node-id');
-          V.route = { page: 'sheet', id: V.activeId };
-          if (sb.classList.contains('open')) {
-            sb.classList.remove('open');
-            if (overlay) overlay.classList.remove('show');
-          }
-          render();
-          return;
-        }
-
-        if (e.target.closest('[data-go-overview]')) {
-          V.route = { page: 'overview', id: null };
-          if (sb.classList.contains('open')) {
-            sb.classList.remove('open');
-            if (overlay) overlay.classList.remove('show');
-          }
-          render();
-        }
-      });
-    }
-
-    const gq = $('#gq');
-    const gqClear = $('#gqClear');
-    if (gq) {
-      gq.addEventListener('input', () => {
-        V.query = gq.value;
-        if (gqClear) gqClear.hidden = !V.query;
-        renderMain();
-      });
-    }
-    if (gqClear) {
-      gqClear.addEventListener('click', () => {
-        V.query = '';
-        if (gq) gq.value = '';
-        gqClear.hidden = true;
-        renderMain();
-      });
-    }
-
-    const btnEdit = $('#btnEdit');
-    if (btnEdit) {
-      btnEdit.addEventListener('click', () => {
-        V.edit = !V.edit;
-        btnEdit.setAttribute('aria-pressed', String(V.edit));
-        const eb = $('#editbar');
-        if (eb) eb.hidden = !V.edit;
-        renderMain();
-      });
-    }
-
-    const btnPrint = $('#btnPrint');
-    if (btnPrint) btnPrint.addEventListener('click', () => window.print());
-
-    const btnTheme = $('#btnTheme');
-    if (btnTheme) {
-      btnTheme.addEventListener('click', () => {
-        const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
-        document.documentElement.dataset.theme = next;
-        localStorage.setItem(LS('theme'), next);
-      });
-    }
-
-    const importInput = $('#importFileInput');
-    if (importInput) importInput.addEventListener('change', handleImportFile);
-
-    $$('#menuExport [data-act]').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const act = btn.getAttribute('data-act');
-        const curEntry = nodeById.get(V.activeId) || flatNodes[0];
-        if (act === 'xlsx-all') {
-          if (typeof XLSX === 'undefined') return;
-          const wb = XLSX.utils.book_new();
-          const used = new Set();
-          for (const entry of flatNodes) {
-            const n = entry.node;
-            if (Array.isArray(n.children) && n.children.length > 0) continue;
-            const sName = sanitizeSheetName(CFG.sheetLabels[n.id] || n.label, used);
-            const rows = getRowsForNode(n.id).map((r, i) => normalizeRow(r, i, CFG.defaultSource, STANDARD_COLS, n.id).v);
-            XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([STANDARD_COLS.slice(), ...rows]), sName);
-          }
-          XLSX.writeFile(wb, 'vat-tu-tai-san-all-sheets.xlsx');
-        } else if (act === 'xlsx-cur' && curEntry) {
-          exportExcelSeparateSheets(curEntry.node);
-        } else if (act === 'json-out') {
-          syncSTFromStore();
-          const blob = new Blob([JSON.stringify({ sheets: ST.sheets, slips: ST.slips, customFolders: customFoldersByParent }, null, 2)], { type: 'application/json' });
-          const a = document.createElement('a');
-          a.href = URL.createObjectURL(blob);
-          a.download = 'sao-luu-vat-tu-tai-san.json';
-          a.click();
-          setTimeout(() => URL.revokeObjectURL(a.href), 500);
-        } else if (act === 'reset') {
-          if (confirm('Khôi phục dữ liệu gốc? Mọi chỉnh sửa trên máy sẽ mất.')) {
-            resetToBaseline();
-            render();
-            toast('Đã khôi phục dữ liệu gốc');
-          }
-        }
-      });
-    });
-
-    window.addEventListener('hashchange', () => {
-      parseHash();
-      render();
-    });
-  }
-
-  window.LabApp = {
-    BUILD,
-    CFG,
-    esc,
-    uid,
-    fold,
-    tokensOf,
-    toast,
-    sheetById,
-    labelOf,
-    isStock,
-    stockRows,
-    normalizeSource,
-    normalizeRow,
-    SOURCE_OPTIONS: SRC_LIST,
-    STANDARD_COLS,
-    get DATA() { return DATA; },
-    get ST() { return ST; },
-    get V() { return V; },
-    saveLocal,
-    persist,
-    resetToBaseline,
-    refresh: refreshFromSync,
-    render,
-    keepScroll: fn => { const y = window.scrollY; fn(); window.scrollTo(0, y); },
-    touch: () => {}
-  };
-
-  function start(data) {
-    DATA = Object.assign({ meta: { source: 'LAB', generated: '', version: '' }, sheets: [] }, data || {});
-    loadState();
-    parseHash();
-
-    const appTitle = $('#appTitle');
-    const appSub = $('#appSub');
-    if (appTitle) appTitle.textContent = CFG.title;
-    if (appSub) appSub.textContent = CFG.subtitle;
-    const dirtyEl = $('#dirty');
-    if (dirtyEl) dirtyEl.hidden = !ST.dirty;
-
-    try { if (window.Slips && typeof window.Slips.init === 'function') window.Slips.init(window.LabApp); } catch (_) {}
-    try { if (window.Sync && typeof window.Sync.init === 'function') window.Sync.init(window.LabApp); } catch (_) {}
-
-    bindGlobal();
-    render();
-
-    const boot = $('#boot');
-    const topbar = $('#topbar');
-    const layout = $('#layout');
-    if (boot) boot.remove();
-    if (topbar) topbar.hidden = false;
-    if (layout) layout.hidden = false;
-  }
-
-  async function decrypt(enc, pw) {
-    const b64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
-    const km = await crypto.subtle.importKey('raw', new TextEncoder().encode(pw), 'PBKDF2', false, ['deriveKey']);
-    const key = await crypto.subtle.deriveKey({ name: 'PBKDF2', salt: b64(enc.salt), iterations: enc.iter, hash: 'SHA-256' }, km, { name: 'AES-GCM', length: 256 }, false, ['decrypt']);
-    const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: b64(enc.iv) }, key, b64(enc.ct));
-    return JSON.parse(new TextDecoder().decode(pt));
-  }
-
-  function unlock() {
-    const bootEl = $('#boot');
-    if (!bootEl) return;
-    bootEl.innerHTML = `<form class="lock" id="lockForm"><h2>🔒 ${esc(CFG.title)}</h2><p>Dữ liệu được bảo vệ bằng mật khẩu.</p>
-      <input type="password" id="pw" placeholder="Nhập mật khẩu" autocomplete="current-password" autofocus><div class="err" id="pwErr"></div><button>Mở khoá</button></form>`;
-    $('#lockForm').addEventListener('submit', async ev => {
-      ev.preventDefault();
-      const err = $('#pwErr');
-      if (err) err.textContent = 'Đang giải mã…';
-      try {
-        if (!window.crypto || !crypto.subtle) throw new Error('nocrypto');
-        start(await decrypt(window.LAB_DATA_ENC, $('#pw').value));
-      } catch (e) {
-        if (err) err.textContent = e.message === 'nocrypto' ? 'Trình duyệt cần mở bằng https://' : 'Sai mật khẩu.';
-      }
-    });
-  }
-
-  function boot() {
-    const t = localStorage.getItem(LS('theme')) || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
-    document.documentElement.dataset.theme = t;
-
-    if (window.LAB_DATA) {
-      start(window.LAB_DATA);
-    } else if (window.LAB_DATA_ENC) {
-      unlock();
-    } else {
-      start({ meta: { source: 'LAB', generated: '', version: '' }, sheets: [] });
-    }
-  }
-
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', boot);
-  } else {
-    boot();
-  }
-})();
+          <h2 style="margin
