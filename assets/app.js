@@ -1,13 +1,15 @@
 /* =====================================================================
    assets/app.js – VẬT TƯ – TÀI SẢN
-   - Cây thư mục gọn theo mẫu, sổ/thu gọn được + nút tạo thư mục mới
-   - Trang chủ: thẻ thống kê gọn + màu phân biệt dạng list thu nhỏ + bảng tổng hợp
-   - Nút chuyển vật tư sang thư mục khác + bảng cân đối mobile & desktop
+   - Tổng quan thống kê + màu phân biệt trạng thái + trạng thái tài khoản/đồng bộ
+   - Cây thư mục sổ/thu gọn gọn gàng + tạo thư mục mới khi cần
+   - Tìm kiếm toàn bộ tại Trang chủ, tìm trong thư mục tại từng thư mục
+   - Nút "+ Thêm vật tư" theo cấu trúc chuẩn + chuyển vật tư sang thư mục khác
+   - Bảng cân đối trên cả điện thoại và máy tính
    ===================================================================== */
 (function () {
   'use strict';
 
-  const BUILD = '2026.11.21-5';
+  const BUILD = '2026.11.22-3';
   const SOURCE_OPTIONS = ['Vật tư', 'Tài sản', 'Đo kiểm', 'Sửa chữa', 'Không rõ nguồn'];
   const DEFAULT_SOURCE = 'Không rõ nguồn';
   const STANDARD_COLS = ['Nguồn', 'STT', 'Tên Vật Tư', 'Serial', 'Mã VT', 'Part number', 'Ghi chú'];
@@ -77,7 +79,7 @@
     const clean = String(hex || '').replace(/^#/, '');
     const n = parseInt(clean, 16);
     if (isNaN(n)) return 'transparent';
-    return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},.24)`;
+    return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},.28)`;
   };
 
   const colorLabel = hex => {
@@ -92,6 +94,22 @@
     el.classList.add('show');
     clearTimeout(toast._t);
     toast._t = setTimeout(() => el.classList.remove('show'), ms);
+  }
+
+  function getAccountSummary() {
+    const role = localStorage.getItem('lab_user_role') || '';
+    const username = localStorage.getItem('lab_username') || '';
+    if (username) {
+      return {
+        loggedIn: true,
+        label: `${username}${role ? ' (' + role + ')' : ''}`,
+        role: role || 'admin'
+      };
+    }
+    if (role === 'guest') {
+      return { loggedIn: true, label: 'khach (guest)', role: 'guest' };
+    }
+    return { loggedIn: false, label: 'Chưa đăng nhập', role: '' };
   }
 
   function sanitizeSheetName(name, usedNames) {
@@ -379,7 +397,7 @@
 
   let DATA = { meta: { source: 'LAB', generated: '', version: '' }, sheets: [] };
   let storeData = {};
-  let ST = { sheets: [], slips: { xuat: [], nhap: [] }, dirty: false };
+  let ST = { sheets: [], slips: [], dirty: false };
   const V = {
     route: { page: 'overview', id: null },
     activeId: (flatNodes[0] && flatNodes[0].node.id) || null,
@@ -421,9 +439,7 @@
           ensureIds(saved.sheets);
           storeData = buildStoreFromSheets(saved.sheets);
           syncSTFromStore();
-          ST.slips = saved.slips && typeof saved.slips === 'object'
-            ? Object.assign({ xuat: [], nhap: [] }, saved.slips)
-            : { xuat: [], nhap: [] };
+          ST.slips = Array.isArray(saved.slips) ? saved.slips : [];
           ST.dirty = !!saved.dirty;
           return;
         }
@@ -436,7 +452,7 @@
     ensureIds(rawSheets);
     storeData = buildStoreFromSheets(rawSheets);
     syncSTFromStore();
-    ST.slips = { xuat: [], nhap: [] };
+    ST.slips = [];
     ST.dirty = false;
   }
 
@@ -473,7 +489,7 @@
     ensureIds(rawSheets);
     storeData = buildStoreFromSheets(rawSheets);
     syncSTFromStore();
-    ST.slips = { xuat: [], nhap: [] };
+    ST.slips = [];
     ST.dirty = false;
     const d = $('#dirty');
     if (d) d.hidden = true;
@@ -515,6 +531,142 @@
       .filter(item => matchesRow(item.row, qTokens, V.sourceFilter));
   }
 
+  function getGlobalSearchResults() {
+    const qTokens = tokensOf(V.query);
+    const results = [];
+    for (const entry of flatNodes) {
+      const n = entry.node;
+      if (Array.isArray(n.children) && n.children.length > 0) continue;
+      const rows = getRowsForNode(n.id);
+      rows.forEach((r, idx) => {
+        const norm = normalizeRow(r, idx, CFG.defaultSource, STANDARD_COLS, n.id);
+        if (matchesRow(norm, qTokens, V.sourceFilter)) {
+          results.push({
+            nodeId: n.id,
+            nodeLabel: n.label,
+            pathText: entry.pathNodes.map(x => x.label).join(' / '),
+            row: norm,
+            idx
+          });
+        }
+      });
+      if (results.length >= (CFG.maxSearchResults || 400)) break;
+    }
+    return results;
+  }
+
+  function addStructuredItem(payload) {
+    const targetNodeId = payload.targetNodeId || V.activeId || (flatNodes[0] && flatNodes[0].node.id);
+    if (!targetNodeId) return;
+    const rows = getRowsForNode(targetNodeId);
+    const src = normalizeSource(payload.src || (V.sourceFilter !== 'ALL' ? V.sourceFilter : CFG.defaultSource), CFG.defaultSource);
+    const newRow = normalizeRow({
+      i: 'u' + uid(),
+      ct: Date.now(),
+      src,
+      v: [
+        src,
+        String(rows.length + 1),
+        String(payload.tenVT || '').trim(),
+        String(payload.serial || '').trim(),
+        String(payload.maVT || '').trim(),
+        String(payload.partNo || '').trim(),
+        String(payload.ghiChu || '').trim()
+      ]
+    }, rows.length, src, STANDARD_COLS, targetNodeId);
+
+    rows.push(newRow);
+    persist();
+    render();
+    toast('Đã thêm vật tư vào danh mục');
+  }
+
+  function openAddItemModal(defaultNodeId) {
+    let host = $('#mdAddItem');
+    if (!host) {
+      host = document.createElement('div');
+      host.id = 'mdAddItem';
+      document.body.appendChild(host);
+    }
+
+    const leafEntries = flatNodes.filter(e => !Array.isArray(e.node.children) || e.node.children.length === 0);
+    const chosenId = defaultNodeId && nodeById.has(defaultNodeId)
+      ? defaultNodeId
+      : (leafEntries[0] && leafEntries[0].node.id) || '';
+
+    const folderOpts = leafEntries.map(e =>
+      `<option value="${esc(e.node.id)}" ${e.node.id === chosenId ? 'selected' : ''}>${esc(e.pathNodes.map(x => x.label).join(' / '))}</option>`
+    ).join('');
+
+    const defaultSrc = V.sourceFilter !== 'ALL' ? V.sourceFilter : CFG.defaultSource;
+    const srcOpts = SRC_LIST.map(s =>
+      `<option value="${esc(s)}" ${s === defaultSrc ? 'selected' : ''}>${esc(s)}</option>`
+    ).join('');
+
+    host.innerHTML = `
+      <div class="modal-backdrop" id="addItemBackdrop" style="position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:9998;padding:12px;">
+        <div class="modal" style="width:100%;max-width:480px;background:#fff;color:#111;border-radius:10px;padding:16px;box-shadow:0 12px 30px rgba(0,0,0,.25);">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+            <h3 style="margin:0;font-size:17px;">📦 Thêm vật tư / tài sản</h3>
+            <button type="button" id="btnCloseAddItem" style="border:0;background:transparent;font-size:18px;cursor:pointer;">✕</button>
+          </div>
+          <form id="addItemForm" style="display:flex;flex-direction:column;gap:8px;">
+            <label style="font-size:12px;font-weight:600;">Thư mục lưu trữ
+              <select id="aiFolder" style="width:100%;margin-top:3px;padding:7px 8px;border:1px solid #cbd5e1;border-radius:6px;">${folderOpts}</select>
+            </label>
+            <label style="font-size:12px;font-weight:600;">Nguồn
+              <select id="aiSrc" style="width:100%;margin-top:3px;padding:7px 8px;border:1px solid #cbd5e1;border-radius:6px;">${srcOpts}</select>
+            </label>
+            <label style="font-size:12px;font-weight:600;">Tên Vật Tư
+              <input id="aiTen" type="text" placeholder="Ví dụ: Card XTC10 / Module quang..." style="width:100%;margin-top:3px;padding:7px 8px;border:1px solid #cbd5e1;border-radius:6px;">
+            </label>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+              <label style="font-size:12px;font-weight:600;">Serial
+                <input id="aiSerial" type="text" placeholder="S/N" style="width:100%;margin-top:3px;padding:7px 8px;border:1px solid #cbd5e1;border-radius:6px;">
+              </label>
+              <label style="font-size:12px;font-weight:600;">Mã VT
+                <input id="aiMaVT" type="text" placeholder="Mã vật tư" style="width:100%;margin-top:3px;padding:7px 8px;border:1px solid #cbd5e1;border-radius:6px;">
+              </label>
+            </div>
+            <label style="font-size:12px;font-weight:600;">Part number
+              <input id="aiPartNo" type="text" placeholder="Part number" style="width:100%;margin-top:3px;padding:7px 8px;border:1px solid #cbd5e1;border-radius:6px;">
+            </label>
+            <label style="font-size:12px;font-weight:600;">Ghi chú
+              <input id="aiGhiChu" type="text" placeholder="Tình trạng, vị trí, ghi chú..." style="width:100%;margin-top:3px;padding:7px 8px;border:1px solid #cbd5e1;border-radius:6px;">
+            </label>
+            <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:8px;">
+              <button type="button" id="btnCancelAddItem" class="btn">Huỷ</button>
+              <button type="submit" class="btn accent">+ Lưu vật tư</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    `;
+
+    const closeModal = () => { host.innerHTML = ''; };
+    $('#btnCloseAddItem', host)?.addEventListener('click', closeModal);
+    $('#btnCancelAddItem', host)?.addEventListener('click', closeModal);
+    $('#addItemBackdrop', host)?.addEventListener('click', e => {
+      if (e.target && e.target.id === 'addItemBackdrop') closeModal();
+    });
+
+    $('#addItemForm', host)?.addEventListener('submit', e => {
+      e.preventDefault();
+      addStructuredItem({
+        targetNodeId: $('#aiFolder', host)?.value || chosenId,
+        src: $('#aiSrc', host)?.value || defaultSrc,
+        tenVT: $('#aiTen', host)?.value || '',
+        serial: $('#aiSerial', host)?.value || '',
+        maVT: $('#aiMaVT', host)?.value || '',
+        partNo: $('#aiPartNo', host)?.value || '',
+        ghiChu: $('#aiGhiChu', host)?.value || ''
+      });
+      closeModal();
+    });
+
+    $('#aiTen', host)?.focus();
+  }
+
   function moveRowToNode(fromNodeId, rowIdx, toNodeId) {
     if (!toNodeId || fromNodeId === toNodeId) return;
     const srcRows = getRowsForNode(fromNodeId);
@@ -538,17 +690,18 @@
   }
 
   function createFolderUnder(parentId) {
-    const parentEntry = nodeById.get(parentId);
+    const parentEntry = nodeById.get(parentId) || flatNodes[0];
+    const resolvedParentId = parentEntry ? parentEntry.node.id : 'truyen-dan-thiet-bi';
     const parentLabel = parentEntry ? parentEntry.node.label : 'Thư mục';
     const rawName = prompt(`Nhập tên thư mục mới trong "${parentLabel}":`);
     if (!rawName || !rawName.trim()) return;
     const cleanName = rawName.trim();
     const newId = 'folder-' + uid();
 
-    if (!Array.isArray(customFoldersByParent[parentId])) {
-      customFoldersByParent[parentId] = [];
+    if (!Array.isArray(customFoldersByParent[resolvedParentId])) {
+      customFoldersByParent[resolvedParentId] = [];
     }
-    customFoldersByParent[parentId].push({
+    customFoldersByParent[resolvedParentId].push({
       id: newId,
       label: cleanName,
       icon: '📄',
@@ -557,7 +710,7 @@
       matchKeywords: [fold(cleanName)]
     });
 
-    delete V.treeCollapsed[parentId];
+    delete V.treeCollapsed[resolvedParentId];
     rebuildTreeIndex();
     if (!Array.isArray(storeData[newId])) storeData[newId] = [];
     V.activeId = newId;
@@ -581,38 +734,31 @@
     const sb = $('#sidebar');
     if (!sb) return;
 
+    const acc = getAccountSummary();
+    const treeTargetParent = V.activeId || (activeTree[0] && activeTree[0].id) || 'truyen-dan-thiet-bi';
+
     const renderNodes = (nodes, depth = 0) => {
       if (!Array.isArray(nodes) || !nodes.length) return '';
-      return `<div class="tree-children" style="padding-left:${depth ? 12 : 0}px;border-left:${depth ? '1px solid rgba(11,58,91,.18)' : 'none'};margin-left:${depth ? 6 : 0}px;">` +
+      return `<div class="tree-children" style="padding-left:${depth ? 12 : 0}px;">` +
         nodes.map(node => {
           const isCollapsed = !!V.treeCollapsed[node.id];
           const isActive = V.route.page === 'sheet' && V.activeId === node.id;
           const totalCount = countNodeRowsDeep(node);
           const hasChildren = Array.isArray(node.children) && node.children.length > 0;
-          const canAddChild = !!node.allowCreate;
 
           return `
-            <div class="tree-node ${isCollapsed ? 'collapsed' : ''}" data-node="${esc(node.id)}" style="margin:1px 0;">
-              <div class="tree-row ${isActive ? 'active' : ''}" style="display:flex;align-items:center;justify-content:space-between;gap:4px;padding:4px 6px;border-radius:6px;background:${isActive ? 'rgba(11,58,91,.14)' : 'transparent'};">
-                <button type="button" class="tree-toggle-btn" data-toggle-node="${esc(node.id)}" aria-label="Thu gọn hoặc mở rộng" style="border:0;background:transparent;cursor:pointer;padding:0 2px;font-size:11px;line-height:1;">
+            <div class="tree-node ${isCollapsed ? 'collapsed' : ''}" data-node="${esc(node.id)}" style="margin:2px 0;">
+              <div class="tree-row ${isActive ? 'active' : ''}" style="display:flex;align-items:center;justify-content:space-between;gap:4px;padding:5px 7px;border-radius:6px;cursor:pointer;background:${isActive ? 'rgba(11,58,91,.14)' : 'transparent'};">
+                <button type="button" class="tree-toggle-btn" data-toggle-node="${esc(node.id)}" aria-label="Thu gọn hoặc mở rộng" style="border:0;background:transparent;cursor:pointer;padding:0 3px;font-size:12px;line-height:1;">
                   ${hasChildren ? (isCollapsed ? '▸' : '▾') : '•'}
                 </button>
-                <button type="button" class="tree-select-btn" data-node-id="${esc(node.id)}" style="flex:1;min-width:0;border:0;background:transparent;color:inherit;cursor:pointer;display:flex;align-items:center;gap:5px;text-align:left;padding:0;font-size:13px;font-weight:${isActive ? '600' : '400'};">
+                <button type="button" class="tree-select-btn" data-node-id="${esc(node.id)}" style="flex:1;min-width:0;border:0;background:transparent;color:inherit;cursor:pointer;display:flex;align-items:center;gap:6px;text-align:left;padding:0;font-weight:${isActive ? '600' : '400'};">
                   <span>${esc(node.icon || (hasChildren ? '📁' : '📄'))}</span>
                   <span class="nm" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(node.label)}</span>
                 </button>
-                <span class="ct" style="font-size:11.5px;opacity:.75;">${totalCount}</span>
+                <span class="ct" style="font-size:12px;opacity:.75;">${totalCount}</span>
               </div>
-              ${!isCollapsed ? `
-                ${hasChildren ? renderNodes(node.children, depth + 1) : ''}
-                ${canAddChild ? `
-                  <div style="padding-left:8px;margin:2px 0;">
-                    <button type="button" class="tree-add-btn" data-create-folder="${esc(node.id)}" style="width:100%;text-align:left;padding:3px 7px;border:1px dashed rgba(11,58,91,.24);border-radius:5px;background:transparent;color:inherit;font-size:11.5px;opacity:.8;cursor:pointer;">
-                      ＋ Tạo thư mục mới
-                    </button>
-                  </div>
-                ` : ''}
-              ` : ''}
+              ${!isCollapsed && hasChildren ? renderNodes(node.children, depth + 1) : ''}
             </div>
           `;
         }).join('') +
@@ -621,13 +767,28 @@
 
     const ovActive = V.route.page === 'overview' && !V.query ? 'active' : '';
     sb.innerHTML = `
-      <div class="tree-root">
-        <button type="button" class="tree-row ${ovActive}" data-go-overview="1" style="width:100%;margin-bottom:6px;border:0;background:${ovActive ? 'rgba(11,58,91,.14)' : 'transparent'};cursor:pointer;text-align:left;padding:6px 8px;border-radius:6px;display:flex;align-items:center;gap:6px;font-size:13.5px;">
-          <span>🏠</span><span class="nm"><b>Vật tư - Tài sản</b></span>
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;padding:6px 8px;margin-bottom:8px;border-radius:8px;background:rgba(11,58,91,.07);font-size:12px;">
+        <span>👤 <b>${esc(acc.label)}</b></span>
+        <button type="button" id="btnSidebarOpenSync" style="border:1px solid rgba(11,58,91,.25);background:#fff;color:#0b3a5b;border-radius:5px;padding:2px 7px;font-size:11.5px;font-weight:600;cursor:pointer;">
+          ${acc.loggedIn ? 'Đồng bộ' : 'Đăng nhập'}
         </button>
+      </div>
+      <div class="tree-root">
+        <button type="button" class="tree-row ${ovActive}" data-go-overview="1" style="width:100%;margin-bottom:6px;border:0;background:${ovActive ? 'rgba(11,58,91,.14)' : 'transparent'};cursor:pointer;text-align:left;padding:7px 8px;border-radius:6px;display:flex;align-items:center;gap:6px;">
+          <span>🏠</span><span class="nm"><b>Tổng quan (Vật tư - Tài sản)</b></span>
+        </button>
+        <div style="margin-bottom:8px;">
+          <button type="button" data-create-folder="${esc(treeTargetParent)}" style="width:100%;text-align:center;padding:5px 8px;border:1px dashed rgba(11,58,91,.35);border-radius:6px;background:rgba(11,58,91,.04);color:#0b3a5b;font-size:12px;font-weight:600;cursor:pointer;">
+            ＋ Tạo thư mục mới
+          </button>
+        </div>
         ${renderNodes(activeTree, 0)}
       </div>
     `;
+
+    $('#btnSidebarOpenSync', sb)?.addEventListener('click', () => {
+      if (window.Sync && typeof window.Sync.open === 'function') window.Sync.open();
+    });
   }
 
   function renderHorizontalBar(currentEntry) {
@@ -668,7 +829,7 @@
     }).join('');
 
     return `
-      <div class="horizontal-folder-bar" style="display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:9px 12px;margin-bottom:12px;border-radius:8px;background:rgba(11,58,91,.05);border:1px solid rgba(11,58,91,.14);overflow-x:auto;">
+      <div class="horizontal-folder-bar" style="display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:10px 12px;margin-bottom:12px;border-radius:8px;background:rgba(11,58,91,.05);border:1px solid rgba(11,58,91,.14);overflow-x:auto;">
         <span style="font-size:12px;font-weight:700;text-transform:uppercase;opacity:.8;margin-right:4px;">
           ${esc(groupTitle)} [${esc(summaryText)}]:
         </span>
@@ -704,36 +865,111 @@
     return { counts, total, folderCount, colorEntries };
   }
 
+  function renderGlobalSearchView(mainEl) {
+    const results = getGlobalSearchResults();
+    const rowsHtml = results.length
+      ? results.map((item, i) => {
+          const v = item.row.v;
+          const badgeStyle = SOURCE_BADGE_STYLE[v[0]] || SOURCE_BADGE_STYLE['Không rõ nguồn'];
+          return `
+            <tr>
+              <td style="text-align:center;">${i + 1}</td>
+              <td>
+                <button type="button" data-jump-folder="${esc(item.nodeId)}" style="border:0;background:transparent;color:#0b3a5b;font-weight:600;cursor:pointer;text-align:left;padding:0;">
+                  ${esc(item.nodeLabel)}
+                </button>
+                <div style="font-size:11px;opacity:.65;">${esc(item.pathText)}</div>
+              </td>
+              <td style="white-space:nowrap;"><span style="display:inline-block;padding:2px 7px;border-radius:999px;font-size:12px;font-weight:600;border:1px solid;${badgeStyle}">${esc(v[0])}</span></td>
+              <td>${esc(v[2])}</td>
+              <td>${esc(v[3])}</td>
+              <td>${esc(v[4])}</td>
+              <td>${esc(v[5])}</td>
+              <td>${esc(v[6])}</td>
+            </tr>
+          `;
+        }).join('')
+      : `<tr><td colspan="8" style="text-align:center;padding:18px;opacity:.7;">Không tìm thấy vật tư nào khớp với từ khóa "${esc(V.query)}" trên toàn bộ thư mục.</td></tr>`;
+
+    mainEl.innerHTML = `
+      <div class="view-header" style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px;">
+        <div>
+          <div style="font-size:12px;opacity:.7;">Tìm kiếm toàn bộ danh mục</div>
+          <h2 style="margin:2px 0 0;font-size:20px;">🔍 Kết quả tìm kiếm: "${esc(V.query)}" <small style="font-weight:400;opacity:.7;">(${results.length} dòng)</small></h2>
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:8px;">
+          <button type="button" id="btnAddItemSearch" class="btn accent">+ Thêm vật tư</button>
+          <button type="button" id="btnBackOverview" class="btn">🏠 Về Trang chủ</button>
+        </div>
+      </div>
+      <div class="table-wrap responsive-table-wrap" style="overflow-x:auto;-webkit-overflow-scrolling:touch;border:1px solid rgba(0,0,0,.12);border-radius:8px;background:#fff;">
+        <table class="data-table" style="width:100%;border-collapse:collapse;">
+          <thead>
+            <tr>
+              <th style="white-space:nowrap;">STT</th>
+              <th style="white-space:nowrap;">Thư mục</th>
+              <th style="white-space:nowrap;">Nguồn</th>
+              <th style="white-space:nowrap;">Tên Vật Tư</th>
+              <th style="white-space:nowrap;">Serial</th>
+              <th style="white-space:nowrap;">Mã VT</th>
+              <th style="white-space:nowrap;">Part number</th>
+              <th style="white-space:nowrap;">Ghi chú</th>
+            </tr>
+          </thead>
+          <tbody>${rowsHtml}</tbody>
+        </table>
+      </div>
+    `;
+
+    $('#btnAddItemSearch', mainEl)?.addEventListener('click', () => openAddItemModal(V.activeId));
+    $('#btnBackOverview', mainEl)?.addEventListener('click', () => {
+      V.query = '';
+      const gq = $('#gq');
+      const gqClear = $('#gqClear');
+      if (gq) gq.value = '';
+      if (gqClear) gqClear.hidden = true;
+      V.route = { page: 'overview', id: null };
+      render();
+    });
+    $$('[data-jump-folder]', mainEl).forEach(btn => {
+      btn.addEventListener('click', () => {
+        V.activeId = btn.getAttribute('data-jump-folder');
+        V.route = { page: 'sheet', id: V.activeId };
+        render();
+      });
+    });
+  }
+
   function renderOverview(mainEl) {
     const { counts, total, folderCount, colorEntries } = computeStats();
     const meta = (DATA && DATA.meta) || {};
     const meaningEntries = Object.entries(CFG.colorMeaning || {});
+    const acc = getAccountSummary();
 
-    const sourceListHtml = SRC_LIST.map(src => {
+    const sourceCards = SRC_LIST.map(src => {
       const style = SOURCE_BADGE_STYLE[src] || SOURCE_BADGE_STYLE['Không rõ nguồn'];
       return `
-        <li style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 10px;border-bottom:1px solid rgba(0,0,0,.06);">
-          <span style="display:inline-block;padding:2px 8px;border-radius:999px;font-size:12px;font-weight:600;border:1px solid;${style}">${esc(src)}</span>
-          <strong style="font-size:14px;">${(counts[src] || 0).toLocaleString('vi-VN')}</strong>
-        </li>
+        <div class="kpi" style="padding:12px 14px;border-radius:10px;border:1px solid rgba(0,0,0,.1);background:#fff;">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+            <span class="src-badge" style="display:inline-block;padding:2px 8px;border-radius:999px;font-size:12px;font-weight:600;border:1px solid;${style}">${esc(src)}</span>
+            <strong style="font-size:20px;">${(counts[src] || 0).toLocaleString('vi-VN')}</strong>
+          </div>
+          <div style="font-size:12px;opacity:.7;margin-top:6px;">Số dòng thuộc nguồn ${esc(src)}</div>
+        </div>
       `;
     }).join('');
 
-    const rawColors = colorEntries.length
-      ? colorEntries.map(([hex, cnt]) => ({ hex, cnt }))
-      : meaningEntries.map(([hex, label]) => ({ hex, cnt: 0, label }));
-
-    const colorListHtml = rawColors.map(item => {
+    const legendItems = (colorEntries.length ? colorEntries.map(([hex, cnt]) => ({ hex, cnt })) : meaningEntries.map(([hex, label]) => ({ hex, cnt: 0, label }))).map(item => {
       const bg = bgOf(item.hex);
       const lbl = item.label || colorLabel(item.hex);
       return `
-        <li style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 10px;border-radius:6px;background:${bg};border:1px solid rgba(0,0,0,.09);">
-          <span style="display:inline-flex;align-items:center;gap:8px;font-size:12.5px;font-weight:600;">
-            <span style="width:11px;height:11px;border-radius:3px;background:#${esc(item.hex)};display:inline-block;border:1px solid rgba(0,0,0,.25);"></span>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 10px;border-radius:8px;background:${bg};border:1px solid rgba(0,0,0,.12);">
+          <span style="display:inline-flex;align-items:center;gap:8px;font-size:13px;font-weight:600;">
+            <span style="width:12px;height:12px;border-radius:3px;background:#${esc(item.hex)};display:inline-block;border:1px solid rgba(0,0,0,.25);"></span>
             <span>${esc(lbl)}</span>
           </span>
-          ${item.cnt > 0 ? `<strong style="font-size:12.5px;">${item.cnt}</strong>` : ''}
-        </li>
+          ${item.cnt > 0 ? `<strong style="font-size:13px;">${item.cnt}</strong>` : ''}
+        </div>
       `;
     }).join('');
 
@@ -769,45 +1005,42 @@
       }).join('');
 
     mainEl.innerHTML = `
-      <div class="view-header" style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px;">
+      <div class="view-header" style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;margin-bottom:14px;">
         <div>
           <h2 style="margin:0;font-size:20px;">📊 Tổng quan Vật tư – Tài sản</h2>
-          <div style="font-size:12px;opacity:.7;">Nguồn: ${esc(meta.source || 'LAB')} · Cập nhật: ${esc(meta.generated || '')}</div>
+          <div style="font-size:12px;opacity:.75;">
+            Nguồn dữ liệu: ${esc(meta.source || 'LAB')} · Cập nhật: ${esc(meta.generated || '')} ·
+            Tài khoản đồng bộ: <b>${esc(acc.label)}</b>
+          </div>
         </div>
         <div style="display:flex;flex-wrap:wrap;gap:8px;">
-          <button type="button" id="btnOverviewAddFolder" class="btn">＋ Tạo thư mục mới</button>
-          <button type="button" id="btnOverviewExportAll" class="btn accent">📗 Xuất Excel toàn bộ</button>
+          <button type="button" id="btnOverviewAddFolder" class="btn" style="background:#f59e0b;color:#111827;border-color:#d97706;font-weight:700;box-shadow:0 2px 8px rgba(245,158,11,.35);">＋ Tạo thư mục mới</button>
+          <button type="button" id="btnOverviewAddItem" class="btn accent">+ Thêm vật tư</button>
+          <button type="button" id="btnOverviewSync" class="btn">☁ Đồng bộ (${esc(acc.loggedIn ? acc.role : 'admin/khach')})</button>
+          <button type="button" id="btnOverviewExportAll" class="btn">📗 Xuất Excel toàn bộ</button>
         </div>
       </div>
 
-      <div class="kpis" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:12px;">
-        <div class="kpi" style="padding:10px 12px;border-radius:8px;border:1px solid rgba(0,0,0,.1);background:#fff;">
-          <div style="font-size:12px;opacity:.7;">Tổng thư mục</div>
-          <strong style="font-size:20px;">${folderCount}</strong>
+      <div class="kpis" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(175px,1fr));gap:10px;margin-bottom:14px;">
+        <div class="kpi" style="padding:12px 14px;border-radius:10px;border:1px solid rgba(0,0,0,.1);background:#fff;">
+          <div style="font-size:12px;opacity:.7;">Tổng thư mục / danh mục</div>
+          <strong style="font-size:22px;">${folderCount}</strong>
         </div>
-        <div class="kpi" style="padding:10px 12px;border-radius:8px;border:1px solid rgba(0,0,0,.1);background:#fff;">
+        <div class="kpi" style="padding:12px 14px;border-radius:10px;border:1px solid rgba(0,0,0,.1);background:#fff;">
           <div style="font-size:12px;opacity:.7;">Tổng dòng thống kê</div>
-          <strong style="font-size:20px;">${total.toLocaleString('vi-VN')}</strong>
+          <strong style="font-size:22px;">${total.toLocaleString('vi-VN')}</strong>
+        </div>
+        ${sourceCards}
+      </div>
+
+      <div style="margin-bottom:16px;padding:12px;border-radius:10px;border:1px solid rgba(0,0,0,.1);background:#fff;">
+        <div style="font-size:13px;font-weight:700;margin-bottom:8px;">🎨 Màu phân biệt trạng thái & nguồn</div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:8px;">
+          ${legendItems}
         </div>
       </div>
 
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px;margin-bottom:14px;">
-        <div style="padding:10px 12px;border-radius:8px;border:1px solid rgba(0,0,0,.1);background:#fff;">
-          <div style="font-size:13px;font-weight:700;margin-bottom:6px;">📌 Thống kê theo nguồn (List)</div>
-          <ul style="list-style:none;margin:0;padding:0;">
-            ${sourceListHtml}
-          </ul>
-        </div>
-
-        <div style="padding:10px 12px;border-radius:8px;border:1px solid rgba(0,0,0,.1);background:#fff;">
-          <div style="font-size:13px;font-weight:700;margin-bottom:6px;">🎨 Màu phân biệt trạng thái (List)</div>
-          <ul style="list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:5px;">
-            ${colorListHtml}
-          </ul>
-        </div>
-      </div>
-
-      <div class="table-wrap responsive-table-wrap" style="overflow-x:auto;-webkit-overflow-scrolling:touch;border:1px solid rgba(0,0,0,.12);border-radius:8px;background:#fff;">
+      <div class="table-wrap" style="overflow-x:auto;border:1px solid rgba(0,0,0,.12);border-radius:8px;background:#fff;">
         <table class="data-table stats-overview-table" style="width:100%;border-collapse:collapse;">
           <thead>
             <tr>
@@ -840,6 +1073,11 @@
     if (addFolderBtn) {
       addFolderBtn.addEventListener('click', () => createFolderUnder(V.activeId || 'truyen-dan-thiet-bi'));
     }
+
+    $('#btnOverviewAddItem', mainEl)?.addEventListener('click', () => openAddItemModal(V.activeId));
+    $('#btnOverviewSync', mainEl)?.addEventListener('click', () => {
+      if (window.Sync && typeof window.Sync.open === 'function') window.Sync.open();
+    });
 
     const exportAllBtn = $('#btnOverviewExportAll', mainEl);
     if (exportAllBtn) {
@@ -941,8 +1179,12 @@
     const mainEl = $('#main');
     if (!mainEl) return;
 
-    if (V.route.page === 'overview' && !V.query) {
-      renderOverview(mainEl);
+    if (V.route.page === 'overview') {
+      if (V.query && V.query.trim()) {
+        renderGlobalSearchView(mainEl);
+      } else {
+        renderOverview(mainEl);
+      }
       return;
     }
 
@@ -969,8 +1211,8 @@
           <select id="filterSource" aria-label="Lọc theo nguồn" style="padding:6px 8px;border-radius:6px;border:1px solid rgba(0,0,0,.2);">
             ${srcFilterOpts}
           </select>
-          <button type="button" id="btnAddFolderHere" class="btn">＋ Thư mục mới</button>
-          <button type="button" id="btnAddRow" class="btn accent">+ Thêm dòng</button>
+          <button type="button" id="btnAddItem" class="btn accent">+ Thêm vật tư</button>
+          <button type="button" id="btnAddRow" class="btn">+ Thêm dòng nhanh</button>
           <button type="button" id="btnExportSheets" class="btn">📗 Xuất Excel (tách sheet)</button>
         </div>
       </div>
@@ -1014,9 +1256,9 @@
       });
     }
 
-    const addFolderBtn = $('#btnAddFolderHere', mainEl);
-    if (addFolderBtn) {
-      addFolderBtn.addEventListener('click', () => createFolderUnder(node.id));
+    const addItemBtn = $('#btnAddItem', mainEl);
+    if (addItemBtn) {
+      addItemBtn.addEventListener('click', () => openAddItemModal(node.id));
     }
 
     const addBtn = $('#btnAddRow', mainEl);
@@ -1386,6 +1628,7 @@
     const dirtyEl = $('#dirty');
     if (dirtyEl) dirtyEl.hidden = !ST.dirty;
 
+    try { if (window.Slips && typeof window.Slips.init === 'function') window.Slips.init(window.LabApp); } catch (_) {}
     try { if (window.Sync && typeof window.Sync.init === 'function') window.Sync.init(window.LabApp); } catch (_) {}
 
     bindGlobal();
