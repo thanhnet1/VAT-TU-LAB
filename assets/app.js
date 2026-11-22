@@ -1,6 +1,7 @@
 /* =====================================================================
    assets/app.js – VẬT TƯ – TÀI SẢN
    - Cây thư mục chuẩn theo sơ đồ mẫu, thu gọn mặc định cho gọn mắt
+   - Đồng bộ dữ liệu hai chiều mượt mà trên nhiều thiết bị (qua Sync)
    - Tổng quan thống kê + màu phân biệt trạng thái + trạng thái đồng bộ
    - Tìm kiếm toàn bộ tại Trang chủ, tìm trong thư mục tại từng thư mục
    - Nút "+ Thêm vật tư" với danh sách sổ Mã VT / Tên VT / Serial / Part number
@@ -415,7 +416,6 @@
     treeCollapsed: {}
   };
 
-  // Mặc định thu gọn tất cả thư mục có nhánh con / allowCreate để cây thư mục gọn gàng
   function initCollapsedState(collapseAll = true) {
     const next = {};
     for (const entry of flatNodes) {
@@ -438,6 +438,12 @@
 
   function syncSTFromStore() {
     ST.sheets = buildSheetsFromStore(storeData);
+  }
+
+  // Đồng bộ storeData từ ST.sheets (khi Sync áp dụng dữ liệu từ thiết bị khác)
+  function syncStoreFromST() {
+    rebuildTreeIndex();
+    storeData = buildStoreFromSheets(ST.sheets || []);
   }
 
   function ensureIds(sheets) {
@@ -505,7 +511,7 @@
     if (d) d.hidden = false;
     saveLocal();
     if (window.Sync && typeof window.Sync.schedule === 'function') {
-      window.Sync.schedule();
+      window.Sync.schedule(250);
     }
   }
 
@@ -1507,6 +1513,12 @@
     renderMain();
   }
 
+  // Khi Sync gọi refresh(), đồng bộ storeData từ ST.sheets rồi vẽ lại
+  function refreshFromSync() {
+    syncStoreFromST();
+    render();
+  }
+
   function bindEvents() {
     const sb = $('#sidebar');
     if (sb) {
@@ -1720,6 +1732,7 @@
 
       if (window.APP_DATA && Array.isArray(window.APP_DATA.sheets)) {
         DATA = window.APP_DATA;
+        window.LabApp.DATA = DATA;
       }
 
       loadState();
@@ -1752,7 +1765,7 @@
     touch,
     saveLocal,
     resetToBaseline,
-    refresh: render,
+    refresh: refreshFromSync,
     toast,
     openAddItemModal
   };
