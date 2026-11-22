@@ -2,6 +2,8 @@
    assets/app.js – VẬT TƯ – TÀI SẢN
    - Cây thư mục chuẩn theo sơ đồ mẫu, thu gọn mặc định cho gọn mắt
    - Đồng bộ dữ liệu hai chiều mượt mà trên nhiều thiết bị (qua Sync)
+   - Đồng bộ cả cấu trúc thư mục tạo mới (customFolders) giữa các thiết bị
+   - Tự động cập nhật trạng thái đồng bộ & làm mới khi chuyển tab / mở lại app
    - Tổng quan thống kê + màu phân biệt trạng thái + trạng thái đồng bộ
    - Tìm kiếm toàn bộ tại Trang chủ, tìm trong thư mục tại từng thư mục
    - Nút "+ Thêm vật tư" với danh sách sổ Mã VT / Tên VT / Serial / Part number
@@ -224,10 +226,56 @@
     });
   }
 
+  function mergeCustomFolderMaps(baseMap = {}, incomingMap = {}) {
+    const out = {};
+    const parentKeys = new Set([
+      ...Object.keys(baseMap || {}),
+      ...Object.keys(incomingMap || {})
+    ]);
+    for (const pid of parentKeys) {
+      const seenIds = new Set();
+      const mergedList = [];
+      const listA = Array.isArray(baseMap[pid]) ? baseMap[pid] : [];
+      const listB = Array.isArray(incomingMap[pid]) ? incomingMap[pid] : [];
+      for (const item of [...listA, ...listB]) {
+        if (!item || !item.id || seenIds.has(item.id)) continue;
+        seenIds.add(item.id);
+        mergedList.push(Object.assign({}, item, { isCustom: true }));
+      }
+      if (mergedList.length) out[pid] = mergedList;
+    }
+    return out;
+  }
+
+  function extractCustomFoldersFromSheets(sheets = []) {
+    const extracted = {};
+    if (!Array.isArray(sheets)) return extracted;
+    for (const sh of sheets) {
+      if (!sh || !sh.id) continue;
+      if (sh.isCustom || String(sh.id).startsWith('folder-')) {
+        const pid = sh.parentId || 'thiet-bi-ip';
+        if (!Array.isArray(extracted[pid])) extracted[pid] = [];
+        if (!extracted[pid].some(x => x.id === sh.id)) {
+          extracted[pid].push({
+            id: sh.id,
+            label: sh.name || sh.id,
+            icon: sh.icon || '📄',
+            isCustom: true,
+            isDynamicGroup: true,
+            allowCreate: true,
+            matchKeywords: [fold(sh.name || sh.id)]
+          });
+        }
+      }
+    }
+    return extracted;
+  }
+
   function cloneTreeWithCustomFolders(nodes = [], customMap = {}) {
     return nodes.map(node => {
       const children = Array.isArray(node.children) ? cloneTreeWithCustomFolders(node.children, customMap) : [];
-      const extra = Array.isArray(customMap[node.id]) ? customMap[node.id] : [];
+      const extraRaw = Array.isArray(customMap[node.id]) ? customMap[node.id] : [];
+      const extra = cloneTreeWithCustomFolders(extraRaw, customMap);
       return Object.assign({}, node, {
         children: [...children, ...extra]
       });
@@ -285,6 +333,10 @@
   }
 
   function classifyRowTarget(sheetId, blockTitle, rowNorm, fallbackNodeId) {
+    // Ưu tiên tuyệt đối thư mục đã lưu nếu sheetId khớp trực tiếp với một nút trên cây
+    if (sheetId && nodeById.has(sheetId)) return sheetId;
+    if (fallbackNodeId && nodeById.has(fallbackNodeId)) return fallbackNodeId;
+
     const bt = fold(blockTitle);
     const v = rowNorm.v || [];
     const blob = fold(`${blockTitle} ${v[2] || ''} ${v[3] || ''} ${v[4] || ''} ${v[5] || ''} ${v[6] || ''}`);
@@ -334,7 +386,6 @@
       return 'vat-tu-khong-ro-nguon-goc';
     }
 
-    if (fallbackNodeId && nodeById.has(fallbackNodeId)) return fallbackNodeId;
     if (sheetId === 'trang-tinh14') return 'vat-tu-sua-chua';
     if (sheetId === 'vt-do-kiem') return 'vat-tu-do-luong';
     if (sheetId === 'khong-ro-ng' || sheetId === 'hang-ton-kho' || sheetId === 'ton-kho-xvt-26-10-2026') {
@@ -354,10 +405,14 @@
         r.r = i + 1;
         r.v[1] = String(i + 1);
       });
+      const isCustom = !!(n.isCustom || String(n.id).startsWith('folder-'));
       return {
         id: n.id,
         name: CFG.sheetLabels[n.id] || n.label,
         categoryId: n.id,
+        parentId: entry.parentId || null,
+        icon: n.icon || '📄',
+        isCustom,
         group: n.defaultGroup != null ? n.defaultGroup : (entry.parentId ? 0 : idx),
         blocks: [
           {
@@ -406,7 +461,7 @@
 
   let DATA = { meta: { source: 'LAB', generated: '', version: '' }, sheets: [] };
   let storeData = {};
-  const ST = { sheets: [], slips: { xuat: [], nhap: [] }, dirty: false };
+  const ST = { sheets: [], slips: { xuat: [], nhap: [] }, customFolders: {}, dirty: false, updatedAt: 0 };
   const V = {
     route: { page: 'overview', id: null },
     activeId: (flatNodes[0] && flatNodes[0].node.id) || null,
@@ -437,13 +492,25 @@
   }
 
   function syncSTFromStore() {
+    ST.customFolders = clone(customFoldersByParent);
     ST.sheets = buildSheetsFromStore(storeData);
   }
 
   // Đồng bộ storeData từ ST.sheets (khi Sync áp dụng dữ liệu từ thiết bị khác)
   function syncStoreFromST() {
+    const fromSTFolders = ST.customFolders && typeof ST.customFolders === 'object' ? ST.customFolders : {};
+    const fromSheetFolders = extractCustomFoldersFromSheets(ST.sheets || []);
+    customFoldersByParent = mergeCustomFolderMaps(
+      customFoldersByParent,
+      mergeCustomFolderMaps(fromSTFolders, fromSheetFolders)
+    );
+    ST.customFolders = clone(customFoldersByParent);
     rebuildTreeIndex();
+    ensureIds(ST.sheets || []);
     storeData = buildStoreFromSheets(ST.sheets || []);
+    if (V.activeId && !nodeById.has(V.activeId)) {
+      V.activeId = (flatNodes[0] && flatNodes[0].node.id) || null;
+    }
   }
 
   function ensureIds(sheets) {
@@ -464,7 +531,9 @@
       if (saved && Array.isArray(saved.sheets)) {
         const metaVer = (DATA && DATA.meta && DATA.meta.version) || '';
         if (!metaVer || saved.ver === metaVer) {
-          customFoldersByParent = saved.customFolders && typeof saved.customFolders === 'object' ? saved.customFolders : {};
+          const savedFolders = saved.customFolders && typeof saved.customFolders === 'object' ? saved.customFolders : {};
+          const sheetFolders = extractCustomFoldersFromSheets(saved.sheets);
+          customFoldersByParent = mergeCustomFolderMaps(savedFolders, sheetFolders);
           rebuildTreeIndex();
           initCollapsedState(true);
           ensureIds(saved.sheets);
@@ -474,6 +543,7 @@
             ? Object.assign({ xuat: [], nhap: [] }, saved.slips)
             : { xuat: [], nhap: [] };
           ST.dirty = !!saved.dirty;
+          ST.updatedAt = Number(saved.updatedAt || 0);
           return;
         }
       }
@@ -488,6 +558,7 @@
     syncSTFromStore();
     ST.slips = { xuat: [], nhap: [] };
     ST.dirty = false;
+    ST.updatedAt = 0;
   }
 
   function saveLocal() {
@@ -498,7 +569,8 @@
         customFolders: customFoldersByParent,
         sheets: ST.sheets,
         slips: ST.slips,
-        dirty: ST.dirty
+        dirty: ST.dirty,
+        updatedAt: ST.updatedAt || Date.now()
       }));
     } catch (_) {
       toast('⚠ Không lưu được vào trình duyệt.', 4000);
@@ -507,11 +579,16 @@
 
   function persist() {
     ST.dirty = true;
+    ST.updatedAt = Date.now();
     const d = $('#dirty');
     if (d) d.hidden = false;
     saveLocal();
-    if (window.Sync && typeof window.Sync.schedule === 'function') {
-      window.Sync.schedule(250);
+    if (window.Sync) {
+      if (typeof window.Sync.schedule === 'function') {
+        window.Sync.schedule(250);
+      } else if (typeof window.Sync.push === 'function') {
+        window.Sync.push();
+      }
     }
   }
 
@@ -526,6 +603,7 @@
     syncSTFromStore();
     ST.slips = { xuat: [], nhap: [] };
     ST.dirty = false;
+    ST.updatedAt = Date.now();
     const d = $('#dirty');
     if (d) d.hidden = true;
     saveLocal();
@@ -641,9 +719,11 @@
     if (!targetNodeId) return;
     const rows = getRowsForNode(targetNodeId);
     const src = normalizeSource(payload.src || (V.sourceFilter !== 'ALL' ? V.sourceFilter : CFG.defaultSource), CFG.defaultSource);
+    const now = Date.now();
     const newRow = normalizeRow({
       i: 'u' + uid(),
-      ct: Date.now(),
+      ct: now,
+      ut: now,
       src,
       v: [
         src,
@@ -822,6 +902,7 @@
     const dstRows = getRowsForNode(toNodeId);
     const normMoved = normalizeRow(moved, dstRows.length, CFG.defaultSource, STANDARD_COLS, toNodeId);
     normMoved.v[1] = String(dstRows.length + 1);
+    normMoved.ut = Date.now();
     dstRows.push(normMoved);
 
     srcRows.forEach((r, i) => {
@@ -850,6 +931,7 @@
       id: newId,
       label: cleanName,
       icon: '📄',
+      isCustom: true,
       isDynamicGroup: true,
       allowCreate: true,
       matchKeywords: [fold(cleanName)]
@@ -1516,7 +1598,58 @@
   // Khi Sync gọi refresh(), đồng bộ storeData từ ST.sheets rồi vẽ lại
   function refreshFromSync() {
     syncStoreFromST();
+    const d = $('#dirty');
+    if (d) d.hidden = !ST.dirty;
     render();
+  }
+
+  // Theo dõi thay đổi trạng thái nút Sync trên topbar & đồng bộ chéo giữa các tab/thiết bị
+  function setupSyncWatchers() {
+    const btnSync = $('#btnSync');
+    if (btnSync && typeof MutationObserver !== 'undefined') {
+      const obs = new MutationObserver(() => {
+        renderSidebar();
+        const headerSyncEl = $('#main .view-header');
+        if (headerSyncEl) renderMain();
+      });
+      obs.observe(btnSync, {
+        attributes: true,
+        attributeFilter: ['class'],
+        childList: true,
+        subtree: true,
+        characterData: true
+      });
+    }
+
+    // Đồng bộ tức thì khi mở nhiều tab trên cùng trình duyệt
+    window.addEventListener('storage', e => {
+      if (e.key === LS('state') && e.newValue) {
+        try {
+          const parsed = JSON.parse(e.newValue);
+          if (parsed && Array.isArray(parsed.sheets)) {
+            ST.sheets = parsed.sheets;
+            ST.customFolders = parsed.customFolders || {};
+            ST.slips = parsed.slips || { xuat: [], nhap: [] };
+            ST.dirty = !!parsed.dirty;
+            ST.updatedAt = Number(parsed.updatedAt || Date.now());
+            refreshFromSync();
+          }
+        } catch (_) {}
+      } else if (e.key === 'lab_user_role' || e.key === 'lab_username') {
+        render();
+      }
+    });
+
+    // Kéo dữ liệu mới nhất khi người dùng chuyển từ ứng dụng khác quay lại trình duyệt (mobile/desktop)
+    const triggerPullOnResume = () => {
+      if (document.hidden) return;
+      if (window.Sync) {
+        if (typeof window.Sync.pull === 'function') window.Sync.pull();
+        else if (typeof window.Sync.syncNow === 'function') window.Sync.syncNow();
+      }
+    };
+    document.addEventListener('visibilitychange', triggerPullOnResume);
+    window.addEventListener('focus', triggerPullOnResume);
   }
 
   function bindEvents() {
@@ -1673,7 +1806,9 @@
         reader.onload = () => {
           try {
             const parsed = JSON.parse(String(reader.result || '{}'));
-            if (parsed.customFolders) customFoldersByParent = parsed.customFolders;
+            const importedFolders = parsed.customFolders || {};
+            const sheetFolders = Array.isArray(parsed.sheets) ? extractCustomFoldersFromSheets(parsed.sheets) : {};
+            customFoldersByParent = mergeCustomFolderMaps(importedFolders, sheetFolders);
             rebuildTreeIndex();
             initCollapsedState(true);
             if (Array.isArray(parsed.sheets)) {
@@ -1738,6 +1873,7 @@
       loadState();
       parseHash();
       bindEvents();
+      setupSyncWatchers();
       render();
     } catch (e) {
       renderOverview($('#main') || document.body);
