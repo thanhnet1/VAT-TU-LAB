@@ -1,11 +1,11 @@
 /* =====================================================================
    assets/sync.js – ĐỒNG BỘ DỮ LIỆU ĐA THIẾT BỊ & PHÂN QUYỀN (Admin vs Guest)
-   Phiên bản: 2026.11.22-3
+   Phiên bản: 2026.11.22-5
    ===================================================================== */
 (function () {
   'use strict';
 
-  var BUILD = '2026.11.22-3';
+  var BUILD = '2026.11.22-5';
   var SOURCE_OPTIONS = ['Vật tư', 'Tài sản', 'Đo kiểm', 'Sửa chữa', 'Không rõ nguồn'];
   var DEFAULT_SOURCE = 'Không rõ nguồn';
   var STANDARD_COLS = ['Nguồn', 'STT', 'Tên Vật Tư', 'Serial', 'Mã VT', 'Part number', 'Ghi chú'];
@@ -149,6 +149,14 @@
     return v;
   }
 
+  function getAccountSummary() {
+    var u = localStorage.getItem('lab_username') || '';
+    var r = localStorage.getItem('lab_user_role') || '';
+    if (u) return u + (r ? ' (' + r + ')' : '');
+    if (r === 'guest') return 'khach (guest)';
+    return 'admin / khach';
+  }
+
   function buildBaseline() {
     var rows = new Map(), blocks = new Set();
     var sheets = (A && A.DATA && A.DATA.sheets) || [];
@@ -231,21 +239,14 @@
     return ops;
   }
 
-  function getAccountTag() {
-    var u = localStorage.getItem('lab_username') || '';
-    var r = localStorage.getItem('lab_user_role') || '';
-    if (u) return u + (r ? '/' + r : '');
-    if (r === 'guest') return 'khach/guest';
-    return 'admin/khach';
-  }
-
   function applyRoleUI() {
     var currentRole = localStorage.getItem('lab_user_role');
     var isGuest = currentRole === 'guest';
     var btnEdit = $('#btnEdit');
     if (btnEdit) btnEdit.style.display = isGuest ? 'none' : '';
     if (isGuest) {
-      document.querySelectorAll('#main button, #main .tbtn, #btnAddItemTop').forEach(function (el) {
+      document.querySelectorAll('#main button, #main .tbtn, #btnTopAddItem').forEach(function (el) {
+        if (el.id === 'btnOverviewAddFolder' || el.classList.contains('btn-add-folder-featured')) return;
         var text = (el.textContent || '').toLowerCase();
         var idClass = ((el.id || '') + ' ' + (el.className || '')).toLowerCase();
         if (text.includes('thêm vật tư') || text.includes('thêm dòng') || text.includes('xoá') || text.includes('chuyển') || idClass.includes('admin')) {
@@ -261,23 +262,28 @@
 
   function setState(st) {
     S.st = st;
-    var acct = getAccountTag();
+    var acct = getAccountSummary();
+    var dev = deviceId();
     var b = $('#btnSync');
     if (b) {
       var map = {
-        off: ['☁', 'Chỉ trên máy [' + acct + ']', 'off'],
+        off: ['☁', 'Chỉ trên máy', 'off'],
         login: ['🔒', 'Đăng nhập (' + acct + ')', 'login'],
-        syncing: ['🔄', 'Đang đồng bộ… [' + acct + ']', 'syncing'],
-        ok: ['☁✓', 'Đã đồng bộ [' + acct + ']', 'ok'],
-        offline: ['⚠', 'Chờ mạng [' + acct + ']', 'bad'],
-        error: ['⚠', 'Lỗi đồng bộ [' + acct + ']', 'bad'],
-        loading: ['🔄', 'Đang kết nối… [' + acct + ']', 'syncing']
+        syncing: ['🔄', 'Đang đồng bộ…', 'syncing'],
+        ok: ['☁✓', 'Đã đồng bộ · ' + acct, 'ok'],
+        offline: ['⚠', 'Chờ mạng', 'bad'],
+        error: ['⚠', 'Lỗi đồng bộ', 'bad'],
+        loading: ['🔄', 'Đang kết nối…', 'syncing']
       };
       var m = map[st] || map.off;
       var n = S.pending > 0 && (st === 'offline' || st === 'error') ? ' (' + S.pending + ')' : '';
       b.className = 'btn ghost sync-' + m[2];
       b.innerHTML = '<i>' + m[0] + '</i> <span>' + m[1] + n + '</span>';
-      b.title = 'Tài khoản: ' + acct + ' · Trạng thái: ' + m[1] + (S.lastOk ? ' – lần cuối ' + new Date(S.lastOk).toLocaleTimeString('vi-VN') : '') + (S.err ? '\n' + S.err : '');
+      b.title = 'Thiết bị: ' + dev + ' · Tài khoản: ' + acct + ' · Trạng thái: ' + m[1] + (S.lastOk ? ' – lần cuối ' + new Date(S.lastOk).toLocaleTimeString('vi-VN') : '') + (S.err ? '\n' + S.err : '');
+    }
+    var badge = $('#deviceSyncBadge');
+    if (badge) {
+      badge.textContent = '📱 ' + dev + ' · ' + (map[st] ? map[st][1] : st);
     }
     var p = $('#syncPanel');
     if (p) renderPanel();
@@ -711,7 +717,7 @@
   function lockBody() {
     document.body.classList.toggle(
       'modal-open',
-      !!document.querySelector('#mdSync .modal, #mdView .modal')
+      !!document.querySelector('#mdSync .modal, #mdView .modal, #mdAddItem .modal')
     );
   }
 
@@ -773,6 +779,7 @@
       h = '<div class="sy-stat sy-' + (S.st === 'ok' ? 'ok' : 'wait') + '"><b>' + st + '</b>' +
         (S.err ? '<div class="sy-err">' + esc(S.err) + '</div>' : '') + '</div>' +
         '<table class="plain sy-tbl">' +
+        '<tr><td>Mã thiết bị</td><td><b>' + esc(deviceId()) + '</b></td></tr>' +
         '<tr><td>Tài khoản</td><td><b>' + esc(S.user.name || '') + ' (' + esc(localStorage.getItem('lab_user_role') || 'admin') + ')</b></td></tr>' +
         '<tr><td>Lần đồng bộ cuối</td><td>' + when(S.lastOk) + '</td></tr>' +
         '<tr><td>Thay đổi chờ đẩy lên</td><td>' + (S.pending || 0) + '</td></tr>' +
