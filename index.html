@@ -7,6 +7,51 @@
 <title>Tài sản – Vật tư Truyền dẫn LAB</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E📡%3C/text%3E%3C/svg%3E">
 <link rel="stylesheet" href="assets/style.css?v=2026.11.21-1">
+<style>
+  .data-table th,
+  .data-table td {
+    padding: 8px 10px;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+    vertical-align: middle;
+    font-size: 13.5px;
+    line-height: 1.4;
+  }
+  .data-table thead th {
+    background: #0b3a5b;
+    color: #fff;
+    font-weight: 600;
+    position: sticky;
+    top: 0;
+    z-index: 1;
+  }
+  .data-table tbody tr:nth-child(even) {
+    background: rgba(11, 58, 91, 0.025);
+  }
+  .data-table tbody tr:hover {
+    background: rgba(11, 58, 91, 0.07);
+  }
+  .data-table input.cell-edit,
+  .data-table select.cell-edit {
+    width: 100%;
+    min-width: 90px;
+    padding: 5px 7px;
+    border-radius: 5px;
+    border: 1px solid rgba(0, 0, 0, 0.22);
+    font-size: 13px;
+    background: #fff;
+    color: inherit;
+  }
+  @media (max-width: 768px) {
+    .data-table th,
+    .data-table td {
+      padding: 6px 7px;
+      font-size: 12.5px;
+    }
+    .view-header h2 {
+      font-size: 17px !important;
+    }
+  }
+</style>
 </head>
 <body>
 
@@ -26,6 +71,8 @@
   <div class="actions">
     <span id="dirty" class="dirty" hidden title="Bạn đã chỉnh sửa dữ liệu – chỉ lưu trên trình duyệt này">● Đã chỉnh sửa</span>
     <button id="btnSync" class="btn ghost sync-off" type="button" title="Đồng bộ nhiều thiết bị"><i>☁</i> <span>Chỉ trên máy</span></button>
+    <button id="btnPXK" class="btn accent" type="button" title="Tạo phiếu xuất kho">📤 <span>Phiếu xuất</span></button>
+    <button id="btnPNK" class="btn accent" type="button" title="Tạo phiếu nhập kho">📥 <span>Phiếu nhập</span></button>
     <button id="btnEdit" class="btn" type="button" aria-pressed="false">✏️ <span>Chỉnh sửa</span></button>
     <details class="menu" id="menuExport">
       <summary class="btn">⬇ <span>Xuất / Sao lưu</span></summary>
@@ -48,12 +95,12 @@
 </header>
 
 <div id="editbar" class="editbar" hidden>
-  ✏️ <b>Đang ở chế độ chỉnh sửa.</b> Chọn <b>Nguồn</b> (Vật tư, Tài sản, Đo kiểm, Sửa chữa, Không rõ nguồn), bấm vào ô để sửa, thêm/xoá dòng hoặc bấm <b>➜</b> cuối dòng để chuyển thư mục.
+  ✏️ <b>Đang ở chế độ chỉnh sửa.</b> Bấm vào ô để sửa, chọn thư mục đích để chuyển dòng, thêm/xoá dòng.
   Thay đổi <u>chỉ lưu trên trình duyệt này</u> – dùng <b>Xuất / Sao lưu</b> để giữ hoặc chia sẻ.
 </div>
 
 <div class="layout" id="layout" hidden>
-  <aside id="sidebar" class="sidebar" aria-label="Danh sách thư mục"></aside>
+  <aside id="sidebar" class="sidebar" aria-label="Danh sách sheet"></aside>
   <div id="overlay" class="overlay"></div>
   <main id="main" class="main"></main>
 </div>
@@ -69,8 +116,8 @@
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js" defer></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js" defer></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdfjs-dist/3.11.174/pdf.min.js" defer></script>
-<script src="assets/app.js?v=2026.11.21-1"></script>
-<script src="assets/slips.js?v=2026.11.21-1"></script>
-<script src="assets/sync.js?v=2026.11.21-1"></script>
+<script src="assets/app.js?v=2026.11.21-1" defer></script>
+<script src="assets/slips.js?v=2026.11.21-1" defer></script>
+<script src="assets/sync.js?v=2026.11.21-1" defer></script>
 </body>
 </html>
