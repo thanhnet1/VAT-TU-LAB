@@ -1,15 +1,14 @@
 /* =====================================================================
    assets/app.js – VẬT TƯ – TÀI SẢN
-   - Tổng quan thống kê + màu phân biệt trạng thái + trạng thái đồng bộ
-   - Cây thư mục sổ/thu gọn gọn gàng + tạo thư mục mới khi cần
-   - Tìm kiếm toàn bộ tại Trang chủ, tìm trong thư mục tại từng thư mục
-   - Nút "+ Thêm vật tư" với danh sách sổ Mã VT / Tên VT / Serial / Part number
-   - Nút chuyển vật tư sang thư mục khác + Bảng cân đối mobile & desktop
+   - Tổng quan thống kê + màu phân biệt trạng thái
+   - Cây thư mục sổ/thu gọn + nút tạo thêm thư mục
+   - Nút chuyển vật tư sang thư mục khác
+   - Bảng cân đối trên cả điện thoại và máy tính
    ===================================================================== */
 (function () {
   'use strict';
 
-  const BUILD = '2026.11.22-4';
+  const BUILD = '2026.11.21-4';
   const SOURCE_OPTIONS = ['Vật tư', 'Tài sản', 'Đo kiểm', 'Sửa chữa', 'Không rõ nguồn'];
   const DEFAULT_SOURCE = 'Không rõ nguồn';
   const STANDARD_COLS = ['Nguồn', 'STT', 'Tên Vật Tư', 'Serial', 'Mã VT', 'Part number', 'Ghi chú'];
@@ -94,27 +93,6 @@
     el.classList.add('show');
     clearTimeout(toast._t);
     toast._t = setTimeout(() => el.classList.remove('show'), ms);
-  }
-
-  function getSyncStatusInfo() {
-    const role = localStorage.getItem('lab_user_role') || '';
-    const username = localStorage.getItem('lab_username') || '';
-    const accountLabel = username
-      ? `${username}${role ? ' (' + role + ')' : ''}`
-      : (role === 'guest' ? 'khach (guest)' : 'admin / khach');
-
-    const btnSync = $('#btnSync');
-    const isConnected = !!(btnSync && !btnSync.classList.contains('sync-off') && !btnSync.classList.contains('sync-login'));
-    const syncText = btnSync && btnSync.querySelector('span')
-      ? btnSync.querySelector('span').textContent.trim()
-      : (isConnected ? 'Đã đồng bộ' : 'Chỉ trên máy');
-
-    return {
-      accountLabel,
-      role: role || '',
-      syncText,
-      isConnected
-    };
   }
 
   function sanitizeSheetName(name, usedNames) {
@@ -538,251 +516,6 @@
       .filter(item => matchesRow(item.row, qTokens, V.sourceFilter));
   }
 
-  function getGlobalSearchResults() {
-    const qTokens = tokensOf(V.query);
-    const results = [];
-    for (const entry of flatNodes) {
-      const n = entry.node;
-      if (Array.isArray(n.children) && n.children.length > 0) continue;
-      const rows = getRowsForNode(n.id);
-      rows.forEach((r, idx) => {
-        const norm = normalizeRow(r, idx, CFG.defaultSource, STANDARD_COLS, n.id);
-        if (matchesRow(norm, qTokens, V.sourceFilter)) {
-          results.push({
-            nodeId: n.id,
-            nodeLabel: n.label,
-            pathText: entry.pathNodes.map(x => x.label).join(' / '),
-            row: norm,
-            idx
-          });
-        }
-      });
-      if (results.length >= (CFG.maxSearchResults || 400)) break;
-    }
-    return results;
-  }
-
-  function collectCatalogLookups() {
-    const maVTSet = new Set();
-    const tenVTSet = new Set();
-    const serialSet = new Set();
-    const partNoSet = new Set();
-    const catalogItems = [];
-
-    for (const entry of flatNodes) {
-      const n = entry.node;
-      if (Array.isArray(n.children) && n.children.length > 0) continue;
-      const rows = getRowsForNode(n.id);
-      rows.forEach((r, idx) => {
-        const norm = normalizeRow(r, idx, CFG.defaultSource, STANDARD_COLS, n.id);
-        const v = norm.v || [];
-        const ten = String(v[2] || '').trim();
-        const ser = String(v[3] || '').trim();
-        const ma = String(v[4] || '').trim();
-        const part = String(v[5] || '').trim();
-        const note = String(v[6] || '').trim();
-        if (ma) maVTSet.add(ma);
-        if (ten) tenVTSet.add(ten);
-        if (ser) serialSet.add(ser);
-        if (part) partNoSet.add(part);
-        if (ma || ten || ser || part) {
-          catalogItems.push({
-            src: norm.src,
-            tenVT: ten,
-            serial: ser,
-            maVT: ma,
-            partNo: part,
-            ghiChu: note
-          });
-        }
-      });
-    }
-
-    return {
-      maVTList: Array.from(maVTSet).sort((a, b) => a.localeCompare(b, 'vi')),
-      tenVTList: Array.from(tenVTSet).sort((a, b) => a.localeCompare(b, 'vi')),
-      serialList: Array.from(serialSet).sort((a, b) => a.localeCompare(b, 'vi')),
-      partNoList: Array.from(partNoSet).sort((a, b) => a.localeCompare(b, 'vi')),
-      catalogItems
-    };
-  }
-
-  function addStructuredItem(payload) {
-    const targetNodeId = payload.targetNodeId || V.activeId || (flatNodes[0] && flatNodes[0].node.id);
-    if (!targetNodeId) return;
-    const rows = getRowsForNode(targetNodeId);
-    const src = normalizeSource(payload.src || (V.sourceFilter !== 'ALL' ? V.sourceFilter : CFG.defaultSource), CFG.defaultSource);
-    const newRow = normalizeRow({
-      i: 'u' + uid(),
-      ct: Date.now(),
-      src,
-      v: [
-        src,
-        String(rows.length + 1),
-        String(payload.tenVT || '').trim(),
-        String(payload.serial || '').trim(),
-        String(payload.maVT || '').trim(),
-        String(payload.partNo || '').trim(),
-        String(payload.ghiChu || '').trim()
-      ]
-    }, rows.length, src, STANDARD_COLS, targetNodeId);
-
-    rows.push(newRow);
-    persist();
-    render();
-    toast('Đã thêm vật tư vào danh mục');
-  }
-
-  function openAddItemModal(defaultNodeId) {
-    let host = $('#mdAddItem');
-    if (!host) {
-      host = document.createElement('div');
-      host.id = 'mdAddItem';
-      document.body.appendChild(host);
-    }
-
-    const leafEntries = flatNodes.filter(e => !Array.isArray(e.node.children) || e.node.children.length === 0);
-    const chosenId = defaultNodeId && nodeById.has(defaultNodeId)
-      ? defaultNodeId
-      : (leafEntries[0] && leafEntries[0].node.id) || '';
-
-    const folderOpts = leafEntries.map(e =>
-      `<option value="${esc(e.node.id)}" ${e.node.id === chosenId ? 'selected' : ''}>${esc(e.pathNodes.map(x => x.label).join(' / '))}</option>`
-    ).join('');
-
-    const defaultSrc = V.sourceFilter !== 'ALL' ? V.sourceFilter : CFG.defaultSource;
-    const srcOpts = SRC_LIST.map(s =>
-      `<option value="${esc(s)}" ${s === defaultSrc ? 'selected' : ''}>${esc(s)}</option>`
-    ).join('');
-
-    const lookups = collectCatalogLookups();
-    const toOpts = arr => arr.map(val => `<option value="${esc(val)}">${esc(val)}</option>`).join('');
-
-    host.innerHTML = `
-      <div class="modal-backdrop" id="addItemBackdrop" style="position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:9998;padding:12px;">
-        <div class="modal" style="width:100%;max-width:520px;background:#fff;color:#111;border-radius:10px;padding:16px;box-shadow:0 12px 30px rgba(0,0,0,.25);max-height:92vh;overflow-y:auto;">
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
-            <h3 style="margin:0;font-size:17px;">📦 Thêm vật tư / tài sản</h3>
-            <button type="button" id="btnCloseAddItem" style="border:0;background:transparent;font-size:18px;cursor:pointer;">✕</button>
-          </div>
-          <form id="addItemForm" style="display:flex;flex-direction:column;gap:9px;">
-            <label style="font-size:12px;font-weight:600;">Thư mục lưu trữ
-              <select id="aiFolder" style="width:100%;margin-top:3px;padding:7px 8px;border:1px solid #cbd5e1;border-radius:6px;">${folderOpts}</select>
-            </label>
-            <label style="font-size:12px;font-weight:600;">Nguồn
-              <select id="aiSrc" style="width:100%;margin-top:3px;padding:7px 8px;border:1px solid #cbd5e1;border-radius:6px;">${srcOpts}</select>
-            </label>
-
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-              <label style="font-size:12px;font-weight:600;">Mã vật tư (danh sách sổ)
-                <input id="aiMaVT" list="dlMaVT" type="text" placeholder="Chọn hoặc nhập Mã VT..." style="width:100%;margin-top:3px;padding:7px 8px;border:1px solid #cbd5e1;border-radius:6px;">
-                <select id="selMaVT" aria-label="Chọn nhanh Mã vật tư" style="width:100%;margin-top:4px;padding:5px 6px;border:1px solid #e2e8f0;border-radius:6px;font-size:12px;background:#f8fafc;">
-                  <option value="">-- Danh sách Mã vật tư --</option>
-                  ${toOpts(lookups.maVTList)}
-                </select>
-                <datalist id="dlMaVT">${toOpts(lookups.maVTList)}</datalist>
-              </label>
-
-              <label style="font-size:12px;font-weight:600;">Tên vật tư (danh sách sổ)
-                <input id="aiTen" list="dlTenVT" type="text" placeholder="Chọn hoặc nhập Tên Vật Tư..." style="width:100%;margin-top:3px;padding:7px 8px;border:1px solid #cbd5e1;border-radius:6px;">
-                <select id="selTenVT" aria-label="Chọn nhanh Tên vật tư" style="width:100%;margin-top:4px;padding:5px 6px;border:1px solid #e2e8f0;border-radius:6px;font-size:12px;background:#f8fafc;">
-                  <option value="">-- Danh sách Tên vật tư --</option>
-                  ${toOpts(lookups.tenVTList)}
-                </select>
-                <datalist id="dlTenVT">${toOpts(lookups.tenVTList)}</datalist>
-              </label>
-            </div>
-
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-              <label style="font-size:12px;font-weight:600;">Serial (danh sách sổ)
-                <input id="aiSerial" list="dlSerial" type="text" placeholder="Chọn hoặc nhập Serial..." style="width:100%;margin-top:3px;padding:7px 8px;border:1px solid #cbd5e1;border-radius:6px;">
-                <select id="selSerial" aria-label="Chọn nhanh Serial" style="width:100%;margin-top:4px;padding:5px 6px;border:1px solid #e2e8f0;border-radius:6px;font-size:12px;background:#f8fafc;">
-                  <option value="">-- Danh sách Serial --</option>
-                  ${toOpts(lookups.serialList)}
-                </select>
-                <datalist id="dlSerial">${toOpts(lookups.serialList)}</datalist>
-              </label>
-
-              <label style="font-size:12px;font-weight:600;">Part number (danh sách sổ)
-                <input id="aiPartNo" list="dlPartNo" type="text" placeholder="Chọn hoặc nhập Part number..." style="width:100%;margin-top:3px;padding:7px 8px;border:1px solid #cbd5e1;border-radius:6px;">
-                <select id="selPartNo" aria-label="Chọn nhanh Part number" style="width:100%;margin-top:4px;padding:5px 6px;border:1px solid #e2e8f0;border-radius:6px;font-size:12px;background:#f8fafc;">
-                  <option value="">-- Danh sách Part number --</option>
-                  ${toOpts(lookups.partNoList)}
-                </select>
-                <datalist id="dlPartNo">${toOpts(lookups.partNoList)}</datalist>
-              </label>
-            </div>
-
-            <label style="font-size:12px;font-weight:600;">Ghi chú
-              <input id="aiGhiChu" type="text" placeholder="Tình trạng, vị trí, ghi chú..." style="width:100%;margin-top:3px;padding:7px 8px;border:1px solid #cbd5e1;border-radius:6px;">
-            </label>
-
-            <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:8px;">
-              <button type="button" id="btnCancelAddItem" class="btn">Huỷ</button>
-              <button type="submit" class="btn accent">+ Lưu vật tư</button>
-            </div>
-          </form>
-        </div>
-      </div>
-    `;
-
-    const closeModal = () => { host.innerHTML = ''; };
-    $('#btnCloseAddItem', host)?.addEventListener('click', closeModal);
-    $('#btnCancelAddItem', host)?.addEventListener('click', closeModal);
-    $('#addItemBackdrop', host)?.addEventListener('click', e => {
-      if (e.target && e.target.id === 'addItemBackdrop') closeModal();
-    });
-
-    const maInp = $('#aiMaVT', host);
-    const tenInp = $('#aiTen', host);
-    const serInp = $('#aiSerial', host);
-    const partInp = $('#aiPartNo', host);
-    const noteInp = $('#aiGhiChu', host);
-
-    function autofillFromMatch(fieldKey, val) {
-      if (!val) return;
-      const hit = lookups.catalogItems.find(item => fold(item[fieldKey]) === fold(val));
-      if (!hit) return;
-      if (maInp && !maInp.value.trim() && hit.maVT) maInp.value = hit.maVT;
-      if (tenInp && !tenInp.value.trim() && hit.tenVT) tenInp.value = hit.tenVT;
-      if (serInp && !serInp.value.trim() && hit.serial) serInp.value = hit.serial;
-      if (partInp && !partInp.value.trim() && hit.partNo) partInp.value = hit.partNo;
-      if (noteInp && !noteInp.value.trim() && hit.ghiChu) noteInp.value = hit.ghiChu;
-    }
-
-    const bindDropdown = (selId, inp, fieldKey) => {
-      const sel = $(selId, host);
-      if (!sel || !inp) return;
-      sel.addEventListener('change', () => {
-        if (!sel.value) return;
-        inp.value = sel.value;
-        autofillFromMatch(fieldKey, sel.value);
-      });
-      inp.addEventListener('change', () => autofillFromMatch(fieldKey, inp.value));
-    };
-
-    bindDropdown('#selMaVT', maInp, 'maVT');
-    bindDropdown('#selTenVT', tenInp, 'tenVT');
-    bindDropdown('#selSerial', serInp, 'serial');
-    bindDropdown('#selPartNo', partInp, 'partNo');
-
-    $('#addItemForm', host)?.addEventListener('submit', e => {
-      e.preventDefault();
-      addStructuredItem({
-        targetNodeId: $('#aiFolder', host)?.value || chosenId,
-        src: $('#aiSrc', host)?.value || defaultSrc,
-        tenVT: tenInp ? tenInp.value : '',
-        serial: serInp ? serInp.value : '',
-        maVT: maInp ? maInp.value : '',
-        partNo: partInp ? partInp.value : '',
-        ghiChu: noteInp ? noteInp.value : ''
-      });
-      closeModal();
-    });
-
-    tenInp?.focus();
-  }
-
   function moveRowToNode(fromNodeId, rowIdx, toNodeId) {
     if (!toNodeId || fromNodeId === toNodeId) return;
     const srcRows = getRowsForNode(fromNodeId);
@@ -806,18 +539,17 @@
   }
 
   function createFolderUnder(parentId) {
-    const parentEntry = nodeById.get(parentId) || flatNodes[0];
-    const resolvedParentId = parentEntry ? parentEntry.node.id : 'truyen-dan-thiet-bi';
+    const parentEntry = nodeById.get(parentId);
     const parentLabel = parentEntry ? parentEntry.node.label : 'Thư mục';
     const rawName = prompt(`Nhập tên thư mục mới trong "${parentLabel}":`);
     if (!rawName || !rawName.trim()) return;
     const cleanName = rawName.trim();
     const newId = 'folder-' + uid();
 
-    if (!Array.isArray(customFoldersByParent[resolvedParentId])) {
-      customFoldersByParent[resolvedParentId] = [];
+    if (!Array.isArray(customFoldersByParent[parentId])) {
+      customFoldersByParent[parentId] = [];
     }
-    customFoldersByParent[resolvedParentId].push({
+    customFoldersByParent[parentId].push({
       id: newId,
       label: cleanName,
       icon: '📄',
@@ -826,7 +558,7 @@
       matchKeywords: [fold(cleanName)]
     });
 
-    delete V.treeCollapsed[resolvedParentId];
+    delete V.treeCollapsed[parentId];
     rebuildTreeIndex();
     if (!Array.isArray(storeData[newId])) storeData[newId] = [];
     V.activeId = newId;
@@ -850,9 +582,6 @@
     const sb = $('#sidebar');
     if (!sb) return;
 
-    const syncInfo = getSyncStatusInfo();
-    const treeTargetParent = V.activeId || (activeTree[0] && activeTree[0].id) || 'truyen-dan-thiet-bi';
-
     const renderNodes = (nodes, depth = 0) => {
       if (!Array.isArray(nodes) || !nodes.length) return '';
       return `<div class="tree-children" style="padding-left:${depth ? 12 : 0}px;">` +
@@ -861,6 +590,7 @@
           const isActive = V.route.page === 'sheet' && V.activeId === node.id;
           const totalCount = countNodeRowsDeep(node);
           const hasChildren = Array.isArray(node.children) && node.children.length > 0;
+          const canAddChild = !!node.allowCreate;
 
           return `
             <div class="tree-node ${isCollapsed ? 'collapsed' : ''}" data-node="${esc(node.id)}" style="margin:2px 0;">
@@ -874,7 +604,16 @@
                 </button>
                 <span class="ct" style="font-size:12px;opacity:.75;">${totalCount}</span>
               </div>
-              ${!isCollapsed && hasChildren ? renderNodes(node.children, depth + 1) : ''}
+              ${!isCollapsed ? `
+                ${hasChildren ? renderNodes(node.children, depth + 1) : ''}
+                ${canAddChild ? `
+                  <div style="padding-left:${(depth + 1) * 10}px;margin:2px 0 4px;">
+                    <button type="button" class="tree-add-btn" data-create-folder="${esc(node.id)}" style="width:100%;text-align:left;padding:4px 8px;border:1px dashed rgba(11,58,91,.28);border-radius:6px;background:transparent;color:inherit;font-size:12px;opacity:.85;cursor:pointer;">
+                      ＋ Tạo thư mục mới
+                    </button>
+                  </div>
+                ` : ''}
+              ` : ''}
             </div>
           `;
         }).join('') +
@@ -883,28 +622,13 @@
 
     const ovActive = V.route.page === 'overview' && !V.query ? 'active' : '';
     sb.innerHTML = `
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;padding:6px 8px;margin-bottom:8px;border-radius:8px;background:rgba(11,58,91,.07);font-size:12px;">
-        <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">☁ <b>${esc(syncInfo.syncText)}</b> · ${esc(syncInfo.accountLabel)}</span>
-        <button type="button" id="btnSidebarOpenSync" style="border:1px solid rgba(11,58,91,.25);background:#fff;color:#0b3a5b;border-radius:5px;padding:2px 7px;font-size:11.5px;font-weight:600;cursor:pointer;flex-shrink:0;">
-          Đổi
-        </button>
-      </div>
       <div class="tree-root">
-        <button type="button" class="tree-row ${ovActive}" data-go-overview="1" style="width:100%;margin-bottom:6px;border:0;background:${ovActive ? 'rgba(11,58,91,.14)' : 'transparent'};cursor:pointer;text-align:left;padding:7px 8px;border-radius:6px;display:flex;align-items:center;gap:6px;">
+        <button type="button" class="tree-row ${ovActive}" data-go-overview="1" style="width:100%;margin-bottom:8px;border:0;background:${ovActive ? 'rgba(11,58,91,.14)' : 'transparent'};cursor:pointer;text-align:left;padding:7px 8px;border-radius:6px;display:flex;align-items:center;gap:6px;">
           <span>🏠</span><span class="nm"><b>Tổng quan (Vật tư - Tài sản)</b></span>
         </button>
-        <div style="margin-bottom:8px;">
-          <button type="button" data-create-folder="${esc(treeTargetParent)}" style="width:100%;text-align:center;padding:5px 8px;border:1px dashed rgba(11,58,91,.35);border-radius:6px;background:rgba(11,58,91,.04);color:#0b3a5b;font-size:12px;font-weight:600;cursor:pointer;">
-            ＋ Tạo thư mục mới
-          </button>
-        </div>
         ${renderNodes(activeTree, 0)}
       </div>
     `;
-
-    $('#btnSidebarOpenSync', sb)?.addEventListener('click', () => {
-      if (window.Sync && typeof window.Sync.open === 'function') window.Sync.open();
-    });
   }
 
   function renderHorizontalBar(currentEntry) {
@@ -981,86 +705,10 @@
     return { counts, total, folderCount, colorEntries };
   }
 
-  function renderGlobalSearchView(mainEl) {
-    const results = getGlobalSearchResults();
-    const rowsHtml = results.length
-      ? results.map((item, i) => {
-          const v = item.row.v;
-          const badgeStyle = SOURCE_BADGE_STYLE[v[0]] || SOURCE_BADGE_STYLE['Không rõ nguồn'];
-          return `
-            <tr>
-              <td style="text-align:center;">${i + 1}</td>
-              <td>
-                <button type="button" data-jump-folder="${esc(item.nodeId)}" style="border:0;background:transparent;color:#0b3a5b;font-weight:600;cursor:pointer;text-align:left;padding:0;">
-                  ${esc(item.nodeLabel)}
-                </button>
-                <div style="font-size:11px;opacity:.65;">${esc(item.pathText)}</div>
-              </td>
-              <td style="white-space:nowrap;"><span style="display:inline-block;padding:2px 7px;border-radius:999px;font-size:12px;font-weight:600;border:1px solid;${badgeStyle}">${esc(v[0])}</span></td>
-              <td>${esc(v[2])}</td>
-              <td>${esc(v[3])}</td>
-              <td>${esc(v[4])}</td>
-              <td>${esc(v[5])}</td>
-              <td>${esc(v[6])}</td>
-            </tr>
-          `;
-        }).join('')
-      : `<tr><td colspan="8" style="text-align:center;padding:18px;opacity:.7;">Không tìm thấy vật tư nào khớp với từ khóa "${esc(V.query)}" trên toàn bộ thư mục.</td></tr>`;
-
-    mainEl.innerHTML = `
-      <div class="view-header" style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px;">
-        <div>
-          <div style="font-size:12px;opacity:.7;">Tìm kiếm toàn bộ danh mục tại Trang chủ</div>
-          <h2 style="margin:2px 0 0;font-size:20px;">🔍 Kết quả tìm kiếm: "${esc(V.query)}" <small style="font-weight:400;opacity:.7;">(${results.length} dòng)</small></h2>
-        </div>
-        <div style="display:flex;flex-wrap:wrap;gap:8px;">
-          <button type="button" id="btnAddItemSearch" class="btn accent">+ Thêm vật tư</button>
-          <button type="button" id="btnBackOverview" class="btn">🏠 Về Trang chủ</button>
-        </div>
-      </div>
-      <div class="table-wrap responsive-table-wrap" style="overflow-x:auto;-webkit-overflow-scrolling:touch;border:1px solid rgba(0,0,0,.12);border-radius:8px;background:#fff;">
-        <table class="data-table" style="width:100%;border-collapse:collapse;">
-          <thead>
-            <tr>
-              <th style="white-space:nowrap;">STT</th>
-              <th style="white-space:nowrap;">Thư mục</th>
-              <th style="white-space:nowrap;">Nguồn</th>
-              <th style="white-space:nowrap;">Tên Vật Tư</th>
-              <th style="white-space:nowrap;">Serial</th>
-              <th style="white-space:nowrap;">Mã VT</th>
-              <th style="white-space:nowrap;">Part number</th>
-              <th style="white-space:nowrap;">Ghi chú</th>
-            </tr>
-          </thead>
-          <tbody>${rowsHtml}</tbody>
-        </table>
-      </div>
-    `;
-
-    $('#btnAddItemSearch', mainEl)?.addEventListener('click', () => openAddItemModal(V.activeId));
-    $('#btnBackOverview', mainEl)?.addEventListener('click', () => {
-      V.query = '';
-      const gq = $('#gq');
-      const gqClear = $('#gqClear');
-      if (gq) gq.value = '';
-      if (gqClear) gqClear.hidden = true;
-      V.route = { page: 'overview', id: null };
-      render();
-    });
-    $$('[data-jump-folder]', mainEl).forEach(btn => {
-      btn.addEventListener('click', () => {
-        V.activeId = btn.getAttribute('data-jump-folder');
-        V.route = { page: 'sheet', id: V.activeId };
-        render();
-      });
-    });
-  }
-
   function renderOverview(mainEl) {
     const { counts, total, folderCount, colorEntries } = computeStats();
     const meta = (DATA && DATA.meta) || {};
     const meaningEntries = Object.entries(CFG.colorMeaning || {});
-    const syncInfo = getSyncStatusInfo();
 
     const sourceCards = SRC_LIST.map(src => {
       const style = SOURCE_BADGE_STYLE[src] || SOURCE_BADGE_STYLE['Không rõ nguồn'];
@@ -1124,16 +772,11 @@
       <div class="view-header" style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;margin-bottom:14px;">
         <div>
           <h2 style="margin:0;font-size:20px;">📊 Tổng quan Vật tư – Tài sản</h2>
-          <div style="font-size:12px;opacity:.75;">
-            Nguồn dữ liệu: ${esc(meta.source || 'LAB')} · Cập nhật: ${esc(meta.generated || '')} ·
-            Đồng bộ đa thiết bị: <b>${esc(syncInfo.syncText)}</b> (${esc(syncInfo.accountLabel)})
-          </div>
+          <div style="font-size:12px;opacity:.7;">Nguồn dữ liệu: ${esc(meta.source || 'LAB')} · Cập nhật: ${esc(meta.generated || '')}</div>
         </div>
         <div style="display:flex;flex-wrap:wrap;gap:8px;">
-          <button type="button" id="btnOverviewAddFolder" class="btn" style="background:#f59e0b;color:#111827;border:2px solid #b45309;font-weight:700;padding:7px 13px;box-shadow:0 3px 10px rgba(245,158,11,.42);">＋ Tạo thư mục mới</button>
-          <button type="button" id="btnOverviewAddItem" class="btn accent">+ Thêm vật tư</button>
-          <button type="button" id="btnOverviewSync" class="btn">☁ Đồng bộ (${esc(syncInfo.accountLabel)})</button>
-          <button type="button" id="btnOverviewExportAll" class="btn">📗 Xuất Excel toàn bộ</button>
+          <button type="button" id="btnOverviewAddFolder" class="btn">＋ Tạo thư mục mới</button>
+          <button type="button" id="btnOverviewExportAll" class="btn accent">📗 Xuất Excel toàn bộ</button>
         </div>
       </div>
 
@@ -1190,11 +833,6 @@
       addFolderBtn.addEventListener('click', () => createFolderUnder(V.activeId || 'truyen-dan-thiet-bi'));
     }
 
-    $('#btnOverviewAddItem', mainEl)?.addEventListener('click', () => openAddItemModal(V.activeId));
-    $('#btnOverviewSync', mainEl)?.addEventListener('click', () => {
-      if (window.Sync && typeof window.Sync.open === 'function') window.Sync.open();
-    });
-
     const exportAllBtn = $('#btnOverviewExportAll', mainEl);
     if (exportAllBtn) {
       exportAllBtn.addEventListener('click', () => {
@@ -1226,7 +864,7 @@
       return `
         <tr>
           <td colspan="8" style="text-align:center;padding:18px;opacity:.7;">
-            Không có dữ liệu vật tư / tài sản phù hợp trong thư mục này.
+            Không có dữ liệu vật tư / tài sản phù hợp.
           </td>
         </tr>
       `;
@@ -1295,12 +933,8 @@
     const mainEl = $('#main');
     if (!mainEl) return;
 
-    if (V.route.page === 'overview') {
-      if (V.query && V.query.trim()) {
-        renderGlobalSearchView(mainEl);
-      } else {
-        renderOverview(mainEl);
-      }
+    if (V.route.page === 'overview' && !V.query) {
+      renderOverview(mainEl);
       return;
     }
 
@@ -1327,8 +961,8 @@
           <select id="filterSource" aria-label="Lọc theo nguồn" style="padding:6px 8px;border-radius:6px;border:1px solid rgba(0,0,0,.2);">
             ${srcFilterOpts}
           </select>
-          <button type="button" id="btnAddItem" class="btn accent">+ Thêm vật tư</button>
-          <button type="button" id="btnAddRow" class="btn">+ Thêm dòng nhanh</button>
+          <button type="button" id="btnAddFolderHere" class="btn">＋ Thư mục mới</button>
+          <button type="button" id="btnAddRow" class="btn accent">+ Thêm dòng</button>
           <button type="button" id="btnExportSheets" class="btn">📗 Xuất Excel (tách sheet)</button>
         </div>
       </div>
@@ -1372,9 +1006,9 @@
       });
     }
 
-    const addItemBtn = $('#btnAddItem', mainEl);
-    if (addItemBtn) {
-      addItemBtn.addEventListener('click', () => openAddItemModal(node.id));
+    const addFolderBtn = $('#btnAddFolderHere', mainEl);
+    if (addFolderBtn) {
+      addFolderBtn.addEventListener('click', () => createFolderUnder(node.id));
     }
 
     const addBtn = $('#btnAddRow', mainEl);
@@ -1720,8 +1354,6 @@
     normalizeRow,
     SOURCE_OPTIONS: SRC_LIST,
     STANDARD_COLS,
-    openAddItemModal,
-    addStructuredItem,
     get DATA() { return DATA; },
     get ST() { return ST; },
     get V() { return V; },
