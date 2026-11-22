@@ -32,6 +32,15 @@ window.APP_CONFIG = {
     'Vật tư & Tài sản khác'
   ],
 
+  // Cấu hình hành vi giao diện & tìm kiếm
+  features: {
+    globalSearchOnOverview: true,
+    scopedSearchInFolder: true,
+    showAddItemButton: true,
+    highlightAddFolderOnOverview: true,
+    showTreeFolderButtons: false
+  },
+
   treeMenu: [
     {
       id: 'truyen-dan-thiet-bi',
@@ -45,7 +54,7 @@ window.APP_CONFIG = {
         'infinera', 'xtc10', 'mtc9', 'otc9',
         'ciena', '5430', '6500t', 'ome', 'ome6500',
         'huawei', 'hw', '6800', '8800', '7500', '3500', '3900',
-        'nokia', 'bb1', 'ribbon', 'ericson', 'ericsson',
+        'nokia', 'ribbon', 'ericson', 'ericsson',
         'alcatel', '1850', '1830', '1660', '1662', 'pss16', 'pss_64', 'mhl3000', 'oms3255'
       ],
       children: [
@@ -173,15 +182,15 @@ window.APP_CONFIG = {
           icon: '📁',
           isDynamicGroup: true,
           allowCreate: true,
-          matchKeywords: ['nokia', 'bb1', 'nokia bb', 'nokia-bb1'],
+          matchKeywords: ['nokia', 'nokia bb', 'nokia-bb1'],
           children: [
             {
               id: 'nokia-bb',
-              label: 'BB1',
+              label: 'BB',
               icon: '📄',
               isDynamicGroup: true,
               allowCreate: true,
-              matchKeywords: ['bb1', 'nokia bb', 'bb nokia', 'nokia', 'nokia-bb1']
+              matchKeywords: ['nokia bb', 'bb nokia', 'nokia', 'nokia-bb1']
             }
           ]
         },
@@ -318,16 +327,16 @@ window.APP_CONFIG = {
     'otc9': 'OTC9',
     'ciena-5430': '5430',
     'ciena-ome': 'OME',
-    'ciena-bb': 'BB',
+    'ciena-bb': 'Ciena_BB',
     'hw-6800': 'HW 6800',
     'hw-8800': 'HW 8800',
     'hw-7500': 'HW 7500',
     'hw-3500': 'HW 3500',
     'hw-3900': 'HW 3900',
-    'nokia-bb': 'BB1',
+    'nokia-bb': 'Nokia_BB',
     'ribbon-ericson': 'Ribbon - Ericson',
-    'ip-tao-moi': 'Tạo mới',
-    'ip-tao-mo': 'Tạo mở',
+    'ip-tao-moi': 'IP_Tao moi',
+    'ip-tao-mo': 'IP_Tao mo',
     'thiet-bi-ip': 'Thiết bị IP',
     'thiet-bi-vsat': 'Thiết bị VSAT',
     'thiet-bi-vo-tuyen': 'Thiết bị vô tuyến',
@@ -374,3 +383,4 @@ window.APP_CONFIG = {
     }
   }
 };
+```[cite: 16]
