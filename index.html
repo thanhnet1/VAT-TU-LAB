@@ -6,7 +6,7 @@
 <meta name="theme-color" content="#0b3a5b">
 <title>Tài sản – Vật tư Truyền dẫn LAB</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E📡%3C/text%3E%3C/svg%3E">
-<link rel="stylesheet" href="assets/style.css?v=2026.11.21-5">
+<link rel="stylesheet" href="assets/style.css?v=2026.11.22-3">
 <style>
   .data-table th,
   .data-table td {
@@ -41,6 +41,19 @@
     background: #fff;
     color: inherit;
   }
+  .sync-role-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 4px 9px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+    border: 1px solid rgba(11, 58, 91, 0.22);
+    background: rgba(11, 58, 91, 0.07);
+    color: inherit;
+    cursor: pointer;
+  }
   @media (max-width: 768px) {
     .data-table th,
     .data-table td {
@@ -65,12 +78,14 @@
   </a>
   <label class="search">
     <span aria-hidden="true">🔍</span>
-    <input id="gq" type="search" title="Phím tắt: /" placeholder="Tìm serial, part number, tên vật tư…" autocomplete="off" spellcheck="false">
+    <input id="gq" type="search" title="Phím tắt: /" placeholder="Tìm toàn bộ ở Trang chủ / tìm trong thư mục đang mở…" autocomplete="off" spellcheck="false">
     <button id="gqClear" type="button" class="search-clear" hidden aria-label="Xoá tìm kiếm">✕</button>
   </label>
   <div class="actions">
     <span id="dirty" class="dirty" hidden title="Bạn đã chỉnh sửa dữ liệu – chỉ lưu trên trình duyệt này">● Đã chỉnh sửa</span>
+    <button id="btnRoleBadge" class="sync-role-pill" type="button" title="Tài khoản đồng bộ: admin / khach">👤 <span id="roleBadgeText">admin/khach</span></button>
     <button id="btnSync" class="btn ghost sync-off" type="button" title="Đồng bộ nhiều thiết bị"><i>☁</i> <span>Chỉ trên máy</span></button>
+    <button id="btnAddItemTop" class="btn accent" type="button" title="Thêm vật tư / tài sản">+ <span>Thêm vật tư</span></button>
     <button id="btnEdit" class="btn" type="button" aria-pressed="false">✏️ <span>Chỉnh sửa</span></button>
     <details class="menu" id="menuExport">
       <summary class="btn">⬇ <span>Xuất / Sao lưu</span></summary>
@@ -109,12 +124,44 @@
 <div id="printRoot"></div>
 <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
-<script src="assets/config.js?v=2026.11.21-5"></script>
+<script src="assets/config.js?v=2026.11.22-3"></script>
 <script src="assets/data.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js" defer></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js" defer></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdfjs-dist/3.11.174/pdf.min.js" defer></script>
-<script src="assets/app.js?v=2026.11.21-5" defer></script>
-<script src="assets/sync.js?v=2026.11.21-5" defer></script>
+<script src="assets/app.js?v=2026.11.22-3" defer></script>
+<script src="assets/sync.js?v=2026.11.22-3" defer></script>
+<script>
+  document.addEventListener('DOMContentLoaded', function () {
+    function refreshRoleBadge() {
+      var el = document.getElementById('roleBadgeText');
+      if (!el) return;
+      var u = localStorage.getItem('lab_username') || '';
+      var r = localStorage.getItem('lab_user_role') || '';
+      if (u) el.textContent = u + (r ? ' (' + r + ')' : '');
+      else if (r === 'guest') el.textContent = 'khach (guest)';
+      else el.textContent = 'admin/khach';
+    }
+    refreshRoleBadge();
+    setInterval(refreshRoleBadge, 1500);
+
+    var roleBtn = document.getElementById('btnRoleBadge');
+    if (roleBtn) {
+      roleBtn.addEventListener('click', function () {
+        if (window.Sync && typeof window.Sync.open === 'function') window.Sync.open();
+      });
+    }
+
+    var addTop = document.getElementById('btnAddItemTop');
+    if (addTop) {
+      addTop.addEventListener('click', function () {
+        var addMain = document.getElementById('btnAddItem') || document.getElementById('btnOverviewAddItem');
+        if (addMain) addMain.click();
+        else if (window.LabApp && typeof window.LabApp.render === 'function') window.LabApp.render();
+      });
+    }
+  });
+</script>
 </body>
 </html>
+```[cite: 17]
