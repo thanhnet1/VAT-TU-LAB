@@ -35,6 +35,32 @@
     treeMenu: []
   }, window.APP_CONFIG || {});
 
+  function ensureTransferFolderInBaseTree(nodes = []) {
+    const hasTransfer = (list) => {
+      if (!Array.isArray(list)) return false;
+      for (const n of list) {
+        if (!n) continue;
+        if (n.id === TRANSFER_FOLDER_ID) return true;
+        if (Array.isArray(n.children) && hasTransfer(n.children)) return true;
+      }
+      return false;
+    };
+    const base = Array.isArray(nodes) ? nodes.slice() : [];
+    if (!hasTransfer(base)) {
+      base.push({
+        id: TRANSFER_FOLDER_ID,
+        label: TRANSFER_FOLDER_LABEL,
+        icon: '🚚',
+        isDynamicGroup: true,
+        allowCreate: true,
+        matchKeywords: ['vt-ts dieu chuyen', 'dieu chuyen', 'bbbg', 'pxk', 'ban giao']
+      });
+    }
+    return base;
+  }
+
+  CFG.treeMenu = ensureTransferFolderInBaseTree(CFG.treeMenu);
+
   const SRC_LIST = Array.isArray(CFG.sourceOptions) && CFG.sourceOptions.length
     ? CFG.sourceOptions
     : SOURCE_OPTIONS;
@@ -255,32 +281,8 @@
     });
   }
 
-  function ensureTransferFolderInTree(nodes = []) {
-    const hasTransfer = (list) => {
-      if (!Array.isArray(list)) return false;
-      for (const n of list) {
-        if (!n) continue;
-        if (n.id === TRANSFER_FOLDER_ID) return true;
-        if (Array.isArray(n.children) && hasTransfer(n.children)) return true;
-      }
-      return false;
-    };
-    const base = Array.isArray(nodes) ? nodes.slice() : [];
-    if (hasTransfer(base)) return base;
-    base.push({
-      id: TRANSFER_FOLDER_ID,
-      label: TRANSFER_FOLDER_LABEL,
-      icon: '🚚',
-      isDynamicGroup: true,
-      allowCreate: true,
-      matchKeywords: ['vt-ts dieu chuyen', 'dieu chuyen', 'bbbg', 'pxk', 'ban giao']
-    });
-    return base;
-  }
-
   function cloneTreeWithCustomFolders(nodes = [], customMap = {}) {
-    const withTransfer = ensureTransferFolderInTree(nodes);
-    return withTransfer.map(node => {
+    return ensureTransferFolderInBaseTree(nodes).map(node => {
       const children = Array.isArray(node.children) ? cloneTreeWithCustomFolders(node.children, customMap) : [];
       const extra = Array.isArray(customMap[node.id]) ? customMap[node.id] : [];
       return Object.assign({}, node, {
@@ -360,13 +362,12 @@
   }
 
   function classifyRowTarget(sheetId, blockTitle, rowNorm, fallbackNodeId) {
+    if (sheetId === TRANSFER_FOLDER_ID) return TRANSFER_FOLDER_ID;
     const bt = fold(blockTitle);
     const v = rowNorm.v || [];
     const blob = fold(`${blockTitle} ${v[2] || ''} ${v[3] || ''} ${v[4] || ''} ${v[5] || ''} ${v[6] || ''} ${v[7] || ''}`);
 
-    if (bt.includes('dieu chuyen') || sheetId === TRANSFER_FOLDER_ID || v[7] === 'BBBG' || v[7] === 'PXK') {
-      return TRANSFER_FOLDER_ID;
-    }
+    if (bt.includes('dieu chuyen')) return TRANSFER_FOLDER_ID;
     if (bt === 'xtc10') return 'xtc10';
     if (bt === 'mtc9') return 'mtc9';
     if (bt === 'otc9') return 'otc9';
@@ -425,13 +426,18 @@
   function buildSheetsFromStore(storeMap) {
     return flatNodes.map((entry, idx) => {
       const n = entry.node;
-      const rows = (Array.isArray(storeMap[n.id]) ? storeMap[n.id] : []).map((r, i) =>
-        normalizeRow(r, i, CFG.defaultSource, STANDARD_COLS, n.id)
-      );
-      rows.forEach((r, i) => {
-        r.r = i + 1;
-        r.v[1] = String(i + 1);
-      });
+      const seenIds = new Set();
+      const rows = [];
+      for (const r of (Array.isArray(storeMap[n.id]) ? storeMap[n.id] : [])) {
+        const norm = normalizeRow(r, rows.length, CFG.defaultSource, STANDARD_COLS, n.id);
+        const key = norm.i || `${n.id}:row:${rows.length + 1}`;
+        if (seenIds.has(key)) continue;
+        seenIds.add(key);
+        norm.i = key;
+        norm.r = rows.length + 1;
+        norm.v[1] = String(rows.length + 1);
+        rows.push(norm);
+      }
       return {
         id: n.id,
         name: CFG.sheetLabels[n.id] || n.label,
@@ -453,6 +459,7 @@
   function buildStoreFromSheets(sheets) {
     const store = {};
     for (const item of flatNodes) store[item.node.id] = [];
+    const seenGlobalIds = new Set();
 
     if (Array.isArray(sheets)) {
       for (const sh of sheets) {
@@ -464,9 +471,12 @@
           rows.forEach((r, idx) => {
             const norm = normalizeRow(r, idx, CFG.defaultSource, blk.cols, sh.id);
             const destId = classifyRowTarget(sh.id, blk.title, norm, blkTarget);
-            if (store[destId]) {
-              store[destId].push(norm);
-            }
+            if (!store[destId]) return;
+            const uniqueKey = norm.i || `${destId}:${idx}:${fold(norm.v.slice(2, 7).join('|'))}`;
+            if (seenGlobalIds.has(uniqueKey)) return;
+            seenGlobalIds.add(uniqueKey);
+            norm.i = uniqueKey;
+            store[destId].push(norm);
           });
         }
       }
@@ -572,13 +582,19 @@
 
   function ensureIds(sheets) {
     if (!Array.isArray(sheets)) return;
+    const seen = new Set();
     sheets.forEach(s => Array.isArray(s.blocks) && s.blocks.forEach((b, bi) => {
       if (!Array.isArray(b.cols) || !b.cols.length) b.cols = STANDARD_COLS.slice();
+      const uniqueRows = [];
       (b.rows || []).forEach((r, ri) => {
-        if (!r.i) r.i = r.r ? `${s.id}:${bi}:${r.r}` : 'u' + uid();
-        const norm = normalizeRow(r, ri, CFG.defaultSource, b.cols, s.id);
-        Object.assign(r, norm);
+        const norm = normalizeRow(r, uniqueRows.length, CFG.defaultSource, b.cols, s.id);
+        const idKey = norm.i || (norm.r ? `${s.id}:${bi}:${norm.r}` : `${s.id}:${bi}:idx:${ri}`);
+        if (seen.has(idKey)) return;
+        seen.add(idKey);
+        norm.i = idKey;
+        uniqueRows.push(norm);
       });
+      b.rows = uniqueRows;
     }));
   }
 
