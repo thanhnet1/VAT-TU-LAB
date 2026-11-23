@@ -1,1034 +1,677 @@
 /* =====================================================================
-   assets/sync.js – ĐỒNG BỘ DỮ LIỆU ĐA THIẾT BỊ & PHÂN QUYỀN (Admin vs Guest)
-   Phiên bản: 2026.11.22-10
+   assets/sync.js – ĐỒNG BỘ DỮ LIỆU ĐA THIẾT BỊ QUA FIREBASE FIRESTORE
    ===================================================================== */
 (function () {
   'use strict';
 
-  var BUILD = '2026.11.22-10';
-  var SOURCE_OPTIONS = ['Vật tư', 'Tài sản', 'Đo kiểm', 'Sửa chữa', 'Không rõ nguồn'];
-  var DEFAULT_SOURCE = 'Không rõ nguồn';
-  var STANDARD_COLS = ['Nguồn', 'STT', 'Tên Vật Tư', 'Serial', 'Mã VT', 'Part number', 'Ghi chú'];
+  const SDK_VER = '10.12.2';
+  const LS_USER = 'lab_username';
+  const LS_ROLE = 'lab_user_role';
+  const LS_PASS = 'lab_user_pass_hash';
+  const LS_DEV  = 'lab_device_id';
+  const LS_LOGGED_OUT = 'lab_logged_out';
 
-  var A = null, CS = null, ad = null;
-  var S = {
-    st: 'off', user: null, M: null, since: null, inited: false, baseline: null,
-    subscribed: false, pushing: false, retry: 0, lastOk: 0, err: '',
-    pending: 0, conflicts: 0, ready: { rows: false, blocks: false, folders: false },
-    remoteSeen: 0, applyT: null, pushT: null, retryT: null, pollT: null,
-    reconciling: false, loginShown: false
+  const $ = (s, el = document) => el.querySelector(s);
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, ch => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  }[ch]));
+  const clone = o => {
+    try { return JSON.parse(JSON.stringify(o)); } catch (_) { return o; }
   };
-  var COLS = ['rows', 'blocks', 'folders'];
 
-  function $(s, el) { return (el || document).querySelector(s); }
-  function esc(s) {
-    return A && typeof A.esc === 'function'
-      ? A.esc(s == null ? '' : s)
-      : String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
-          return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
-        });
-  }
-  function clone(o) {
-    try { return JSON.parse(JSON.stringify(o)); } catch (e) { return o; }
-  }
+  let A = null;
+  let CFG = {};
+  let syncCfg = {};
+  let fbCfg = {};
+  let workspace = 'lab-xvt';
+  let enabled = false;
+  let timer = null;
+  let pollTimer = null;
+  let pushing = false;
+  let paused = false;
+  let lastPullAt = 0;
+  let lastPushAt = 0;
 
-  function normSrc(val, fallback) {
-    if (A && typeof A.normalizeSource === 'function') return A.normalizeSource(val, fallback || DEFAULT_SOURCE);
-    var def = fallback || DEFAULT_SOURCE;
-    if (!val) return def;
-    var raw = String(val).trim();
-    var hit = SOURCE_OPTIONS.filter(function (x) { return x.toLowerCase() === raw.toLowerCase(); })[0];
-    return hit || def;
-  }
+  let fbApp = null;
+  let fbDb = null;
+  let fbMod = null;
+  let unsubRows = null;
+  let unsubSlips = null;
 
-  function normVec(v, fallbackSrc) {
-    var src = normSrc(fallbackSrc || (Array.isArray(v) ? v[0] : ''), DEFAULT_SOURCE);
-    var arr = Array.isArray(v) ? v.slice() : [];
-    var hasSrcFirst = arr.length >= 7 && SOURCE_OPTIONS.some(function (opt) {
-      return opt.toLowerCase() === String(arr[0] || '').trim().toLowerCase();
-    });
-    if (hasSrcFirst) {
-      return [
-        src,
-        String(arr[1] != null && arr[1] !== '' ? arr[1] : '1'),
-        String(arr[2] || ''),
-        String(arr[3] || ''),
-        String(arr[4] || ''),
-        String(arr[5] || ''),
-        String(arr[6] || '')
-      ];
+  const S = {
+    state: 'init',
+    msg: 'Đang kết nối...',
+    pending: 0,
+    baseline: new Map(),
+    slipsBase: new Map()
+  };
+
+  function getApp() {
+    if (A && A.ST) return A;
+    if (window.LabApp && window.LabApp.ST) {
+      A = window.LabApp;
+      return A;
     }
-    return [
-      src,
-      String(arr[0] != null && arr[0] !== '' ? arr[0] : '1'),
-      String(arr[2] || ''),
-      String(arr[3] || ''),
-      String(arr[1] || ''),
-      String(arr[4] || ''),
-      String(arr[5] || '')
-    ];
-  }
-
-  function stable(v) {
-    if (v === undefined || v === null) return 'null';
-    if (typeof v !== 'object') return JSON.stringify(v);
-    if (Array.isArray(v)) return '[' + v.map(stable).join(',') + ']';
-    return '{' + Object.keys(v).sort().map(function (k) { return JSON.stringify(k) + ':' + stable(v[k]); }).join(',') + '}';
-  }
-
-  function hash(str) {
-    var h1 = 0xdeadbeef, h2 = 0x41c6ce57, i, ch;
-    for (i = 0; i < str.length; i++) {
-      ch = str.charCodeAt(i);
-      h1 = Math.imul(h1 ^ ch, 2654435761);
-      h2 = Math.imul(h2 ^ ch, 1597334677);
-    }
-    h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
-    h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
-    return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36);
-  }
-
-  function nz(o) { return o && Object.keys(o).length ? o : null; }
-
-  function rowSig(r) {
-    var src = normSrc(r && (r.src || (r.v && r.v[0])), DEFAULT_SOURCE);
-    var vec = normVec(r && r.v, src);
-    return hash(stable([
-      src,
-      vec,
-      nz(r && r.f),
-      (r && r.p && r.p.length) ? r.p : null,
-      nz(r && r.s)
-    ]));
-  }
-
-  function blockSig() {
-    return hash(stable([STANDARD_COLS]));
-  }
-
-  function folderSig(f) {
-    return hash(stable([
-      String((f && f.parentId) || ''),
-      String((f && f.id) || ''),
-      String((f && f.label) || ''),
-      String((f && f.icon) || '📄')
-    ]));
-  }
-
-  function enc(key) { return encodeURIComponent(key); }
-
-  function ws() { return (CS && CS.workspace) || 'lab-xvt'; }
-  function metaKey() { return ((A && A.CFG && A.CFG.storageKey) || 'lab-xvt-v1') + ':sync:' + ws(); }
-
-  function loadMeta() {
-    try {
-      var m = JSON.parse(localStorage.getItem(metaKey()) || 'null');
-      var ver = (A && A.DATA && A.DATA.meta && A.DATA.meta.version) || '';
-      if (m && m.ver === ver) return m;
-    } catch (e) { }
     return null;
   }
 
-  function saveMeta() {
-    try {
-      localStorage.setItem(metaKey(), JSON.stringify({
-        ver: (A && A.DATA && A.DATA.meta && A.DATA.meta.version) || '',
-        since: S.since,
-        M: S.M,
-        inited: S.inited
-      }));
-    } catch (e) { }
-  }
-
-  function enabled() {
-    var c = (A && A.CFG && A.CFG.sync) || {};
-    if (c.provider === 'off' || c.autoSync === false) return false;
-    return !!((c.provider === 'firebase' && c.firebase && c.firebase.projectId) ||
-              (c.provider === 'server' && c.server && c.server.url));
-  }
-
   function deviceId() {
-    var k = ((A && A.CFG && A.CFG.storageKey) || 'lab-xvt-v1') + ':device', v = null;
-    try {
-      v = localStorage.getItem(k);
-      if (!v) {
-        v = 'd' + Math.random().toString(36).slice(2, 8);
-        localStorage.setItem(k, v);
+    let id = localStorage.getItem(LS_DEV);
+    if (!id) {
+      id = 'dev-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 7);
+      localStorage.setItem(LS_DEV, id);
+    }
+    return id;
+  }
+
+  function currentUser() {
+    const loggedOut = localStorage.getItem(LS_LOGGED_OUT) === '1';
+    if (loggedOut) return { username: '', role: 'guest' };
+    const username = (localStorage.getItem(LS_USER) || '').trim();
+    const role = (localStorage.getItem(LS_ROLE) || '').trim() || (username === 'admin' ? 'admin' : 'guest');
+    return { username, role };
+  }
+
+  function rowKey(sheetId, blockIdx, rowId) {
+    return `${sheetId}__${blockIdx}__${rowId}`;
+  }
+
+  function rowSig(r) {
+    if (!r) return '';
+    return JSON.stringify({
+      v: r.v || [],
+      f: r.f || null,
+      src: r.src || '',
+      ut: r.ut || 0,
+      d: !!r.d
+    });
+  }
+
+  function slipSig(slip) {
+    return JSON.stringify(slip || {});
+  }
+
+  function rebuildBaselines() {
+    const app = getApp();
+    S.baseline.clear();
+    if (app && app.ST && Array.isArray(app.ST.sheets)) {
+      app.ST.sheets.forEach(s => {
+        (s.blocks || []).forEach((b, bi) => {
+          (b.rows || []).forEach(r => {
+            if (r && r.i) {
+              S.baseline.set(rowKey(s.id, bi, r.i), rowSig(r));
+            }
+          });
+        });
+      });
+    }
+
+    S.slipsBase.clear();
+    if (app && app.ST && app.ST.slips) {
+      ['xuat', 'nhap'].forEach(k => {
+        const list = Array.isArray(app.ST.slips[k]) ? app.ST.slips[k] : [];
+        list.forEach(sl => {
+          S.slipsBase.set(`${k}__${sl && sl.id ? sl.id : JSON.stringify(sl)}`, slipSig(sl));
+        });
+      });
+    }
+  }
+
+  function setStatus(state, msg) {
+    const app = getApp();
+    S.state = state;
+    S.msg = msg;
+
+    const btn = $('#btnSync');
+    if (btn) {
+      btn.classList.remove('sync-off', 'sync-login', 'sync-ok', 'sync-busy', 'sync-err');
+      if (state === 'ok') btn.classList.add('sync-ok');
+      else if (state === 'busy' || state === 'init') btn.classList.add('sync-busy');
+      else if (state === 'err') btn.classList.add('sync-err');
+      else btn.classList.add('sync-off');
+
+      const span = btn.querySelector('span');
+      if (span) span.textContent = msg;
+    }
+
+    const badge = $('#deviceSyncBadge');
+    if (badge) {
+      badge.textContent = `☁ ${msg}`;
+    }
+
+    const dirtyEl = $('#dirty');
+    if (dirtyEl && app && app.ST) {
+      dirtyEl.hidden = !app.ST.dirty;
+    }
+  }
+
+  function applyRoleUI() {
+    const u = currentUser();
+    const btnEdit = $('#btnEdit');
+    if (btnEdit) {
+      btnEdit.style.display = '';
+    }
+    return u;
+  }
+
+  async function loadFirestoreModule() {
+    if (fbMod) return fbMod;
+    const base = (syncCfg.sdkBase || `https://www.gstatic.com/firebasejs/${SDK_VER}/`).replace(/\/?$/, '/');
+    const [appM, fsM] = await Promise.all([
+      import(`${base}firebase-app.js`),
+      import(`${base}firebase-firestore.js`)
+    ]);
+    fbMod = Object.assign({}, appM, fsM);
+    return fbMod;
+  }
+
+  async function ensureFirebase() {
+    if (fbDb && fbMod) return { db: fbDb, mod: fbMod };
+    if (!fbCfg || !fbCfg.projectId || !fbCfg.apiKey) {
+      throw new Error('Thiếu cấu hình Firebase (apiKey / projectId)');
+    }
+    const mod = await loadFirestoreModule();
+    const appName = `lab-sync-${workspace}`;
+    const existing = mod.getApps().find(x => x.name === appName);
+    fbApp = existing || mod.initializeApp(fbCfg, appName);
+    fbDb = mod.getFirestore(fbApp);
+    return { db: fbDb, mod };
+  }
+
+  function rowsColRef(db, mod) {
+    return mod.collection(db, 'workspaces', workspace, 'rows');
+  }
+
+  function slipsColRef(db, mod) {
+    return mod.collection(db, 'workspaces', workspace, 'slips');
+  }
+
+  function applyRemoteRowsToApp(docsList) {
+    const app = getApp();
+    if (!app || !app.ST || !Array.isArray(app.ST.sheets)) return;
+    let changed = false;
+
+    const sheetMap = new Map();
+    app.ST.sheets.forEach(s => sheetMap.set(s.id, s));
+
+    for (const item of docsList) {
+      if (!item || !item.sheetId || !item.rowId) continue;
+      const sh = sheetMap.get(item.sheetId);
+      if (!sh || !Array.isArray(sh.blocks)) continue;
+      const bIdx = Number(item.blockIdx || 0);
+      const blk = sh.blocks[bIdx] || sh.blocks[0];
+      if (!blk) continue;
+      if (!Array.isArray(blk.rows)) blk.rows = [];
+
+      const k = rowKey(item.sheetId, bIdx, item.rowId);
+      const localIdx = blk.rows.findIndex(r => r && r.i === item.rowId);
+      const localRow = localIdx >= 0 ? blk.rows[localIdx] : null;
+      const localUt = Number((localRow && localRow.ut) || 0);
+      const remoteUt = Number(item.ut || 0);
+
+      if (item.d) {
+        if (localIdx >= 0 && (!localUt || remoteUt >= localUt)) {
+          blk.rows.splice(localIdx, 1);
+          S.baseline.delete(k);
+          changed = true;
+        }
+        continue;
       }
-    } catch (e) { v = 'dx'; }
-    return v;
+
+      const incomingRow = {
+        i: item.rowId,
+        r: Number(item.r || (localIdx >= 0 ? localIdx + 1 : blk.rows.length + 1)),
+        src: item.src || '',
+        v: Array.isArray(item.v) ? item.v.slice() : [],
+        f: item.f && typeof item.f === 'object' ? clone(item.f) : undefined,
+        ct: Number(item.ct || Date.now()),
+        ut: remoteUt || Date.now()
+      };
+
+      if (localIdx < 0) {
+        blk.rows.push(incomingRow);
+        S.baseline.set(k, rowSig(incomingRow));
+        changed = true;
+      } else if (remoteUt > localUt || (!localRow.ut && rowSig(localRow) !== rowSig(incomingRow))) {
+        blk.rows[localIdx] = Object.assign({}, localRow, incomingRow);
+        S.baseline.set(k, rowSig(blk.rows[localIdx]));
+        changed = true;
+      }
+    }
+
+    if (changed) {
+      app.ST.dirty = false;
+      if (typeof app.refresh === 'function') {
+        app.refresh();
+      }
+    }
   }
 
-  function buildBaseline() {
-    var rows = new Map(), blocks = new Set();
-    var sheets = (A && A.DATA && A.DATA.sheets) || [];
-    sheets.forEach(function (s) {
-      (s.blocks || []).forEach(function (b, bi) {
-        blocks.add(s.id + '|' + b.title);
-        (b.rows || []).forEach(function (r) {
-          rows.set(s.id + ':' + bi + ':' + r.r, { sid: s.id, bt: b.title, sig: rowSig(r) });
-        });
+  function applyRemoteSlipsToApp(docsList) {
+    const app = getApp();
+    if (!app || !app.ST || !syncCfg.syncSlips) return;
+    if (!app.ST.slips || typeof app.ST.slips !== 'object') {
+      app.ST.slips = { xuat: [], nhap: [] };
+    }
+    let changed = false;
+
+    for (const item of docsList) {
+      const kind = item && item.kind === 'nhap' ? 'nhap' : 'xuat';
+      if (!item || !item.slip || !item.slip.id) continue;
+      if (!Array.isArray(app.ST.slips[kind])) app.ST.slips[kind] = [];
+      const idx = app.ST.slips[kind].findIndex(x => x && x.id === item.slip.id);
+      if (item.d) {
+        if (idx >= 0) {
+          app.ST.slips[kind].splice(idx, 1);
+          changed = true;
+        }
+        continue;
+      }
+      if (idx < 0) {
+        app.ST.slips[kind].push(clone(item.slip));
+        changed = true;
+      } else if (slipSig(app.ST.slips[kind][idx]) !== slipSig(item.slip)) {
+        app.ST.slips[kind][idx] = clone(item.slip);
+        changed = true;
+      }
+    }
+
+    if (changed && typeof app.refresh === 'function') {
+      app.refresh();
+    }
+  }
+
+  async function pullNow() {
+    if (!enabled || paused) return;
+    try {
+      const { db, mod } = await ensureFirebase();
+      const [rowSnap, slipSnap] = await Promise.all([
+        mod.getDocs(rowsColRef(db, mod)),
+        syncCfg.syncSlips ? mod.getDocs(slipsColRef(db, mod)) : Promise.resolve(null)
+      ]);
+
+      const rows = [];
+      rowSnap.forEach(docSnap => {
+        const d = docSnap.data();
+        if (d) rows.push(d);
       });
-    });
-    return { rows: rows, blocks: blocks };
-  }
+      applyRemoteRowsToApp(rows);
 
-  function localRows() {
-    var m = new Map();
-    var sheets = (A && A.ST && A.ST.sheets) || [];
-    sheets.forEach(function (s) {
-      (s.blocks || []).forEach(function (b, bi) {
-        (b.rows || []).forEach(function (r) {
-          if (r.i) m.set(r.i, { s: s, b: b, bi: bi, row: r });
+      if (slipSnap) {
+        const slips = [];
+        slipSnap.forEach(docSnap => {
+          const d = docSnap.data();
+          if (d) slips.push(d);
         });
-      });
-    });
-    return m;
+        applyRemoteSlipsToApp(slips);
+      }
+
+      lastPullAt = Date.now();
+      if (!pushing) {
+        setStatus('ok', 'Đã đồng bộ');
+      }
+    } catch (_) {
+      setStatus('err', 'Lỗi đồng bộ');
+    }
   }
 
-  function localFolders() {
-    var out = new Map();
-    var map = (A && A.ST && A.ST.customFolders) || {};
-    Object.keys(map).forEach(function (pid) {
-      var arr = Array.isArray(map[pid]) ? map[pid] : [];
-      arr.forEach(function (item) {
-        if (!item || !item.id) return;
-        out.set(item.id, {
-          id: item.id,
-          parentId: pid,
-          label: item.label || item.id,
-          icon: item.icon || '📄'
-        });
-      });
-    });
-    return out;
-  }
+  function computePendingRowOps() {
+    const app = getApp();
+    const ops = [];
+    if (!app || !app.ST || !Array.isArray(app.ST.sheets)) return ops;
 
-  function rowData(e) {
-    var r = e.row;
-    var src = normSrc(r.src || (r.v && r.v[0]), DEFAULT_SOURCE);
-    var vec = normVec(r.v, src);
-    return {
-      rid: r.i,
-      sid: e.s.id,
-      bt: e.b.title,
-      r: r.r || 0,
-      ct: r.ct || 0,
-      src: src,
-      v: vec,
-      f: nz(r.f),
-      p: (r.p && r.p.length) ? r.p.slice() : null,
-      s: nz(r.s),
-      del: false
-    };
-  }
+    const seenKeys = new Set();
 
-  function computeOps() {
-    if (!S.baseline || !S.M || !A || !A.ST) return [];
-    var ops = [], base = S.baseline, lr = localRows(), lf = localFolders(), M = S.M;
-
-    if (!M.folders) M.folders = {};
-
-    lf.forEach(function (fObj, fid) {
-      var sig = folderSig(fObj);
-      if (M.folders[fid] !== sig) {
-        ops.push({
-          col: 'folders',
-          key: fid,
-          sig: sig,
-          data: {
-            id: fObj.id,
-            parentId: fObj.parentId,
-            label: fObj.label,
-            icon: fObj.icon,
-            del: false
+    app.ST.sheets.forEach(s => {
+      (s.blocks || []).forEach((b, bi) => {
+        (b.rows || []).forEach((r, ri) => {
+          if (!r || !r.i) return;
+          const k = rowKey(s.id, bi, r.i);
+          seenKeys.add(k);
+          const sig = rowSig(r);
+          if (S.baseline.get(k) !== sig) {
+            ops.push({
+              type: 'upsertRow',
+              key: k,
+              docId: encodeURIComponent(k),
+              sig,
+              data: {
+                sheetId: s.id,
+                blockIdx: bi,
+                rowId: r.i,
+                r: r.r || (ri + 1),
+                src: r.src || (Array.isArray(r.v) ? r.v[0] : ''),
+                v: Array.isArray(r.v) ? r.v.slice() : [],
+                f: r.f && typeof r.f === 'object' ? clone(r.f) : null,
+                ct: Number(r.ct || Date.now()),
+                ut: Number(r.ut || Date.now()),
+                d: false,
+                dev: deviceId(),
+                by: currentUser().username || 'device'
+              }
+            });
           }
         });
-      }
-    });
-
-    lr.forEach(function (e, rid) {
-      var sig = rowSig(e.row), last = M.rows[rid];
-      var need = last !== undefined ? last !== sig : (!base.rows.has(rid) || base.rows.get(rid).sig !== sig);
-      if (need) ops.push({ col: 'rows', key: rid, sig: sig, data: rowData(e) });
-    });
-
-    base.rows.forEach(function (b, rid) {
-      if (!lr.has(rid) && M.rows[rid] !== 'DEL') {
-        ops.push({ col: 'rows', key: rid, sig: 'DEL', data: { rid: rid, sid: b.sid, bt: b.bt, del: true } });
-      }
-    });
-
-    Object.keys(M.rows).forEach(function (rid) {
-      if (!lr.has(rid) && !base.rows.has(rid) && M.rows[rid] !== 'DEL') {
-        ops.push({ col: 'rows', key: rid, sig: 'DEL', data: { rid: rid, sid: '', bt: '', del: true } });
-      }
-    });
-
-    (A.ST.sheets || []).forEach(function (s) {
-      (s.blocks || []).forEach(function (b) {
-        var key = s.id + '|' + b.title;
-        if (base.blocks.has(key)) return;
-        var sig = blockSig(b);
-        if (M.blocks[key] !== sig) {
-          ops.push({
-            col: 'blocks',
-            key: key,
-            sig: sig,
-            data: { sid: s.id, title: b.title, cols: STANDARD_COLS.slice(), ord: b.ord || 0, del: false }
-          });
-        }
       });
     });
+
+    for (const [k, prevSig] of S.baseline.entries()) {
+      if (!seenKeys.has(k) && prevSig) {
+        const parts = k.split('__');
+        const sheetId = parts[0] || '';
+        const blockIdx = Number(parts[1] || 0);
+        const rowId = parts.slice(2).join('__');
+        if (sheetId && rowId) {
+          ops.push({
+            type: 'deleteRow',
+            key: k,
+            docId: encodeURIComponent(k),
+            sig: '',
+            data: {
+              sheetId,
+              blockIdx,
+              rowId,
+              d: true,
+              ut: Date.now(),
+              dev: deviceId(),
+              by: currentUser().username || 'device'
+            }
+          });
+        }
+      }
+    }
 
     return ops;
   }
 
-  function applyRoleUI() {
-    var currentRole = localStorage.getItem('lab_user_role');
-    var isGuest = currentRole === 'guest';
-    var btnEdit = $('#btnEdit');
-    if (btnEdit) btnEdit.style.display = isGuest ? 'none' : '';
-    if (isGuest) {
-      document.querySelectorAll('#main button, #main .tbtn').forEach(function (el) {
-        var text = (el.textContent || '').toLowerCase();
-        var idClass = ((el.id || '') + ' ' + (el.className || '')).toLowerCase();
-        if (text.includes('thêm') || text.includes('xoá') || text.includes('chuyển') || idClass.includes('admin')) {
-          if (!text.includes('xem')) {
-            el.style.opacity = '0.35';
-            el.style.pointerEvents = 'none';
-            el.title = 'Tài khoản Khách chỉ có quyền xem.';
-          }
-        }
-      });
-    }
-  }
+  async function pushNow(showToast = false) {
+    const app = getApp();
+    if (!enabled || paused || !app || !app.ST) return;
+    if (pushing) return;
 
-  function setState(st) {
-    S.st = st;
-    var b = $('#btnSync');
-    if (b) {
-      var map = {
-        off: ['☁', 'Chỉ trên máy', 'off'],
-        login: ['🔒', 'Đăng nhập', 'login'],
-        syncing: ['🔄', 'Đang đồng bộ…', 'syncing'],
-        ok: ['☁✓', 'Đã đồng bộ', 'ok'],
-        offline: ['⚠', 'Chờ mạng', 'bad'],
-        error: ['⚠', 'Lỗi đồng bộ', 'bad'],
-        loading: ['🔄', 'Đang kết nối…', 'syncing']
-      };
-      var m = map[st] || map.off;
-      var n = S.pending > 0 && (st === 'offline' || st === 'error') ? ' (' + S.pending + ')' : '';
-      b.className = 'btn ghost sync-' + m[2];
-      b.innerHTML = '<i>' + m[0] + '</i> <span>' + m[1] + n + '</span>';
-      b.title = 'Đồng bộ: ' + m[1] + (S.lastOk ? ' – lần cuối ' + new Date(S.lastOk).toLocaleTimeString('vi-VN') : '') + (S.err ? '\n' + S.err : '');
-    }
-    var p = $('#syncPanel');
-    if (p) renderPanel();
-    applyRoleUI();
-  }
+    const rowOps = computePendingRowOps();
+    S.pending = rowOps.length;
 
-  function schedule(delay) {
-    var debounce = delay == null ? (Number(CS && CS.debounceMs) || 250) : delay;
-    if (!A || !ad || !S.user || !S.subscribed || (!S.inited && !S.reconciling)) {
-      if (ad && S.user && !S.inited) setState(S.st);
+    if (!rowOps.length) {
+      app.ST.dirty = false;
+      if (typeof app.saveLocal === 'function') app.saveLocal();
+      setStatus('ok', 'Đã đồng bộ');
+      if (showToast && typeof app.toast === 'function') {
+        app.toast('Dữ liệu đã đồng bộ trên đám mây');
+      }
       return;
     }
-    clearTimeout(S.pushT);
-    S.pushT = setTimeout(push, debounce);
-  }
 
-  function push() {
-    if (localStorage.getItem('lab_user_role') === 'guest') return Promise.resolve();
-    if (S.pushing || !ad || !S.user || !S.subscribed || !S.inited) return Promise.resolve();
+    pushing = true;
+    setStatus('busy', `Đang đẩy (${rowOps.length})...`);
 
-    var ops = computeOps();
-    S.pending = ops.length;
-    if (!ops.length) {
-      if (S.st !== 'loading') setState('ok');
-      return Promise.resolve();
-    }
+    try {
+      const { db, mod } = await ensureFirebase();
+      const col = rowsColRef(db, mod);
+      const chunkSize = 200;
 
-    S.pushing = true;
-    setState('syncing');
-    var chunks = [];
-    for (var i = 0; i < ops.length; i += 250) chunks.push(ops.slice(i, i + 250));
-
-    return chunks.reduce(function (p, ch) {
-      return p.then(function () {
-        return ad.commit(ch.map(function (o) {
-          return { col: o.col, id: enc(o.key), data: o.data };
-        })).then(function () {
-          ch.forEach(function (o) {
-            if (!S.M[o.col]) S.M[o.col] = {};
-            S.M[o.col][o.key] = o.sig;
-          });
-          saveMeta();
+      for (let i = 0; i < rowOps.length; i += chunkSize) {
+        const chunk = rowOps.slice(i, i + chunkSize);
+        const batch = mod.writeBatch(db);
+        chunk.forEach(op => {
+          const ref = mod.doc(col, op.docId);
+          batch.set(ref, op.data, { merge: true });
         });
-      });
-    }, Promise.resolve()).then(function () {
-      S.pushing = false;
-      S.retry = 0;
-      S.lastOk = Date.now();
-      S.err = '';
+        await batch.commit();
+        chunk.forEach(op => {
+          if (op.type === 'deleteRow') S.baseline.delete(op.key);
+          else S.baseline.set(op.key, op.sig);
+        });
+      }
+
       S.pending = 0;
-      if (A && A.ST) {
-        A.ST.dirty = false;
-        var dirtyEl = $('#dirty');
-        if (dirtyEl) dirtyEl.hidden = true;
-        if (A.saveLocal) A.saveLocal();
+      lastPushAt = Date.now();
+      app.ST.dirty = false;
+      if (typeof app.saveLocal === 'function') app.saveLocal();
+      setStatus('ok', 'Đã đồng bộ');
+      if (showToast && typeof app.toast === 'function') {
+        app.toast('Đã đồng bộ dữ liệu lên đám mây');
       }
-      setState('ok');
-      if (computeOps().length) schedule(300);
-    }).catch(function (e) {
-      S.pushing = false;
-      S.err = ad.errText ? ad.errText(e) : String((e && e.message) || e);
-      S.pending = ops.length;
-      setState(navigator.onLine === false ? 'offline' : 'error');
-      retryLater();
-    });
-  }
-
-  function pushNow() { return push(); }
-  function pullNow() {
-    if (ad && S.user && typeof ad.pollNow === 'function') {
-      ad.pollNow(onDocs);
-    }
-  }
-  function active() { return !!(ad && S.user && S.subscribed && S.inited); }
-
-  function retryLater() {
-    clearTimeout(S.retryT);
-    S.retry++;
-    var wait = Math.min(60000, 3000 * Math.pow(2, Math.min(S.retry, 4)));
-    S.retryT = setTimeout(function () { push(); }, wait);
-  }
-
-  function ensureBlock(sid, title) {
-    var s = A.sheetById(sid);
-    if (!s) return null;
-    for (var i = 0; i < s.blocks.length; i++) {
-      if (s.blocks[i].title === title) {
-        s.blocks[i].cols = STANDARD_COLS.slice();
-        return s.blocks[i];
+    } catch (_) {
+      setStatus('err', 'Lỗi đẩy dữ liệu');
+      if (showToast && typeof app.toast === 'function') {
+        app.toast('Không thể đẩy dữ liệu lên cloud', 3500);
       }
+    } finally {
+      pushing = false;
     }
-    var b = { title: title, hr: 0, cols: STANDARD_COLS.slice(), rows: [], ord: 0 };
-    s.blocks.push(b);
-    return b;
   }
 
-  function sortRuntimeBlocks(s) {
-    var base = S.baseline.blocks, keep = [], rt = [];
-    s.blocks.forEach(function (b) { (base.has(s.id + '|' + b.title) ? keep : rt).push(b); });
-    rt.sort(function (a, b) { return (a.ord || 0) - (b.ord || 0) || (a.title < b.title ? -1 : 1); });
-    s.blocks.length = 0;
-    keep.concat(rt).forEach(function (b) { s.blocks.push(b); });
+  function schedule(ms) {
+    if (!enabled || paused) return;
+    clearTimeout(timer);
+    const delay = typeof ms === 'number' ? ms : (Number(syncCfg.debounceMs) || 250);
+    setStatus('busy', 'Chờ đồng bộ...');
+    timer = setTimeout(() => {
+      pushNow(false);
+    }, delay);
   }
 
-  function placeNew(b, row) {
-    var k = b.rows.length;
-    while (k > 0 && b.rows[k - 1].ct && row.ct && b.rows[k - 1].ct > row.ct) k--;
-    b.rows.splice(k, 0, row);
-  }
-
-  function applyRow(d) {
-    var data = d.data, rid = data.rid;
-    if (!rid) return false;
-    var rs = data.del ? 'DEL' : rowSig(data);
-    var idx = localRows(), cur = idx.get(rid);
-    var ls = cur ? rowSig(cur.row) : 'DEL';
-    var last = S.M.rows[rid], base = S.baseline.rows.get(rid);
-    var dirty = last !== undefined ? last !== ls : (base ? base.sig !== ls : ls !== 'DEL');
-
-    if (rs === ls) { S.M.rows[rid] = rs; return false; }
-    if (dirty && S.inited && S.pushing) { S.conflicts++; return false; }
-
-    if (rs === 'DEL') {
-      if (cur) {
-        var k = cur.b.rows.indexOf(cur.row);
-        if (k >= 0) cur.b.rows.splice(k, 1);
+  async function subscribeRealtime() {
+    if (!enabled) return;
+    try {
+      const { db, mod } = await ensureFirebase();
+      if (typeof unsubRows === 'function') {
+        try { unsubRows(); } catch (_) {}
       }
-      S.M.rows[rid] = 'DEL';
-      return true;
-    }
-
-    var src = normSrc(data.src || (data.v && data.v[0]), DEFAULT_SOURCE);
-    var vec = normVec(data.v, src);
-
-    if (cur) {
-      var r = cur.row;
-      r.src = src;
-      r.v = vec;
-      delete r.c; delete r.x; delete r.n;
-      ['f', 's'].forEach(function (k) { if (nz(data[k])) r[k] = clone(data[k]); else delete r[k]; });
-      if (data.p && data.p.length) r.p = data.p.slice(); else delete r.p;
-      if (A.touch) A.touch(r);
-    } else {
-      var b = ensureBlock(data.sid, data.bt);
-      if (!b) return false;
-      var row = {
-        r: data.r || 0,
-        i: rid,
-        ct: data.ct || 0,
-        src: src,
-        v: vec
-      };
-      if (nz(data.f)) row.f = clone(data.f);
-      if (nz(data.s)) row.s = clone(data.s);
-      if (data.p && data.p.length) row.p = data.p.slice();
-      placeNew(b, row);
-    }
-    S.M.rows[rid] = rs;
-    return true;
-  }
-
-  function applyBlock(d) {
-    var data = d.data;
-    if (data.del || !data.sid) return false;
-    var s = A.sheetById(data.sid);
-    if (!s) return false;
-    var key = data.sid + '|' + data.title, b = null, i;
-    for (i = 0; i < s.blocks.length; i++) if (s.blocks[i].title === data.title) b = s.blocks[i];
-    var changed = false;
-    if (!b) {
-      b = { title: data.title, hr: 0, cols: STANDARD_COLS.slice(), rows: [], ord: data.ord || 0 };
-      s.blocks.push(b);
-      changed = true;
-    } else if (blockSig(b) !== blockSig(data) || (data.ord && b.ord !== data.ord)) {
-      b.cols = STANDARD_COLS.slice();
-      b.ord = data.ord || b.ord;
-      changed = true;
-    }
-    sortRuntimeBlocks(s);
-    S.M.blocks[key] = blockSig(data);
-    return changed;
-  }
-
-  function applyFolder(d) {
-    var data = d.data;
-    if (!data || !data.id) return false;
-    if (!S.M.folders) S.M.folders = {};
-    if (!A.ST.customFolders) A.ST.customFolders = {};
-
-    var pid = data.parentId || 'thiet-bi-ip';
-    var arr = Array.isArray(A.ST.customFolders[pid]) ? A.ST.customFolders[pid] : [];
-    var idx = arr.findIndex(function (x) { return x && x.id === data.id; });
-
-    if (data.del) {
-      if (idx >= 0) {
-        arr.splice(idx, 1);
-        A.ST.customFolders[pid] = arr;
-        S.M.folders[data.id] = 'DEL';
-        return true;
-      }
-      return false;
-    }
-
-    var folderObj = {
-      id: data.id,
-      label: data.label || data.id,
-      icon: data.icon || '📄',
-      isCustom: true,
-      isDynamicGroup: true,
-      allowCreate: true
-    };
-    var nextSig = folderSig({
-      id: folderObj.id,
-      parentId: pid,
-      label: folderObj.label,
-      icon: folderObj.icon
-    });
-
-    if (idx >= 0) {
-      var prevSig = folderSig({
-        id: arr[idx].id,
-        parentId: pid,
-        label: arr[idx].label,
-        icon: arr[idx].icon
-      });
-      if (prevSig === nextSig && S.M.folders[data.id] === nextSig) return false;
-      arr[idx] = Object.assign({}, arr[idx], folderObj);
-    } else {
-      arr.push(folderObj);
-    }
-    A.ST.customFolders[pid] = arr;
-    S.M.folders[data.id] = nextSig;
-    return true;
-  }
-
-  function onDocs(col, docs) {
-    if (COLS.indexOf(col) < 0) return;
-    var changed = 0, maxUpd = S.since[col] || 0;
-    docs.sort(function (a, b) { return (a.upd || 0) - (b.upd || 0); });
-    docs.forEach(function (d) {
-      S.remoteSeen++;
-      if (d.upd && d.upd > maxUpd) maxUpd = d.upd;
-      var ok = false;
-      if (col === 'rows') ok = applyRow(d);
-      else if (col === 'blocks') ok = applyBlock(d);
-      else if (col === 'folders') ok = applyFolder(d);
-      if (ok) changed++;
-    });
-    if (maxUpd > 0) S.since[col] = maxUpd;
-    saveMeta();
-
-    if (changed) {
-      S.changed = (S.changed || 0) + changed;
-      if (A && A.saveLocal) A.saveLocal();
-      safeRender();
-      if (S.inited && A && A.toast) {
-        A.toast('☁ Đã đồng bộ ' + changed + ' thay đổi từ thiết bị khác', 2500);
-      }
-    }
-    if (!S.ready[col]) {
-      S.ready[col] = true;
-      maybeReconcile();
-    }
-    if (S.inited && !S.pushing && computeOps().length) {
-      schedule(400);
-    }
-  }
-
-  function safeRender() {
-    clearTimeout(S.applyT);
-    S.applyT = setTimeout(function tryRender() {
-      var ae = document.activeElement;
-      if (ae && ae.closest && ae.closest('#main') && (ae.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName))) {
-        S.applyT = setTimeout(tryRender, 1500);
-        return;
-      }
-      if (A && typeof A.refresh === 'function') A.refresh();
-      applyRoleUI();
-    }, 150);
-  }
-
-  function maybeReconcile() {
-    if (S.inited || S.reconciling || !(S.ready.rows && S.ready.blocks && S.ready.folders)) return;
-    S.reconciling = true;
-    var ops = computeOps(), hasRemote = S.remoteSeen > 0;
-    if (ops.length && hasRemote && localStorage.getItem('lab_user_role') !== 'guest') {
-      var merge = confirm(
-        'Thiết bị này đang có ' + ops.length + ' thay đổi chưa đồng bộ, trong khi đám mây đã có dữ liệu.\n\n' +
-        'OK  = GỘP: giữ thay đổi của thiết bị này và đẩy lên đám mây\n' +
-        'Hủy = BỎ dữ liệu trên thiết bị này, dùng dữ liệu của đám mây'
-      );
-      if (!merge) {
-        discardLocalAndResync();
-        return;
-      }
-    }
-    S.inited = true;
-    S.reconciling = false;
-    saveMeta();
-    push();
-  }
-
-  function discardLocalAndResync() {
-    stopSub();
-    if (A && A.resetToBaseline) A.resetToBaseline();
-    S.M = { rows: {}, blocks: {}, folders: {} };
-    S.since = { rows: 0, blocks: 0, folders: 0 };
-    S.ready = { rows: false, blocks: false, folders: false };
-    S.remoteSeen = 0;
-    S.reconciling = false;
-    S.inited = true;
-    saveMeta();
-    if (A && A.saveLocal) A.saveLocal();
-    if (A && A.refresh) A.refresh();
-    startSub();
-  }
-
-  function startPollLoop() {
-    clearInterval(S.pollT);
-    var ms = Number(CS && CS.pollIntervalMs) || 15000;
-    if (ms < 5000) ms = 5000;
-    S.pollT = setInterval(function () {
-      if (!document.hidden && ad && S.user && S.subscribed && !S.pushing && typeof ad.pollNow === 'function') {
-        ad.pollNow(onDocs);
-      }
-    }, ms);
-  }
-
-  function stopPollLoop() {
-    clearInterval(S.pollT);
-    S.pollT = null;
-  }
-
-  function startSub() {
-    if (!ad || S.subscribed) return;
-    S.subscribed = true;
-    setState('loading');
-    startPollLoop();
-    ad.subscribe(
-      S.since,
-      onDocs,
-      function (e) {
-        S.err = ad.errText ? ad.errText(e) : String((e && e.message) || e);
-        setState(navigator.onLine === false ? 'offline' : 'error');
-        if (e && (e.code === 'permission-denied' || e.status === 401)) {
-          S.subscribed = false;
-          stopSub();
-          setState('login');
-        }
-      },
-      function () {
-        S.lastOk = Date.now();
-        if (S.st === 'loading' || S.st === 'error' || S.st === 'offline') {
-          S.err = '';
-          setState(S.pending ? 'syncing' : 'ok');
-        }
-      }
-    );
-  }
-
-  function stopSub() {
-    stopPollLoop();
-    try { if (ad && ad.unsubscribe) ad.unsubscribe(); } catch (e) { }
-    S.subscribed = false;
-  }
-
-  function onUser(u) {
-    S.user = u;
-    if (!u) {
-      stopSub();
-      setState('login');
-      if (!S.loginShown) {
-        S.loginShown = true;
-        openPanel();
-      }
-      return;
-    }
-    S.err = '';
-    startSub();
-    if (S.inited) schedule(300);
-    if ($('#syncPanel')) renderPanel();
-    applyRoleUI();
-  }
-
-  function fbErr(e) {
-    var c = (e && (e.code || e.message)) || '';
-    if (/invalid-credential|wrong-password|user-not-found|invalid-email|invalid-login/.test(c)) return 'Sai tên đăng nhập hoặc mật khẩu.';
-    if (/too-many-requests/.test(c)) return 'Đăng nhập sai quá nhiều lần – hãy thử lại sau ít phút.';
-    if (/network-request-failed|unavailable|offline/.test(c)) return 'Không có kết nối tới máy chủ Firebase.';
-    if (/permission-denied/.test(c)) return 'Không có quyền truy cập dữ liệu.';
-    return String(c || 'lỗi không rõ');
-  }
-
-  function firebaseAdapter() {
-    var cfg = CS.firebase;
-    var base = CS.sdkBase || 'https://www.gstatic.com/firebasejs/10.12.2/';
-    var auth = null, db = null, FS = null, AU = null, unsubs = [];
-
-    var o = {
-      name: 'firebase',
-      needsEmail: false,
-      errText: fbErr,
-      init: function (cb) {
-        return Promise.all([
-          import(base + 'firebase-app.js'),
-          import(base + 'firebase-auth.js'),
-          import(base + 'firebase-firestore.js')
-        ]).then(function (m) {
-          var app = m[0].getApps().length ? m[0].getApp() : m[0].initializeApp(cfg);
-          AU = m[1];
-          FS = m[2];
-          auth = AU.getAuth(app);
-          db = FS.getFirestore(app);
-
-          AU.onAuthStateChanged(auth, function (u) {
-            if (u) {
-              cb({ id: u.uid, name: localStorage.getItem('lab_username') || u.email });
-              setTimeout(applyRoleUI, 300);
-            } else {
-              cb(null);
-            }
+      unsubRows = mod.onSnapshot(
+        rowsColRef(db, mod),
+        snap => {
+          if (paused) return;
+          const list = [];
+          snap.forEach(docSnap => {
+            const d = docSnap.data();
+            if (d) list.push(d);
           });
-        });
-      },
-      signIn: function (usernameInput, pw) {
-        var username = usernameInput.trim().toLowerCase();
-        var authUsers = (A && A.CFG && A.CFG.authUsers) || {};
-        var userInfo = authUsers[username];
-
-        if (!userInfo) {
-          return Promise.reject(new Error("Tên đăng nhập không tồn tại! Chỉ dùng 'admin' hoặc 'khach'."));
+          applyRemoteRowsToApp(list);
+          lastPullAt = Date.now();
+          if (!pushing && !computePendingRowOps().length) {
+            setStatus('ok', 'Đã đồng bộ');
+          }
+        },
+        () => {
+          setStatus('err', 'Mất kết nối realtime');
         }
+      );
 
-        localStorage.setItem('lab_user_role', userInfo.role);
-        localStorage.setItem('lab_username', username);
-
-        return AU.signInWithEmailAndPassword(auth, userInfo.email, pw);
-      },
-      signOut: function () {
-        localStorage.removeItem('lab_user_role');
-        localStorage.removeItem('lab_username');
-        return AU.signOut(auth).then(function () {
-          location.reload();
-        });
-      },
-      subscribe: function (since, onDocsCb, onErr, onOk) {
-        o.unsubscribe();
-        COLS.forEach(function (name) {
-          var sinceMs = since[name] || 0;
-          var colRef = FS.collection(db, 'workspaces', ws(), name);
-          var q = sinceMs > 0
-            ? FS.query(colRef, FS.where('upd', '>', FS.Timestamp.fromMillis(sinceMs)))
-            : FS.query(colRef);
-
-          unsubs.push(FS.onSnapshot(q, function (snap) {
-            var docs = [];
-            snap.docChanges().forEach(function (ch) {
-              if (ch.type === 'removed') return;
-              var d = ch.doc;
-              if (d.metadata && d.metadata.hasPendingWrites) return;
-              var data = d.data();
-              var u = data.upd && data.upd.toMillis ? data.upd.toMillis() : Date.now();
-              docs.push({ id: d.id, data: data, upd: u });
-            });
-            onDocsCb(name, docs);
-            if (onOk) onOk();
-          }, onErr));
-        });
-      },
-      pollNow: function (onDocsCb) {
-        var handler = typeof onDocsCb === 'function' ? onDocsCb : onDocs;
-        if (!db || typeof handler !== 'function') return;
-        COLS.forEach(function (name) {
-          var sinceMs = S.since[name] || 0;
-          var colRef = FS.collection(db, 'workspaces', ws(), name);
-          var q = sinceMs > 0
-            ? FS.query(colRef, FS.where('upd', '>', FS.Timestamp.fromMillis(sinceMs)))
-            : FS.query(colRef);
-          FS.getDocs(q).then(function (snap) {
-            var docs = [];
-            snap.forEach(function (d) {
-              var data = d.data();
-              var u = data.upd && data.upd.toMillis ? data.upd.toMillis() : Date.now();
-              docs.push({ id: d.id, data: data, upd: u });
-            });
-            if (docs.length) handler(name, docs);
-          }).catch(function () { });
-        });
-      },
-      unsubscribe: function () {
-        unsubs.forEach(function (u) { try { u(); } catch (e) { } });
-        unsubs = [];
-      },
-      commit: function (ops) {
-        if (localStorage.getItem('lab_user_role') === 'guest') {
-          return Promise.reject(new Error('Tài khoản khách không có quyền ghi dữ liệu.'));
+      if (syncCfg.syncSlips) {
+        if (typeof unsubSlips === 'function') {
+          try { unsubSlips(); } catch (_) {}
         }
-        var batch = FS.writeBatch(db), by = deviceId();
-        ops.forEach(function (op) {
-          batch.set(
-            FS.doc(db, 'workspaces', ws(), op.col, op.id),
-            Object.assign({}, op.data, { upd: FS.serverTimestamp(), by: by })
-          );
-        });
-        return batch.commit();
-      },
-      exists: function (colName, id) {
-        return FS.getDoc(FS.doc(db, 'workspaces', ws(), colName, id)).then(function (s) { return s.exists(); });
+        unsubSlips = mod.onSnapshot(
+          slipsColRef(db, mod),
+          snap => {
+            if (paused) return;
+            const list = [];
+            snap.forEach(docSnap => {
+              const d = docSnap.data();
+              if (d) list.push(d);
+            });
+            applyRemoteSlipsToApp(list);
+          },
+          () => {}
+        );
       }
-    };
-    return o;
+    } catch (_) {
+      setStatus('err', 'Lỗi kết nối Firebase');
+    }
   }
 
-  function lockBody() {
-    document.body.classList.toggle(
-      'modal-open',
-      !!document.querySelector('#mdSync .modal, #mdView .modal')
-    );
+  function startPolling() {
+    clearInterval(pollTimer);
+    const interval = Math.max(5000, Number(syncCfg.pollIntervalMs) || 12000);
+    pollTimer = setInterval(() => {
+      if (enabled && !paused && !pushing && document.visibilityState !== 'hidden') {
+        pullNow();
+      }
+    }, interval);
   }
 
   function openPanel() {
-    var root = $('#mdSync');
-    if (!root) {
-      var mRoot = $('#modalRoot');
-      if (mRoot) {
-        root = document.createElement('div');
-        root.id = 'mdSync';
-        mRoot.appendChild(root);
-        bindPanel();
-      } else {
-        return;
-      }
+    const app = getApp();
+    const root = $('#modalRoot') || document.body;
+    let modal = $('#mdSync', root);
+    if (!modal) {
+      modal = document.createElement('div');
+      modal.id = 'mdSync';
+      root.appendChild(modal);
     }
-    root.innerHTML =
-      '<div class="modal-back sync-back"><div class="modal modal-sync" role="dialog" aria-modal="true" aria-label="Đồng bộ">' +
-      '<div class="modal-head"><h2>☁ Đồng bộ & Phân quyền</h2>' +
-      '<button class="modal-x" data-sy="close" aria-label="Đóng">✕</button></div>' +
-      '<div class="modal-body" id="syncPanel"></div></div></div>';
-    renderPanel();
-    lockBody();
-  }
 
-  function closePanel() {
-    var root = $('#mdSync');
-    if (root) root.innerHTML = '';
-    lockBody();
-    applyRoleUI();
-  }
+    const u = currentUser();
+    const users = (CFG && CFG.authUsers) || {};
+    const userList = Object.keys(users).length ? Object.keys(users) : ['admin', 'khach'];
 
-  function when(t) { return t ? new Date(t).toLocaleString('vi-VN') : '—'; }
+    modal.innerHTML = `
+      <div class="modal-backdrop" id="syncBackdrop" style="position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:9999;padding:12px;">
+        <div class="modal" style="width:100%;max-width:460px;background:#fff;color:#111;border-radius:10px;padding:16px;box-shadow:0 12px 30px rgba(0,0,0,.25);">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+            <h3 style="margin:0;font-size:17px;">☁ Đồng bộ đa thiết bị & Tài khoản</h3>
+            <button type="button" id="btnCloseSyncMd" style="border:0;background:transparent;font-size:18px;cursor:pointer;">✕</button>
+          </div>
 
-  function renderPanel() {
-    var p = $('#syncPanel');
-    if (!p) return;
-    var h = '';
-    if (!enabled()) {
-      h = '<p><b>Hiện dữ liệu chỉ lưu trên máy này</b>.</p>';
-    } else if (!S.user) {
-      h = '<p>Đăng nhập bằng tên để đồng bộ giữa các thiết bị (Nhập <b>admin</b> hoặc <b>khach</b>).</p>' +
-        '<form id="syLogin" class="sy-form">' +
-        '<label class="fld"><span>Tên đăng nhập (admin / khach)</span><input type="text" id="syEmail" autocomplete="username" placeholder="admin" required></label>' +
-        '<label class="fld"><span>Mật khẩu</span><input type="password" id="syPass" autocomplete="current-password" required></label>' +
-        '<div class="sy-err" id="syErr">' + esc(S.err || '') + '</div>' +
-        '<div class="sy-btns"><button class="tbtn primary" type="submit">Đăng nhập</button>' +
-        '<button class="tbtn" type="button" data-sy="close">Để sau</button></div></form>';
-    } else {
-      var stMap = {
-        loading: 'Đang kết nối…',
-        syncing: 'Đang đồng bộ…',
-        ok: 'Đã đồng bộ',
-        offline: 'Chờ có mạng',
-        error: 'Lỗi đồng bộ',
-        login: 'Chưa đăng nhập'
-      };
-      var st = stMap[S.st] || S.st;
-      h = '<div class="sy-stat sy-' + (S.st === 'ok' ? 'ok' : 'wait') + '"><b>' + st + '</b>' +
-        (S.err ? '<div class="sy-err">' + esc(S.err) + '</div>' : '') + '</div>' +
-        '<table class="plain sy-tbl">' +
-        '<tr><td>Tài khoản</td><td><b>' + esc(S.user.name || '') + ' (' + esc(localStorage.getItem('lab_user_role') || 'admin') + ')</b></td></tr>' +
-        '<tr><td>Lần đồng bộ cuối</td><td>' + when(S.lastOk) + '</td></tr>' +
-        '<tr><td>Thay đổi chờ đẩy lên</td><td>' + (S.pending || 0) + '</td></tr>' +
-        '</table>' +
-        '<div class="sy-btns">' +
-        '<button class="tbtn primary" data-sy="now">🔄 Đồng bộ ngay</button>' +
-        '<button class="tbtn danger" data-sy="out">Đăng xuất</button>' +
-        '<button class="tbtn" data-sy="close">Đóng</button></div>';
-    }
-    p.innerHTML = h;
-  }
+          <div style="padding:10px;border-radius:8px;background:#f8fafc;border:1px solid #e2e8f0;font-size:13px;margin-bottom:12px;">
+            <div>Trạng thái: <b>${esc(S.msg)}</b> (${enabled ? 'Firebase Firestore' : 'Chưa bật'})</div>
+            <div>Workspace: <b>${esc(workspace)}</b> · Thiết bị: <code>${esc(deviceId())}</code></div>
+            <div>Tài khoản hiện tại: <b>${esc(u.username || 'Mặc định')}</b> (${esc(u.role)})</div>
+          </div>
 
-  function bindPanel() {
-    var root = $('#mdSync');
-    if (!root) return;
-    root.addEventListener('click', function (e) {
-      if (e.target && e.target.classList && e.target.classList.contains('modal-back')) {
-        closePanel();
-        return;
-      }
-      var b = e.target.closest('[data-sy]');
-      if (!b) return;
-      var a = b.dataset.sy;
-      if (a === 'close') closePanel();
-      else if (a === 'now') {
-        S.err = '';
-        S.retry = 0;
-        if (ad && ad.pollNow) ad.pollNow(onDocs);
-        push();
-      } else if (a === 'out') {
-        if (confirm('Đăng xuất khỏi đồng bộ?')) ad.signOut();
-      }
+          <form id="syncLoginForm" style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px;">
+            <label style="font-size:12px;font-weight:600;">Tên đăng nhập (${esc(userList.join(' / '))})
+              <input id="syncUserInp" list="syncUserList" type="text" value="${esc(u.username || 'admin')}" style="width:100%;margin-top:3px;padding:7px 8px;border:1px solid #cbd5e1;border-radius:6px;">
+              <datalist id="syncUserList">
+                ${userList.map(k => `<option value="${esc(k)}">`).join('')}
+              </datalist>
+            </label>
+            <label style="font-size:12px;font-weight:600;">Mật khẩu (tuỳ chọn)
+              <input id="syncPassInp" type="password" placeholder="Nhập mật khẩu nếu có..." style="width:100%;margin-top:3px;padding:7px 8px;border:1px solid #cbd5e1;border-radius:6px;">
+            </label>
+            <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:4px;">
+              <button type="submit" class="btn accent">Lưu tài khoản</button>
+              <button type="button" id="btnSyncNowMd" class="btn">🔄 Đồng bộ ngay</button>
+              <button type="button" id="btnLogoutSyncMd" class="btn">Đăng xuất</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    `;
+
+    const close = () => { modal.innerHTML = ''; };
+    $('#btnCloseSyncMd', modal)?.addEventListener('click', close);
+    $('#syncBackdrop', modal)?.addEventListener('click', e => {
+      if (e.target && e.target.id === 'syncBackdrop') close();
     });
-    root.addEventListener('submit', function (e) {
-      if (e.target.id !== 'syLogin') return;
+
+    $('#syncLoginForm', modal)?.addEventListener('submit', e => {
       e.preventDefault();
-      var em = $('#syEmail') ? $('#syEmail').value.trim() : '';
-      var pw = $('#syPass') ? $('#syPass').value : '';
-      var err = $('#syErr');
-      var btn = e.target.querySelector('button[type=submit]');
-      if (err) err.textContent = '';
-      if (btn) { btn.disabled = true; btn.textContent = 'Đang đăng nhập…'; }
-      Promise.resolve(ad.signIn(em, pw)).then(function () {
-        closePanel();
-        applyRoleUI();
-      }).catch(function (x) {
-        if (err) err.textContent = ad.errText ? ad.errText(x) : String(x);
-        if (btn) { btn.disabled = false; btn.textContent = 'Đăng nhập'; }
-      });
+      const uname = ($('#syncUserInp', modal)?.value || '').trim() || 'admin';
+      const pass = $('#syncPassInp', modal)?.value || '';
+      const info = users[uname] || {};
+      const role = info.role || (uname === 'admin' ? 'admin' : 'guest');
+      localStorage.setItem(LS_LOGGED_OUT, '0');
+      localStorage.setItem(LS_USER, uname);
+      localStorage.setItem(LS_ROLE, role);
+      if (pass) localStorage.setItem(LS_PASS, btoa(unescape(encodeURIComponent(pass))));
+      applyRoleUI();
+      if (app && typeof app.refresh === 'function') app.refresh();
+      close();
+      if (app && typeof app.toast === 'function') app.toast(`Đã chuyển sang tài khoản ${uname}`);
+      pushNow(false);
+    });
+
+    $('#btnSyncNowMd', modal)?.addEventListener('click', async () => {
+      await pullNow();
+      await pushNow(true);
+    });
+
+    $('#btnLogoutSyncMd', modal)?.addEventListener('click', () => {
+      localStorage.setItem(LS_LOGGED_OUT, '1');
+      localStorage.removeItem(LS_USER);
+      localStorage.removeItem(LS_ROLE);
+      applyRoleUI();
+      if (app && typeof app.refresh === 'function') app.refresh();
+      close();
+      if (app && typeof app.toast === 'function') app.toast('Đã đăng xuất tài khoản');
     });
   }
 
-  function init(app) {
-    try {
-      if (A) return;
-      A = app;
-      CS = (A && A.CFG && A.CFG.sync) || {};
+  async function init(appRef) {
+    A = appRef || window.LabApp;
+    if (!A || !A.ST) return;
 
-      var root = $('#modalRoot');
-      if (root && !$('#mdSync')) {
-        var d = document.createElement('div');
-        d.id = 'mdSync';
-        root.appendChild(d);
-        bindPanel();
-      }
+    CFG = A.CFG || window.APP_CONFIG || {};
+    syncCfg = Object.assign({
+      provider: 'firebase',
+      workspace: 'lab-xvt',
+      autoSync: true,
+      realtime: true,
+      pullOnFocus: true,
+      pullOnVisible: true,
+      allowGuestWrite: true,
+      debounceMs: 250,
+      pollIntervalMs: 12000,
+      syncSlips: true
+    }, (CFG && CFG.sync) || {});
 
-      var btn = $('#btnSync');
-      if (btn) btn.addEventListener('click', function () { openPanel(); });
+    fbCfg = Object.assign({}, (syncCfg && syncCfg.firebase) || {});
+    workspace = String(syncCfg.workspace || 'lab-xvt').trim() || 'lab-xvt';
+    enabled = syncCfg.provider === 'firebase' && !!(fbCfg.projectId && fbCfg.apiKey);
 
-      document.addEventListener('keydown', function (e) {
-        if (e.key === 'Escape' && $('#mdSync .modal') && !$('#mdView .modal')) {
-          closePanel();
+    rebuildBaselines();
+    applyRoleUI();
+
+    const btnSync = $('#btnSync');
+    if (btnSync && !btnSync._syncBound) {
+      btnSync._syncBound = true;
+      btnSync.addEventListener('click', openPanel);
+    }
+
+    if (!enabled) {
+      setStatus('off', 'Chỉ trên máy');
+      return;
+    }
+
+    setStatus('busy', 'Đang kết nối...');
+    await pullNow();
+    if (syncCfg.realtime !== false) {
+      await subscribeRealtime();
+    }
+    startPolling();
+
+    if (syncCfg.pullOnFocus !== false && !window._labSyncFocusBound) {
+      window._labSyncFocusBound = true;
+      window.addEventListener('focus', () => {
+        if (enabled && !paused && Date.now() - lastPullAt > 2000) {
+          pullNow();
         }
       });
+    }
 
-      window.addEventListener('online', function () {
-        if (ad && S.user) {
-          S.err = '';
-          S.retry = 0;
-          schedule(200);
-          if (ad.pollNow) ad.pollNow(onDocs);
+    if (syncCfg.pullOnVisible !== false && !window._labSyncVisBound) {
+      window._labSyncVisBound = true;
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible' && enabled && !paused && Date.now() - lastPullAt > 2000) {
+          pullNow();
         }
       });
-      window.addEventListener('offline', function () {
-        if (ad && S.user) setState('offline');
-      });
-      document.addEventListener('visibilitychange', function () {
-        if (!document.hidden && ad && S.user) {
-          schedule(200);
-          if (ad.pollNow) ad.pollNow(onDocs);
-        }
-      });
+    }
 
-      if (!enabled()) {
-        setState('off');
-        return;
-      }
-
-      S.baseline = buildBaseline();
-      var m = loadMeta();
-      S.since = (m && m.since) || { rows: 0, blocks: 0, folders: 0 };
-      S.M = (m && m.M) || { rows: {}, blocks: {}, folders: {} };
-      S.inited = m ? !!m.inited : false;
-      COLS.forEach(function (c) {
-        if (!S.M[c]) S.M[c] = {};
-        if (S.since[c] == null) S.since[c] = 0;
-      });
-
-      ad = firebaseAdapter();
-      setState('loading');
-      Promise.resolve(ad.init(onUser)).catch(function (e) {
-        S.err = 'Không tải được thư viện đồng bộ: ' + ((e && e.message) || e) + ' (kiểm tra mạng / cấu hình).';
-        setState('error');
-      });
-    } catch (e) {
-      S.err = 'Lỗi khởi tạo Sync: ' + ((e && e.message) || e);
-      setState('error');
+    if (A.ST && A.ST.dirty) {
+      pushNow(false);
     }
   }
 
   window.Sync = {
-    ver: BUILD,
-    init: init,
-    schedule: schedule,
-    push: push,
-    pushNow: pushNow,
-    pull: pullNow,
-    syncNow: pullNow,
-    active: active,
-    open: openPanel
+    init,
+    schedule,
+    pushNow: () => pushNow(true),
+    pullNow,
+    open: openPanel,
+    active: () => enabled && !paused,
+    currentUser
   };
 })();
