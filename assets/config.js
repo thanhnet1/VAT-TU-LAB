@@ -1,6 +1,6 @@
 /* =====================================================================
    assets/config.js – CẤU HÌNH HỆ THỐNG, CÂY THƯ MỤC & ĐỒNG BỘ ĐA THIẾT BỊ
-   Phiên bản: 2026.11.22-10
+   Phiên bản: 2026.11.23-2
    ===================================================================== */
 (function () {
   'use strict';
@@ -18,15 +18,46 @@
     prevSync.firebase && typeof prevSync.firebase === 'object' ? prevSync.firebase : {}
   );
 
-  if (!prevFb.databaseURL && prevFb.projectId) {
-    prevFb.databaseURL = 'https://' + String(prevFb.projectId).trim() + '-default-rtdb.firebaseio.com';
+  var defaultFirebase = {
+    apiKey: 'AIzaSyAzE8Eb7Jd2j2FTt6nVw3gJ57ENBV-soeA',
+    authDomain: 'minigame-8a94c.firebaseapp.com',
+    databaseURL: 'https://minigame-8a94c-default-rtdb.asia-southeast1.firebasedatabase.app',
+    projectId: 'minigame-8a94c',
+    storageBucket: 'minigame-8a94c.firebasestorage.app',
+    messagingSenderId: '604735984087',
+    appId: '1:604735984087:web:83b5926e168efb02c6bb92',
+    measurementId: 'G-4FXBFBE74T'
+  };
+
+  var mergedFb = Object.assign({}, defaultFirebase, prevFb);
+  if (prevFb.databaseURL && !prevFb.projectId) {
+    var m = String(prevFb.databaseURL).match(/^https:\/\/([a-z0-9-]+?)(?:-default-rtdb)?(?:\.[a-z0-9-]+)?\.firebaseio\.com/i);
+    if (m && m[1]) mergedFb.projectId = m[1];
   }
+  if (!prevFb.databaseURL && mergedFb.projectId) {
+    mergedFb.databaseURL = 'https://' + String(mergedFb.projectId).trim() + '-default-rtdb.asia-southeast1.firebasedatabase.app';
+  }
+  if (!prevFb.storageBucket && mergedFb.projectId) {
+    mergedFb.storageBucket = String(mergedFb.projectId).trim() + '.firebasestorage.app';
+  }
+
+  var workspace = String(prevSync.workspace || 'lab-xvt').trim() || 'lab-xvt';
+  var channel = String(prevSync.channel || 'vat-tu-tai-san').trim() || 'vat-tu-tai-san';
+  var basePath = workspace + '/' + channel;
 
   var normalizedSync = Object.assign({
     provider: 'firebase',
     mode: 'two-way',
-    workspace: 'lab-xvt',
-    channel: 'vat-tu-tai-san',
+    workspace: workspace,
+    channel: channel,
+    rootPath: basePath,
+    paths: {
+      state: basePath + '/state',
+      sheets: basePath + '/sheets',
+      customFolders: basePath + '/customFolders',
+      slips: basePath + '/slips',
+      meta: basePath + '/meta'
+    },
     sdkBase: 'https://www.gstatic.com/firebasejs/10.12.2/',
     autoSync: true,
     realtime: true,
@@ -38,16 +69,17 @@
     syncSlips: true,
     conflictStrategy: 'last-write-wins'
   }, prevSync, {
-    firebase: Object.assign({
-      apiKey: 'AIzaSyAzE8Eb7Jd2j2FTt6nVw3gJ57ENBV-soeA',
-      authDomain: 'minigame-8a94c.firebaseapp.com',
-      databaseURL: 'https://minigame-8a94c-default-rtdb.asia-southeast1.firebasedatabase.app',
-      projectId: 'minigame-8a94c',
-      storageBucket: 'minigame-8a94c.firebasestorage.app',
-      messagingSenderId: '604735984087',
-      appId: '1:604735984087:web:83b5926e168efb02c6bb92',
-      measurementId: 'G-4FXBFBE74T'
-    }, prevFb)
+    workspace: workspace,
+    channel: channel,
+    rootPath: prevSync.rootPath || basePath,
+    paths: Object.assign({
+      state: basePath + '/state',
+      sheets: basePath + '/sheets',
+      customFolders: basePath + '/customFolders',
+      slips: basePath + '/slips',
+      meta: basePath + '/meta'
+    }, prevSync.paths || {}),
+    firebase: mergedFb
   });
 
   var defaultTreeMenu = [
@@ -74,7 +106,7 @@
           icon: '📂',
           defaultCollapsed: true,
           children: [
-            { id: 'ciena-5430', label: '5430', icon: '📄', matchKeywords: ['5430', '6500t'] },
+            { id: 'ciena-5430', label: '5430', icon: '📄', matchKeywords: ['5430', '6500t', '6500'] },
             { id: 'ciena-ome', label: 'OME', icon: '📄', matchKeywords: ['ome'] },
             { id: 'ciena-bb', label: 'BB', icon: '📄', matchKeywords: ['ciena bb', 'bb'] }
           ]
@@ -188,6 +220,8 @@
     'trang-tinh14': 'vat-tu-sua-chua',
     'vat-tu-khong-ro-nguon-goc': 'vat-tu-khong-ro-nguon-goc',
     'khong-ro-ng': 'vat-tu-khong-ro-nguon-goc',
+    'hang-ton-kho': 'vat-tu-khong-ro-nguon-goc',
+    'ton-kho-xvt-26-10-2026': 'vat-tu-khong-ro-nguon-goc',
     'tai-san': 'tai-san'
   };
 
@@ -196,6 +230,7 @@
     'mtc9': 'mtc9',
     'otc9': 'otc9',
     '5430': 'ciena-5430',
+    '6500t': 'ciena-5430',
     'ome': 'ciena-ome',
     'bb': 'ciena-bb',
     'hw6800': 'hw-6800',
@@ -212,7 +247,13 @@
     'bb1': 'nokia-bb',
     'ribbon': 'ribbon-ericson',
     'ericson': 'ribbon-ericson',
-    'ericsson': 'ribbon-ericson'
+    'ericsson': 'ribbon-ericson',
+    'mhl3000': 'ribbon-ericson',
+    'oms3255': 'ribbon-ericson',
+    'vt do kiem': 'vat-tu-do-luong',
+    'do luong': 'vat-tu-do-luong',
+    'sua chua': 'vat-tu-sua-chua',
+    'khong ro': 'vat-tu-khong-ro-nguon-goc'
   };
 
   var defaultSheetLabels = {
@@ -264,7 +305,7 @@
     }
   };
 
-  window.APP_CONFIG = Object.assign({}, prev, {
+  var finalConfig = Object.assign({}, prev, {
     title: prev.title || 'Tài sản – Vật tư Truyền dẫn LAB',
     subtitle: prev.subtitle || 'Quản lý kho & thiết bị truyền dẫn',
     sourceLabel: prev.sourceLabel || 'Nguồn',
@@ -287,4 +328,7 @@
     authUsers: Object.assign({}, defaultAuthUsers, prev.authUsers || {}),
     sync: normalizedSync
   });
+
+  window.APP_CONFIG = finalConfig;
+  window.LAB_SYNC_CONFIG = Object.assign({}, extSync, normalizedSync);
 })();
