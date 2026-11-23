@@ -6,7 +6,7 @@
 <meta name="theme-color" content="#0b3a5b">
 <title>Tài sản – Vật tư Truyền dẫn LAB</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E📡%3C/text%3E%3C/svg%3E">
-<link rel="stylesheet" href="assets/style.css?v=2026.11.22-10">
+<link rel="stylesheet" href="assets/style.css?v=2026.11.23-2">
 </head>
 <body>
 
@@ -64,13 +64,25 @@
 <div id="printRoot"></div>
 <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
-<script src="assets/config.js?v=2026.11.22-10"></script>
-<script src="assets/data.js"></script>
+<script src="assets/config.js?v=2026.11.23-2"></script>
+<script src="assets/data.js?v=2026.11.23-2" onload="window.dispatchEvent(new CustomEvent('lab:data-ready',{detail:window.APP_DATA}))"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js" defer></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js" defer></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdfjs-dist/3.11.174/pdf.min.js" defer></script>
-<script src="assets/app.js?v=2026.11.22-10"></script>
-<script src="assets/slips.js?v=2026.11.22-10"></script>
-<script src="assets/sync.js?v=2026.11.22-10"></script>
+<script src="assets/sync.js?v=2026.11.23-2"></script>
+<script src="assets/slips.js?v=2026.11.23-2"></script>
+<script src="assets/app.js?v=2026.11.23-2"></script>
+<script>
+  window.addEventListener('DOMContentLoaded', function () {
+    if (window.LabApp && window.APP_DATA && Array.isArray(window.APP_DATA.sheets) && typeof window.LabApp.setData === 'function') {
+      if (!window.LabApp.DATA || !Array.isArray(window.LabApp.DATA.sheets) || !window.LabApp.DATA.sheets.length) {
+        window.LabApp.setData(window.APP_DATA);
+      }
+    }
+    if (window.Sync && window.LabApp && typeof window.Sync.init === 'function') {
+      window.Sync.init(window.LabApp);
+    }
+  });
+</script>
 </body>
 </html>
