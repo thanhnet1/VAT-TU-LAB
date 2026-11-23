@@ -5,7 +5,7 @@
    - Tổng quan thống kê + màu phân biệt trạng thái + trạng thái đồng bộ
    - Tìm kiếm toàn bộ tại Trang chủ, tìm trong thư mục tại từng thư mục
    - Nút "+ Thêm vật tư" với danh sách sổ Mã VT / Tên VT / Serial / Part number
-   - Nút "VT-TS điều chuyển" + Cột Trạng thái (BBBG, PXK) + Chuyển thư mục
+   - Nút chuyển vật tư sang thư mục khác + Bảng cân đối mobile & desktop
    ===================================================================== */
 (function () {
   'use strict';
@@ -13,10 +13,7 @@
   const BUILD = '2026.11.23-2';
   const SOURCE_OPTIONS = ['Vật tư', 'Tài sản', 'Đo kiểm', 'Sửa chữa', 'Không rõ nguồn'];
   const DEFAULT_SOURCE = 'Không rõ nguồn';
-  const STATUS_OPTIONS = ['', 'BBBG', 'PXK'];
-  const TRANSFER_FOLDER_ID = 'vt-ts-dieu-chuyen';
-  const TRANSFER_FOLDER_LABEL = 'VT-TS điều chuyển';
-  const STANDARD_COLS = ['Nguồn', 'STT', 'Tên Vật Tư', 'Serial', 'Mã VT', 'Part number', 'Ghi chú', 'Trạng thái'];
+  const STANDARD_COLS = ['Nguồn', 'STT', 'Tên Vật Tư', 'Serial', 'Mã VT', 'Part number', 'Ghi chú'];
 
   const CFG = Object.assign({
     title: 'Tài sản – Vật tư Truyền dẫn LAB',
@@ -59,15 +56,9 @@
     'Không rõ nguồn': 'background:#f1f5f9;color:#334155;border-color:#cbd5e1;'
   };
 
-  const STATUS_BADGE_STYLE = {
-    BBBG: 'background:#ede9fe;color:#5b21b6;border-color:#c4b5fd;',
-    PXK: 'background:#ffedd5;color:#9a3412;border-color:#fdba74;'
-  };
-
   const ACTION_BTN_STYLE = {
     primary: 'padding:6px 11px;border-radius:7px;border:1px solid #0b3a5b;background:#0b3a5b;color:#ffffff;font-size:12.5px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:5px;box-shadow:0 1px 2px rgba(11,58,91,.18);',
     folder: 'padding:6px 11px;border-radius:7px;border:1px solid #0284c7;background:#e0f2fe;color:#0369a1;font-size:12.5px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:5px;',
-    transfer: 'padding:6px 11px;border-radius:7px;border:1px solid #7c3aed;background:#f5f3ff;color:#5b21b6;font-size:12.5px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:5px;',
     dangerFolder: 'padding:6px 11px;border-radius:7px;border:1px solid #dc2626;background:#fef2f2;color:#b91c1c;font-size:12.5px;font-weight:600;display:inline-flex;align-items:center;gap:5px;',
     sync: 'padding:6px 11px;border-radius:7px;border:1px solid #0d9488;background:#f0fdfa;color:#0f766e;font-size:12.5px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:5px;',
     exportBtn: 'padding:6px 11px;border-radius:7px;border:1px solid #16a34a;background:#f0fdf4;color:#15803d;font-size:12.5px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:5px;',
@@ -182,14 +173,6 @@
     return inferSourceFromRow(raw, fallback);
   }
 
-  function normalizeStatus(val) {
-    if (!val) return '';
-    const raw = String(val).trim().toUpperCase();
-    if (raw === 'BBBG') return 'BBBG';
-    if (raw === 'PXK') return 'PXK';
-    return String(val).trim();
-  }
-
   let uidN = 0;
   const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6) + (uidN++).toString(36);
 
@@ -199,7 +182,7 @@
     const fallbackSrc = normalizeSource(r.src, defaultSrc);
     const hasSrcFirst = v.length >= 7 && SRC_LIST.some(opt => fold(opt) === fold(v[0]));
 
-    let src, stt, tenVT, serial, maVT, partNo, ghiChu, trangThai;
+    let src, stt, tenVT, serial, maVT, partNo, ghiChu;
     if (hasSrcFirst) {
       src = normalizeSource(v[0], fallbackSrc);
       stt = String(v[1] ?? (index + 1));
@@ -208,7 +191,6 @@
       maVT = String(v[4] ?? '');
       partNo = String(v[5] ?? '');
       ghiChu = String(v[6] ?? '');
-      trangThai = normalizeStatus(v[7] != null ? v[7] : (r.status || r.trangThai || ''));
     } else if (Array.isArray(oldCols) && oldCols.length > 0) {
       const idxOf = re => oldCols.findIndex(c => re.test(fold(c)));
       const iStt = idxOf(/^stt$/);
@@ -217,19 +199,17 @@
       const iSer = idxOf(/serial|s\/n/);
       const iPart = idxOf(/part|pasnumber/);
       const iNote = idxOf(/ghi chu|tinh trang|nhap kho/);
-      const iStatus = idxOf(/trang thai|bbbg|pxk/);
 
       stt = String((iStt >= 0 ? v[iStt] : v[0]) ?? (index + 1));
       tenVT = String((iTen >= 0 ? v[iTen] : v[2]) ?? '');
       serial = String((iSer >= 0 ? v[iSer] : v[3]) ?? '');
       maVT = String((iMa >= 0 ? v[iMa] : v[1]) ?? '');
       partNo = String((iPart >= 0 ? v[iPart] : v[4]) ?? '');
-      trangThai = normalizeStatus((iStatus >= 0 ? v[iStatus] : '') || r.status || r.trangThai || '');
 
       const extraNotes = [];
       if (iNote >= 0 && v[iNote]) extraNotes.push(String(v[iNote]).trim());
       for (let k = 0; k < v.length; k++) {
-        if (k === iStt || k === iMa || k === iTen || k === iSer || k === iPart || k === iNote || k === iStatus) continue;
+        if (k === iStt || k === iMa || k === iTen || k === iSer || k === iPart || k === iNote) continue;
         const cell = String(v[k] ?? '').trim();
         if (cell) extraNotes.push(cell);
       }
@@ -244,43 +224,17 @@
       maVT = String(v[1] ?? '');
       partNo = String(v[4] ?? '');
       ghiChu = String(v[5] ?? '');
-      trangThai = normalizeStatus(v[7] != null ? v[7] : (r.status || r.trangThai || ''));
       src = r.src ? normalizeSource(r.src, fallbackSrc) : inferSourceFromRow(`${tenVT} ${ghiChu}`, fallbackSrc);
     }
 
     return Object.assign({}, r, {
       src,
-      status: trangThai,
-      v: [src, stt, tenVT, serial, maVT, partNo, ghiChu, trangThai]
+      v: [src, stt, tenVT, serial, maVT, partNo, ghiChu]
     });
-  }
-
-  function ensureTransferFolderInTree(nodes = []) {
-    const hasTransfer = (list) => {
-      if (!Array.isArray(list)) return false;
-      for (const n of list) {
-        if (!n) continue;
-        if (n.id === TRANSFER_FOLDER_ID) return true;
-        if (Array.isArray(n.children) && hasTransfer(n.children)) return true;
-      }
-      return false;
-    };
-    const base = Array.isArray(nodes) ? nodes.slice() : [];
-    if (hasTransfer(base)) return base;
-    base.push({
-      id: TRANSFER_FOLDER_ID,
-      label: TRANSFER_FOLDER_LABEL,
-      icon: '🚚',
-      isDynamicGroup: true,
-      allowCreate: true,
-      matchKeywords: ['vt-ts dieu chuyen', 'dieu chuyen', 'bbbg', 'pxk', 'ban giao']
-    });
-    return base;
   }
 
   function cloneTreeWithCustomFolders(nodes = [], customMap = {}) {
-    const withTransfer = ensureTransferFolderInTree(nodes);
-    return withTransfer.map(node => {
+    return nodes.map(node => {
       const children = Array.isArray(node.children) ? cloneTreeWithCustomFolders(node.children, customMap) : [];
       const extra = Array.isArray(customMap[node.id]) ? customMap[node.id] : [];
       return Object.assign({}, node, {
@@ -316,7 +270,6 @@
   rebuildTreeIndex();
 
   function isDeletableFolder(nodeId) {
-    if (nodeId === TRANSFER_FOLDER_ID) return false;
     const entry = nodeById.get(nodeId);
     if (!entry || !entry.parentId) return false;
     const node = entry.node || {};
@@ -341,7 +294,6 @@
       return CFG.sheetRouteMap[raw];
     }
     const f = fold(raw);
-    if (f.includes('dieu chuyen') || f === 'vt-ts-dieu-chuyen') return TRANSFER_FOLDER_ID;
     if (CFG.blockRouteMap) {
       for (const [k, targetId] of Object.entries(CFG.blockRouteMap)) {
         if (f === fold(k) || f.includes(fold(k))) {
@@ -362,11 +314,8 @@
   function classifyRowTarget(sheetId, blockTitle, rowNorm, fallbackNodeId) {
     const bt = fold(blockTitle);
     const v = rowNorm.v || [];
-    const blob = fold(`${blockTitle} ${v[2] || ''} ${v[3] || ''} ${v[4] || ''} ${v[5] || ''} ${v[6] || ''} ${v[7] || ''}`);
+    const blob = fold(`${blockTitle} ${v[2] || ''} ${v[3] || ''} ${v[4] || ''} ${v[5] || ''} ${v[6] || ''}`);
 
-    if (bt.includes('dieu chuyen') || sheetId === TRANSFER_FOLDER_ID || v[7] === 'BBBG' || v[7] === 'PXK') {
-      return TRANSFER_FOLDER_ID;
-    }
     if (bt === 'xtc10') return 'xtc10';
     if (bt === 'mtc9') return 'mtc9';
     if (bt === 'otc9') return 'otc9';
@@ -784,13 +733,11 @@
     if (!targetNodeId) return;
     const rows = getRowsForNode(targetNodeId);
     const src = normalizeSource(payload.src || (V.sourceFilter !== 'ALL' ? V.sourceFilter : CFG.defaultSource), CFG.defaultSource);
-    const status = normalizeStatus(payload.status || (targetNodeId === TRANSFER_FOLDER_ID ? 'BBBG' : ''));
     const newRow = normalizeRow({
       i: 'u' + uid(),
       ct: Date.now(),
       ut: Date.now(),
       src,
-      status,
       v: [
         src,
         String(rows.length + 1),
@@ -798,8 +745,7 @@
         String(payload.serial || '').trim(),
         String(payload.maVT || '').trim(),
         String(payload.partNo || '').trim(),
-        String(payload.ghiChu || '').trim(),
-        status
+        String(payload.ghiChu || '').trim()
       ]
     }, rows.length, src, STANDARD_COLS, targetNodeId);
 
@@ -831,10 +777,6 @@
       `<option value="${esc(s)}" ${s === defaultSrc ? 'selected' : ''}>${esc(s)}</option>`
     ).join('');
 
-    const statusOpts = STATUS_OPTIONS.map(st =>
-      `<option value="${esc(st)}">${st ? esc(st) : '-- Chọn trạng thái (BBBG / PXK) --'}</option>`
-    ).join('');
-
     const lookups = collectCatalogLookups();
     const toOpts = arr => arr.map(val => `<option value="${esc(val)}">${esc(val)}</option>`).join('');
 
@@ -849,14 +791,9 @@
             <label style="font-size:12px;font-weight:600;">Thư mục lưu trữ
               <select id="aiFolder" style="width:100%;margin-top:3px;padding:7px 8px;border:1px solid #cbd5e1;border-radius:6px;">${folderOpts}</select>
             </label>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-              <label style="font-size:12px;font-weight:600;">Nguồn
-                <select id="aiSrc" style="width:100%;margin-top:3px;padding:7px 8px;border:1px solid #cbd5e1;border-radius:6px;">${srcOpts}</select>
-              </label>
-              <label style="font-size:12px;font-weight:600;">Trạng thái (BBBG / PXK)
-                <select id="aiStatus" style="width:100%;margin-top:3px;padding:7px 8px;border:1px solid #cbd5e1;border-radius:6px;">${statusOpts}</select>
-              </label>
-            </div>
+            <label style="font-size:12px;font-weight:600;">Nguồn
+              <select id="aiSrc" style="width:100%;margin-top:3px;padding:7px 8px;border:1px solid #cbd5e1;border-radius:6px;">${srcOpts}</select>
+            </label>
 
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
               <label style="font-size:12px;font-weight:600;">Mã vật tư (danh sách sổ)
@@ -956,7 +893,6 @@
       addStructuredItem({
         targetNodeId: $('#aiFolder', host)?.value || chosenId,
         src: $('#aiSrc', host)?.value || defaultSrc,
-        status: $('#aiStatus', host)?.value || '',
         tenVT: tenInp ? tenInp.value : '',
         serial: serInp ? serInp.value : '',
         maVT: maInp ? maInp.value : '',
@@ -969,7 +905,7 @@
     tenInp?.focus();
   }
 
-  function moveRowToNode(fromNodeId, rowIdx, toNodeId, chosenStatus = '') {
+  function moveRowToNode(fromNodeId, rowIdx, toNodeId) {
     if (!toNodeId || fromNodeId === toNodeId) return;
     const srcRows = getRowsForNode(fromNodeId);
     const targetEntry = nodeById.get(toNodeId);
@@ -979,14 +915,6 @@
     const dstRows = getRowsForNode(toNodeId);
     const normMoved = normalizeRow(moved, dstRows.length, CFG.defaultSource, STANDARD_COLS, toNodeId);
     normMoved.v[1] = String(dstRows.length + 1);
-    if (chosenStatus) {
-      const stNorm = normalizeStatus(chosenStatus);
-      normMoved.status = stNorm;
-      normMoved.v[7] = stNorm;
-    } else if (toNodeId === TRANSFER_FOLDER_ID && !normMoved.v[7]) {
-      normMoved.status = 'BBBG';
-      normMoved.v[7] = 'BBBG';
-    }
     normMoved.ut = Date.now();
     dstRows.push(normMoved);
 
@@ -998,100 +926,6 @@
     persist();
     render();
     toast(`Đã chuyển sang "${targetEntry.node.label}"`);
-  }
-
-  function openTransferModal(fromNodeId = null) {
-    let host = $('#mdTransfer');
-    if (!host) {
-      host = document.createElement('div');
-      host.id = 'mdTransfer';
-      document.body.appendChild(host);
-    }
-
-    const candidates = [];
-    for (const entry of flatNodes) {
-      const n = entry.node;
-      if (Array.isArray(n.children) && n.children.length > 0) continue;
-      if (n.id === TRANSFER_FOLDER_ID) continue;
-      if (fromNodeId && n.id !== fromNodeId) continue;
-      const rows = getRowsForNode(n.id);
-      rows.forEach((r, idx) => {
-        const norm = normalizeRow(r, idx, CFG.defaultSource, STANDARD_COLS, n.id);
-        candidates.push({
-          fromId: n.id,
-          idx,
-          label: `${entry.pathNodes.map(x => x.label).join(' / ')} — ${norm.v[2] || '(Không tên)'} [SN: ${norm.v[3] || '-'}]`
-        });
-      });
-    }
-
-    if (!candidates.length) {
-      V.activeId = TRANSFER_FOLDER_ID;
-      V.folderQuery = '';
-      expandAncestorsOf(TRANSFER_FOLDER_ID);
-      V.route = { page: 'sheet', id: TRANSFER_FOLDER_ID };
-      render();
-      toast(`Đã mở thư mục "${TRANSFER_FOLDER_LABEL}"`);
-      return;
-    }
-
-    const itemOpts = candidates.map((c, i) =>
-      `<option value="${i}">${esc(c.label)}</option>`
-    ).join('');
-
-    host.innerHTML = `
-      <div class="modal-backdrop" id="transferBackdrop" style="position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:9998;padding:12px;">
-        <div class="modal" style="width:100%;max-width:500px;background:#fff;color:#111;border-radius:10px;padding:16px;box-shadow:0 12px 30px rgba(0,0,0,.25);">
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
-            <h3 style="margin:0;font-size:17px;">🚚 Chuyển vào ${esc(TRANSFER_FOLDER_LABEL)}</h3>
-            <button type="button" id="btnCloseTransfer" style="border:0;background:transparent;font-size:18px;cursor:pointer;">✕</button>
-          </div>
-          <form id="transferForm" style="display:flex;flex-direction:column;gap:10px;">
-            <label style="font-size:12px;font-weight:600;">Chọn vật tư / tài sản điều chuyển hoặc bàn giao
-              <select id="trItemSelect" style="width:100%;margin-top:4px;padding:7px 8px;border:1px solid #cbd5e1;border-radius:6px;">${itemOpts}</select>
-            </label>
-            <label style="font-size:12px;font-weight:600;">Trạng thái bàn giao / điều chuyển
-              <select id="trStatusSelect" style="width:100%;margin-top:4px;padding:7px 8px;border:1px solid #cbd5e1;border-radius:6px;">
-                <option value="BBBG">BBBG</option>
-                <option value="PXK">PXK</option>
-              </select>
-            </label>
-            <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:6px;">
-              <button type="button" id="btnOpenTransferFolder" style="${ACTION_BTN_STYLE.neutral}">📂 Mở thư mục ${esc(TRANSFER_FOLDER_LABEL)}</button>
-              <div style="display:flex;gap:8px;">
-                <button type="button" id="btnCancelTransfer" style="${ACTION_BTN_STYLE.neutral}">Huỷ</button>
-                <button type="submit" style="${ACTION_BTN_STYLE.transfer}">🚚 Xác nhận chuyển</button>
-              </div>
-            </div>
-          </form>
-        </div>
-      </div>
-    `;
-
-    const closeModal = () => { host.innerHTML = ''; };
-    $('#btnCloseTransfer', host)?.addEventListener('click', closeModal);
-    $('#btnCancelTransfer', host)?.addEventListener('click', closeModal);
-    $('#transferBackdrop', host)?.addEventListener('click', e => {
-      if (e.target && e.target.id === 'transferBackdrop') closeModal();
-    });
-    $('#btnOpenTransferFolder', host)?.addEventListener('click', () => {
-      closeModal();
-      V.activeId = TRANSFER_FOLDER_ID;
-      V.folderQuery = '';
-      expandAncestorsOf(TRANSFER_FOLDER_ID);
-      V.route = { page: 'sheet', id: TRANSFER_FOLDER_ID };
-      render();
-    });
-    $('#transferForm', host)?.addEventListener('submit', e => {
-      e.preventDefault();
-      const pickedIdx = Number($('#trItemSelect', host)?.value ?? 0);
-      const pickedStatus = $('#trStatusSelect', host)?.value || 'BBBG';
-      const item = candidates[pickedIdx];
-      closeModal();
-      if (item) {
-        moveRowToNode(item.fromId, item.idx, TRANSFER_FOLDER_ID, pickedStatus);
-      }
-    });
   }
 
   function createFolderUnder(parentId) {
@@ -1353,13 +1187,6 @@
     return { counts, total, folderCount, colorEntries };
   }
 
-  function renderStatusBadge(statusVal) {
-    const st = normalizeStatus(statusVal);
-    if (!st) return `<span style="opacity:.45;font-size:12px;">—</span>`;
-    const bStyle = STATUS_BADGE_STYLE[st] || 'background:#f1f5f9;color:#334155;border-color:#cbd5e1;';
-    return `<span style="display:inline-block;padding:2px 7px;border-radius:999px;font-size:11.5px;font-weight:700;border:1px solid;${bStyle}">${esc(st)}</span>`;
-  }
-
   function renderGlobalSearchView(mainEl) {
     const results = getGlobalSearchResults();
     const rowsHtml = results.length
@@ -1381,11 +1208,10 @@
               <td>${esc(v[4])}</td>
               <td>${esc(v[5])}</td>
               <td>${esc(v[6])}</td>
-              <td style="white-space:nowrap;">${renderStatusBadge(v[7])}</td>
             </tr>
           `;
         }).join('')
-      : `<tr><td colspan="9" style="text-align:center;padding:18px;opacity:.7;">Không tìm thấy vật tư nào khớp với từ khóa "${esc(V.query)}" trên toàn bộ thư mục.</td></tr>`;
+      : `<tr><td colspan="8" style="text-align:center;padding:18px;opacity:.7;">Không tìm thấy vật tư nào khớp với từ khóa "${esc(V.query)}" trên toàn bộ thư mục.</td></tr>`;
 
     mainEl.innerHTML = `
       <div class="view-header" style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px;">
@@ -1395,7 +1221,6 @@
         </div>
         <div style="display:flex;flex-wrap:wrap;gap:8px;">
           <button type="button" id="btnAddItemSearch" style="${ACTION_BTN_STYLE.primary}">+ Thêm vật tư</button>
-          <button type="button" id="btnTransferSearch" style="${ACTION_BTN_STYLE.transfer}">🚚 ${esc(TRANSFER_FOLDER_LABEL)}</button>
           <button type="button" id="btnBackOverview" style="${ACTION_BTN_STYLE.neutral}">🏠 Về Trang chủ</button>
         </div>
       </div>
@@ -1411,7 +1236,6 @@
               <th style="white-space:nowrap;">Mã VT</th>
               <th style="white-space:nowrap;">Part number</th>
               <th style="white-space:nowrap;">Ghi chú</th>
-              <th style="white-space:nowrap;">Trạng thái</th>
             </tr>
           </thead>
           <tbody>${rowsHtml}</tbody>
@@ -1420,7 +1244,6 @@
     `;
 
     $('#btnAddItemSearch', mainEl)?.addEventListener('click', () => openAddItemModal(V.activeId));
-    $('#btnTransferSearch', mainEl)?.addEventListener('click', () => openTransferModal(null));
     $('#btnBackOverview', mainEl)?.addEventListener('click', () => {
       V.query = '';
       syncSearchInputs();
@@ -1443,7 +1266,6 @@
     const meta = (DATA && DATA.meta) || {};
     const meaningEntries = Object.entries(CFG.colorMeaning || {});
     const syncInfo = getSyncStatusInfo();
-    const transferCount = getRowsForNode(TRANSFER_FOLDER_ID).length;
 
     const compactSourceChips = SRC_LIST.map(src => {
       const style = SOURCE_BADGE_STYLE[src] || SOURCE_BADGE_STYLE['Không rõ nguồn'];
@@ -1524,7 +1346,6 @@
         </div>
         <div style="display:flex;flex-wrap:wrap;align-items:center;gap:6px;">
           <button type="button" id="btnOverviewAddItem" style="${ACTION_BTN_STYLE.primary}">+ Thêm vật tư</button>
-          <button type="button" id="btnOverviewTransfer" style="${ACTION_BTN_STYLE.transfer}">🚚 ${esc(TRANSFER_FOLDER_LABEL)} (${transferCount})</button>
           <button type="button" id="btnOverviewAddFolder" style="${ACTION_BTN_STYLE.folder}">＋ Thư mục mới</button>
           <button type="button" id="btnOverviewSync" style="${ACTION_BTN_STYLE.sync}">☁ Đồng bộ</button>
           <button type="button" id="btnOverviewExportAll" style="${ACTION_BTN_STYLE.exportBtn}">📗 Xuất Excel</button>
@@ -1569,8 +1390,6 @@
       });
     });
 
-    $('#btnOverviewTransfer', mainEl)?.addEventListener('click', () => openTransferModal(null));
-
     const addFolderBtn = $('#btnOverviewAddFolder', mainEl);
     if (addFolderBtn) {
       addFolderBtn.addEventListener('click', () => createFolderUnder(V.activeId || 'thiet-bi-ip'));
@@ -1607,20 +1426,11 @@
       .join('');
   }
 
-  function renderStatusSelect(currentStatus, idx) {
-    const st = normalizeStatus(currentStatus);
-    const opts = STATUS_OPTIONS.map(opt =>
-      `<option value="${esc(opt)}" ${st === opt ? 'selected' : ''}>${opt ? esc(opt) : '-- Trạng thái --'}</option>`
-    ).join('');
-    const bStyle = STATUS_BADGE_STYLE[st] || 'background:#ffffff;color:#1e293b;border-color:#cbd5e1;';
-    return `<select class="row-status-select" data-idx="${idx}" title="Chọn trạng thái (BBBG, PXK)" style="padding:3px 6px;border-radius:6px;border:1px solid;font-size:12px;font-weight:700;cursor:pointer;${bStyle}">${opts}</select>`;
-  }
-
   function renderTableRows(currentNodeId, entries) {
     if (!entries.length) {
       return `
         <tr>
-          <td colspan="9" style="text-align:center;padding:18px;opacity:.7;">
+          <td colspan="8" style="text-align:center;padding:18px;opacity:.7;">
             Không có dữ liệu vật tư / tài sản phù hợp trong thư mục này.
           </td>
         </tr>
@@ -1652,7 +1462,6 @@
             <td>${esc(v[4])}</td>
             <td>${esc(v[5])}</td>
             <td>${esc(v[6])}</td>
-            <td style="white-space:nowrap;">${renderStatusSelect(v[7], idx)}</td>
             <td style="white-space:nowrap;">
               <button type="button" class="btn-row-edit" data-idx="${idx}" title="Sửa dòng">✏️</button>
               <select class="row-move-select" data-idx="${idx}" title="Chuyển sang thư mục khác" style="max-width:118px;padding:3px 4px;border-radius:5px;border:1px solid rgba(0,0,0,.2);font-size:12px;">
@@ -1678,7 +1487,6 @@
           <td><input type="text" class="cell-edit" data-col="4" value="${esc(v[4])}"></td>
           <td><input type="text" class="cell-edit" data-col="5" value="${esc(v[5])}"></td>
           <td><input type="text" class="cell-edit" data-col="6" value="${esc(v[6])}"></td>
-          <td style="white-space:nowrap;">${renderStatusSelect(v[7], idx)}</td>
           <td style="white-space:nowrap;">
             <select class="row-move-select" data-idx="${idx}" title="Chuyển sang thư mục khác" style="max-width:118px;padding:3px 4px;border-radius:5px;border:1px solid rgba(0,0,0,.2);font-size:12px;">
               <option value="">↗ Chuyển...</option>
@@ -1692,23 +1500,6 @@
   }
 
   function bindMainTableEvents(mainEl, currentNodeId) {
-    $$('.row-status-select', mainEl).forEach(sel => {
-      sel.addEventListener('change', () => {
-        const idx = Number(sel.getAttribute('data-idx'));
-        const rows = getRowsForNode(currentNodeId);
-        const rowObj = rows[idx];
-        if (!rowObj) return;
-        const stNorm = normalizeStatus(sel.value);
-        if (!Array.isArray(rowObj.v)) rowObj.v = [DEFAULT_SOURCE, String(idx + 1), '', '', '', '', '', stNorm];
-        else rowObj.v[7] = stNorm;
-        rowObj.status = stNorm;
-        touch(rowObj);
-        persist();
-        renderMain();
-        toast(stNorm ? `Đã cập nhật trạng thái: ${stNorm}` : 'Đã xoá trạng thái');
-      });
-    });
-
     $$('.btn-row-edit', mainEl).forEach(btn => {
       btn.addEventListener('click', () => {
         V.edit = true;
@@ -1759,7 +1550,7 @@
           const colIdx = Number(inp.getAttribute('data-col'));
           const onCommit = () => {
             const val = inp.value;
-            if (!Array.isArray(rowObj.v)) rowObj.v = [DEFAULT_SOURCE, String(idx + 1), '', '', '', '', '', ''];
+            if (!Array.isArray(rowObj.v)) rowObj.v = [DEFAULT_SOURCE, String(idx + 1), '', '', '', '', ''];
             rowObj.v[colIdx] = val;
             if (colIdx === 0) {
               const normSrc = normalizeSource(val, CFG.defaultSource);
@@ -1804,7 +1595,6 @@
     const syncInfo = getSyncStatusInfo();
     const canDeleteCurrentFolder = isDeletableFolder(node.id);
     const currentFolderSearch = (V.folderQuery && V.folderQuery.trim()) ? V.folderQuery : (V.query || '');
-    const transferCount = getRowsForNode(TRANSFER_FOLDER_ID).length;
 
     const srcFilterOpts = ['ALL', ...SRC_LIST].map(opt => {
       const label = opt === 'ALL' ? 'Tất cả nguồn' : opt;
@@ -1813,10 +1603,6 @@
 
     const delFolderBtnHtml = canDeleteCurrentFolder
       ? `<button type="button" id="btnSheetDelFolder" ${trashBtnAttr('', '', `Xoá thư mục con "${node.label}"`, 'Bấm nút Chỉnh sửa để mở khoá xoá thư mục con')} style="${ACTION_BTN_STYLE.dangerFolder}${V.edit ? 'opacity:1;cursor:pointer;filter:none;' : 'opacity:.35;cursor:not-allowed;filter:grayscale(100%);'}">🗑 Xoá thư mục</button>`
-      : '';
-
-    const transferBtnHtml = node.id !== TRANSFER_FOLDER_ID
-      ? `<button type="button" id="btnSheetTransfer" style="${ACTION_BTN_STYLE.transfer}">🚚 ${esc(TRANSFER_FOLDER_LABEL)} (${transferCount})</button>`
       : '';
 
     mainEl.innerHTML = `
@@ -1835,7 +1621,6 @@
             ${srcFilterOpts}
           </select>
           <button type="button" id="btnSheetAddItem" style="${ACTION_BTN_STYLE.primary}">+ Thêm vật tư</button>
-          ${transferBtnHtml}
           <button type="button" id="btnSheetAddFolder" style="${ACTION_BTN_STYLE.folder}">＋ Tạo thư mục con</button>
           ${delFolderBtnHtml}
           <button type="button" id="btnSheetOverview" style="${ACTION_BTN_STYLE.neutral}">🏠 Tổng quan</button>
@@ -1855,7 +1640,6 @@
               <th style="white-space:nowrap;">Mã VT</th>
               <th style="white-space:nowrap;">Part number</th>
               <th style="white-space:nowrap;">Ghi chú</th>
-              <th style="white-space:nowrap;">Trạng thái</th>
               <th style="white-space:nowrap;">Thao tác</th>
             </tr>
           </thead>
@@ -1888,7 +1672,6 @@
     });
 
     $('#btnSheetAddItem', mainEl)?.addEventListener('click', () => openAddItemModal(node.id));
-    $('#btnSheetTransfer', mainEl)?.addEventListener('click', () => openTransferModal(node.id));
     $('#btnSheetAddFolder', mainEl)?.addEventListener('click', () => createFolderUnder(node.id));
     $('#btnSheetDelFolder', mainEl)?.addEventListener('click', () => deleteCustomFolder(node.id));
     $('#btnSheetOverview', mainEl)?.addEventListener('click', () => {
@@ -2289,7 +2072,6 @@
     setData: setBaselineData,
     toast,
     openAddItemModal,
-    openTransferModal,
     deleteCustomFolder,
     getActiveSearchQuery
   };
