@@ -10,7 +10,7 @@
 (function () {
   'use strict';
 
-  const BUILD = '2026.11.22-10';
+  const BUILD = '2026.11.23-2';
   const SOURCE_OPTIONS = ['Vật tư', 'Tài sản', 'Đo kiểm', 'Sửa chữa', 'Không rõ nguồn'];
   const DEFAULT_SOURCE = 'Không rõ nguồn';
   const STANDARD_COLS = ['Nguồn', 'STT', 'Tên Vật Tư', 'Serial', 'Mã VT', 'Part number', 'Ghi chú'];
@@ -117,8 +117,8 @@
   }
 
   function getSyncStatusInfo() {
-    const role = localStorage.getItem('lab_user_role') || '';
-    const username = localStorage.getItem('lab_username') || '';
+    const role = localStorage.getItem('lab_user_role') || localStorage.getItem('sync_role') || '';
+    const username = localStorage.getItem('lab_username') || localStorage.getItem('sync_user') || '';
     const accountLabel = username
       ? `${username}${role ? ' (' + role + ')' : ''}`
       : 'Tự động đồng bộ';
@@ -414,7 +414,7 @@
 
   let DATA = { meta: { source: 'LAB', generated: '', version: '' }, sheets: [] };
   let storeData = {};
-  const ST = { sheets: [], slips: { xuat: [], nhap: [] }, dirty: false };
+  const ST = { sheets: [], slips: { xuat: [], nhap: [] }, customFolders: {}, dirty: false, updatedAt: 0 };
   const V = {
     route: { page: 'overview', id: null },
     activeId: (flatNodes[0] && flatNodes[0].node.id) || null,
@@ -423,6 +423,14 @@
     sourceFilter: 'ALL',
     treeCollapsed: {}
   };
+
+  function syncPublicHandles() {
+    if (window.LabApp) {
+      window.LabApp.DATA = DATA;
+      window.LabApp.ST = ST;
+      window.LabApp.V = V;
+    }
+  }
 
   function initCollapsedState(collapseAll = true) {
     const next = {};
@@ -445,12 +453,21 @@
   }
 
   function syncSTFromStore() {
+    rebuildTreeIndex();
+    ST.customFolders = clone(customFoldersByParent);
     ST.sheets = buildSheetsFromStore(storeData);
+    syncPublicHandles();
   }
 
   function syncStoreFromST() {
+    if (ST && ST.customFolders && typeof ST.customFolders === 'object') {
+      customFoldersByParent = clone(ST.customFolders);
+    }
     rebuildTreeIndex();
+    ensureIds(ST.sheets || []);
     storeData = buildStoreFromSheets(ST.sheets || []);
+    ST.sheets = buildSheetsFromStore(storeData);
+    syncPublicHandles();
   }
 
   function ensureIds(sheets) {
@@ -465,44 +482,63 @@
     }));
   }
 
-  function loadState() {
-    try {
-      const saved = JSON.parse(localStorage.getItem(LS('state')) || 'null');
-      if (saved && Array.isArray(saved.sheets) && saved.sheets.length > 0) {
-        customFoldersByParent = saved.customFolders && typeof saved.customFolders === 'object' ? saved.customFolders : {};
-        rebuildTreeIndex();
-        initCollapsedState(true);
-        ensureIds(saved.sheets);
-        storeData = buildStoreFromSheets(saved.sheets);
-        syncSTFromStore();
-        ST.slips = saved.slips && typeof saved.slips === 'object'
-          ? Object.assign({ xuat: [], nhap: [] }, saved.slips)
-          : { xuat: [], nhap: [] };
-        ST.dirty = !!saved.dirty;
-        return;
-      }
-    } catch (_) {}
-
+  function hydrateFromBaseline(preserveCollapsed = true) {
     customFoldersByParent = {};
     rebuildTreeIndex();
-    initCollapsedState(true);
+    if (!preserveCollapsed) initCollapsedState(true);
     const rawSheets = (DATA && Array.isArray(DATA.sheets)) ? clone(DATA.sheets) : [];
     ensureIds(rawSheets);
     storeData = buildStoreFromSheets(rawSheets);
-    syncSTFromStore();
     ST.slips = { xuat: [], nhap: [] };
+    ST.customFolders = {};
     ST.dirty = false;
+    ST.updatedAt = Date.now();
+    syncSTFromStore();
+  }
+
+  function loadState() {
+    try {
+      const saved = JSON.parse(localStorage.getItem(LS('state')) || 'null');
+      if (saved && Array.isArray(saved.sheets)) {
+        const metaVer = (DATA && DATA.meta && DATA.meta.version) || '';
+        const hasDataSheets = !!(DATA && Array.isArray(DATA.sheets) && DATA.sheets.length);
+        const savedHasRows = saved.sheets.some(s => Array.isArray(s.blocks) && s.blocks.some(b => Array.isArray(b.rows) && b.rows.length));
+        if ((!metaVer || saved.ver === metaVer || saved.dirty) && (savedHasRows || !hasDataSheets || saved.dirty)) {
+          customFoldersByParent = (saved.customFolders && typeof saved.customFolders === 'object')
+            ? clone(saved.customFolders)
+            : ((saved.slips && saved.slips._customFolders && typeof saved.slips._customFolders === 'object')
+              ? clone(saved.slips._customFolders)
+              : {});
+          rebuildTreeIndex();
+          initCollapsedState(true);
+          ensureIds(saved.sheets);
+          storeData = buildStoreFromSheets(saved.sheets);
+          ST.slips = saved.slips && typeof saved.slips === 'object'
+            ? Object.assign({ xuat: [], nhap: [] }, clone(saved.slips))
+            : { xuat: [], nhap: [] };
+          ST.dirty = !!saved.dirty;
+          ST.updatedAt = Number(saved.updatedAt || Date.now());
+          syncSTFromStore();
+          return;
+        }
+      }
+    } catch (_) {}
+
+    initCollapsedState(true);
+    hydrateFromBaseline(true);
   }
 
   function saveLocal() {
     syncSTFromStore();
+    ST.updatedAt = ST.updatedAt || Date.now();
     try {
       localStorage.setItem(LS('state'), JSON.stringify({
         ver: (DATA && DATA.meta && DATA.meta.version) || '',
         customFolders: customFoldersByParent,
         sheets: ST.sheets,
         slips: ST.slips,
-        dirty: ST.dirty
+        dirty: ST.dirty,
+        updatedAt: ST.updatedAt
       }));
     } catch (_) {
       toast('⚠ Không lưu được vào trình duyệt.', 4000);
@@ -511,6 +547,7 @@
 
   function persist() {
     ST.dirty = true;
+    ST.updatedAt = Date.now();
     const d = $('#dirty');
     if (d) d.hidden = false;
     saveLocal();
@@ -521,15 +558,7 @@
 
   function resetToBaseline() {
     localStorage.removeItem(LS('state'));
-    customFoldersByParent = {};
-    rebuildTreeIndex();
-    initCollapsedState(true);
-    const rawSheets = (DATA && Array.isArray(DATA.sheets)) ? clone(DATA.sheets) : [];
-    ensureIds(rawSheets);
-    storeData = buildStoreFromSheets(rawSheets);
-    syncSTFromStore();
-    ST.slips = { xuat: [], nhap: [] };
-    ST.dirty = false;
+    hydrateFromBaseline(false);
     const d = $('#dirty');
     if (d) d.hidden = true;
     saveLocal();
@@ -1508,15 +1537,53 @@
   }
 
   function render() {
+    syncPublicHandles();
     renderSidebar();
     renderMain();
   }
 
-  function refreshFromSync() {
+  function refreshFromSync(remotePayload) {
+    if (remotePayload && typeof remotePayload === 'object') {
+      if (Array.isArray(remotePayload.sheets)) {
+        ST.sheets = clone(remotePayload.sheets);
+      }
+      if (remotePayload.customFolders && typeof remotePayload.customFolders === 'object') {
+        ST.customFolders = clone(remotePayload.customFolders);
+      } else if (remotePayload.slips && remotePayload.slips._customFolders && typeof remotePayload.slips._customFolders === 'object') {
+        ST.customFolders = clone(remotePayload.slips._customFolders);
+      }
+      if (remotePayload.slips && typeof remotePayload.slips === 'object') {
+        ST.slips = Object.assign({ xuat: [], nhap: [] }, clone(remotePayload.slips));
+      }
+      if (typeof remotePayload.updatedAt === 'number' && remotePayload.updatedAt > 0) {
+        ST.updatedAt = remotePayload.updatedAt;
+      }
+      ST.dirty = false;
+    }
+
     syncStoreFromST();
-    saveLocal();
+    try {
+      localStorage.setItem(LS('state'), JSON.stringify({
+        ver: (DATA && DATA.meta && DATA.meta.version) || '',
+        customFolders: customFoldersByParent,
+        sheets: ST.sheets,
+        slips: ST.slips,
+        dirty: ST.dirty,
+        updatedAt: ST.updatedAt || Date.now()
+      }));
+    } catch (_) {}
+
     const d = $('#dirty');
     if (d) d.hidden = !ST.dirty;
+    render();
+  }
+
+  function setBaselineData(nextData) {
+    if (!nextData || !Array.isArray(nextData.sheets)) return;
+    DATA = nextData;
+    syncPublicHandles();
+    loadState();
+    parseHash();
     render();
   }
 
@@ -1623,7 +1690,8 @@
           const blob = new Blob([JSON.stringify({
             customFolders: customFoldersByParent,
             sheets: ST.sheets,
-            slips: ST.slips
+            slips: ST.slips,
+            updatedAt: ST.updatedAt || Date.now()
           }, null, 2)], { type: 'application/json' });
           const a = document.createElement('a');
           a.href = URL.createObjectURL(blob);
@@ -1674,14 +1742,14 @@
         reader.onload = () => {
           try {
             const parsed = JSON.parse(String(reader.result || '{}'));
-            if (parsed.customFolders) customFoldersByParent = parsed.customFolders;
+            if (parsed.customFolders) customFoldersByParent = clone(parsed.customFolders);
             rebuildTreeIndex();
             initCollapsedState(true);
             if (Array.isArray(parsed.sheets)) {
               ensureIds(parsed.sheets);
               storeData = buildStoreFromSheets(parsed.sheets);
             }
-            if (parsed.slips) ST.slips = parsed.slips;
+            if (parsed.slips) ST.slips = Object.assign({ xuat: [], nhap: [] }, clone(parsed.slips));
             persist();
             render();
             toast('Đã nhập sao lưu JSON');
@@ -1722,9 +1790,83 @@
       parseHash();
       render();
     });
+
+    window.addEventListener('lab:data-ready', e => {
+      const next = (e && e.detail) || window.APP_DATA;
+      if (next && Array.isArray(next.sheets)) {
+        setBaselineData(next);
+      }
+    });
+
+    window.addEventListener('sync:status', () => renderMain());
+    window.addEventListener('lab:sync-state', () => renderMain());
+    window.addEventListener('sync:updated', e => {
+      refreshFromSync(e && e.detail ? e.detail : null);
+    });
+
+    window.addEventListener('storage', e => {
+      if (!e || e.key === LS('state')) {
+        loadState();
+        render();
+      }
+    });
   }
 
-  const appApi = {
+  function initSyncBridge() {
+    if (!window.Sync || typeof window.Sync.init !== 'function') return;
+    try {
+      const res = window.Sync.init(window.LabApp);
+      if (res && typeof res.then === 'function') {
+        res.then(() => {
+          syncStoreFromST();
+          render();
+        }).catch(() => {});
+      }
+    } catch (_) {}
+  }
+
+  function boot() {
+    let settled = false;
+    const finishBoot = () => {
+      if (settled) return;
+      settled = true;
+      try {
+        const tEl = $('#appTitle');
+        const sEl = $('#appSub');
+        if (tEl) tEl.textContent = CFG.title || 'Tài sản – Vật tư Truyền dẫn LAB';
+        if (sEl) sEl.textContent = CFG.subtitle || '';
+
+        if (window.APP_DATA && Array.isArray(window.APP_DATA.sheets)) {
+          DATA = window.APP_DATA;
+        }
+        syncPublicHandles();
+
+        loadState();
+        parseHash();
+        bindEvents();
+        render();
+      } catch (e) {
+        renderOverview($('#main') || document.body);
+        toast('Đã tải giao diện dự phòng', 3500);
+      } finally {
+        hideBoot();
+        initSyncBridge();
+      }
+    };
+
+    if (window.APP_DATA && Array.isArray(window.APP_DATA.sheets)) {
+      finishBoot();
+      return;
+    }
+
+    const waitTimer = setTimeout(finishBoot, 250);
+    window.addEventListener('lab:data-ready', () => {
+      clearTimeout(waitTimer);
+      finishBoot();
+    }, { once: true });
+  }
+
+  window.LabApp = {
     ver: BUILD,
     CFG,
     DATA,
@@ -1738,40 +1880,13 @@
     stockRows,
     touch,
     saveLocal,
+    persist,
     resetToBaseline,
     refresh: refreshFromSync,
+    setData: setBaselineData,
     toast,
     openAddItemModal
   };
-
-  window.LabApp = appApi;
-
-  function boot() {
-    try {
-      const tEl = $('#appTitle');
-      const sEl = $('#appSub');
-      if (tEl) tEl.textContent = CFG.title || 'Tài sản – Vật tư Truyền dẫn LAB';
-      if (sEl) sEl.textContent = CFG.subtitle || '';
-
-      if (window.APP_DATA && Array.isArray(window.APP_DATA.sheets)) {
-        DATA = window.APP_DATA;
-        appApi.DATA = DATA;
-      }
-
-      loadState();
-      parseHash();
-      bindEvents();
-      render();
-    } catch (e) {
-      renderOverview($('#main') || document.body);
-      toast('Đã tải giao diện dự phòng', 3500);
-    } finally {
-      hideBoot();
-      if (window.Sync && typeof window.Sync.init === 'function') {
-        window.Sync.init(appApi);
-      }
-    }
-  }
 
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', boot);
