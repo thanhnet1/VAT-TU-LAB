@@ -59,6 +59,7 @@
   const ACTION_BTN_STYLE = {
     primary: 'padding:6px 11px;border-radius:7px;border:1px solid #0b3a5b;background:#0b3a5b;color:#ffffff;font-size:12.5px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:5px;box-shadow:0 1px 2px rgba(11,58,91,.18);',
     folder: 'padding:6px 11px;border-radius:7px;border:1px solid #0284c7;background:#e0f2fe;color:#0369a1;font-size:12.5px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:5px;',
+    dangerFolder: 'padding:6px 11px;border-radius:7px;border:1px solid #dc2626;background:#fef2f2;color:#b91c1c;font-size:12.5px;font-weight:600;display:inline-flex;align-items:center;gap:5px;',
     sync: 'padding:6px 11px;border-radius:7px;border:1px solid #0d9488;background:#f0fdfa;color:#0f766e;font-size:12.5px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:5px;',
     exportBtn: 'padding:6px 11px;border-radius:7px;border:1px solid #16a34a;background:#f0fdf4;color:#15803d;font-size:12.5px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:5px;',
     neutral: 'padding:6px 11px;border-radius:7px;border:1px solid #cbd5e1;background:#ffffff;color:#1e293b;font-size:12.5px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:5px;'
@@ -255,6 +256,7 @@
   }
 
   let customFoldersByParent = {};
+  let deletedFolders = {};
   let activeTree = [];
   let flatNodes = [];
   let nodeById = new Map();
@@ -266,6 +268,23 @@
   }
 
   rebuildTreeIndex();
+
+  function isDeletableFolder(nodeId) {
+    const entry = nodeById.get(nodeId);
+    if (!entry || !entry.parentId) return false;
+    const node = entry.node || {};
+    if (node.isCustom || node.isDynamicGroup) return true;
+    const parentArr = customFoldersByParent[entry.parentId];
+    return Array.isArray(parentArr) && parentArr.some(x => x && x.id === nodeId);
+  }
+
+  function trashBtnAttr(extraClass = '', attrs = '', titleWhenActive = 'Xoá', titleWhenLocked = 'Bấm nút Chỉnh sửa để mở khoá xoá') {
+    const title = V.edit ? titleWhenActive : titleWhenLocked;
+    const style = V.edit
+      ? 'opacity:1;cursor:pointer;filter:none;'
+      : 'opacity:.35;cursor:not-allowed;filter:grayscale(100%);';
+    return `class="${extraClass}" ${attrs} title="${esc(title)}" aria-disabled="${V.edit ? 'false' : 'true'}" style="${style}"`;
+  }
 
   function resolveTargetNodeId(textOrId) {
     if (!textOrId) return null;
@@ -414,7 +433,7 @@
 
   let DATA = { meta: { source: 'LAB', generated: '', version: '' }, sheets: [] };
   let storeData = {};
-  const ST = { sheets: [], slips: { xuat: [], nhap: [] }, customFolders: {}, dirty: false, updatedAt: 0 };
+  const ST = { sheets: [], slips: { xuat: [], nhap: [] }, customFolders: {}, deletedFolders: {}, dirty: false, updatedAt: 0 };
   const V = {
     route: { page: 'overview', id: null },
     activeId: (flatNodes[0] && flatNodes[0].node.id) || null,
@@ -455,6 +474,7 @@
   function syncSTFromStore() {
     rebuildTreeIndex();
     ST.customFolders = clone(customFoldersByParent);
+    ST.deletedFolders = clone(deletedFolders);
     ST.sheets = buildSheetsFromStore(storeData);
     syncPublicHandles();
   }
@@ -462,6 +482,9 @@
   function syncStoreFromST() {
     if (ST && ST.customFolders && typeof ST.customFolders === 'object') {
       customFoldersByParent = clone(ST.customFolders);
+    }
+    if (ST && ST.deletedFolders && typeof ST.deletedFolders === 'object') {
+      deletedFolders = clone(ST.deletedFolders);
     }
     rebuildTreeIndex();
     ensureIds(ST.sheets || []);
@@ -484,6 +507,7 @@
 
   function hydrateFromBaseline(preserveCollapsed = true) {
     customFoldersByParent = {};
+    deletedFolders = {};
     rebuildTreeIndex();
     if (!preserveCollapsed) initCollapsedState(true);
     const rawSheets = (DATA && Array.isArray(DATA.sheets)) ? clone(DATA.sheets) : [];
@@ -491,6 +515,7 @@
     storeData = buildStoreFromSheets(rawSheets);
     ST.slips = { xuat: [], nhap: [] };
     ST.customFolders = {};
+    ST.deletedFolders = {};
     ST.dirty = false;
     ST.updatedAt = Date.now();
     syncSTFromStore();
@@ -509,6 +534,9 @@
             : ((saved.slips && saved.slips._customFolders && typeof saved.slips._customFolders === 'object')
               ? clone(saved.slips._customFolders)
               : {});
+          deletedFolders = (saved.deletedFolders && typeof saved.deletedFolders === 'object')
+            ? clone(saved.deletedFolders)
+            : {};
           rebuildTreeIndex();
           initCollapsedState(true);
           ensureIds(saved.sheets);
@@ -535,6 +563,7 @@
       localStorage.setItem(LS('state'), JSON.stringify({
         ver: (DATA && DATA.meta && DATA.meta.version) || '',
         customFolders: customFoldersByParent,
+        deletedFolders: deletedFolders,
         sheets: ST.sheets,
         slips: ST.slips,
         dirty: ST.dirty,
@@ -881,6 +910,7 @@
     const cleanName = rawName.trim();
     const newId = 'folder-' + uid();
 
+    delete deletedFolders[newId];
     if (!Array.isArray(customFoldersByParent[resolvedParentId])) {
       customFoldersByParent[resolvedParentId] = [];
     }
@@ -888,6 +918,7 @@
       id: newId,
       label: cleanName,
       icon: '📄',
+      isCustom: true,
       isDynamicGroup: true,
       allowCreate: true,
       matchKeywords: [fold(cleanName)]
@@ -902,6 +933,68 @@
     persist();
     render();
     toast(`Đã tạo thư mục "${cleanName}"`);
+  }
+
+  function deleteCustomFolder(folderId) {
+    if (!V.edit) {
+      toast('Hãy bật "Chỉnh sửa" trước khi xoá thư mục con');
+      return;
+    }
+    const entry = nodeById.get(folderId);
+    if (!entry || !isDeletableFolder(folderId)) {
+      toast('Chỉ có thể xoá thư mục con tạo thêm');
+      return;
+    }
+
+    const folderLabel = entry.node.label;
+    const parentId = entry.parentId;
+    const itemCount = countNodeRowsDeep(entry.node);
+    const msg = itemCount > 0
+      ? `Xoá thư mục con "${folderLabel}"? (${itemCount} dòng vật tư bên trong sẽ được chuyển về thư mục cha)`
+      : `Xoá thư mục con "${folderLabel}"?`;
+    if (!confirm(msg)) return;
+
+    const fallbackParentId = (parentId && nodeById.has(parentId))
+      ? parentId
+      : (flatNodes[0] && flatNodes[0].node.id) || 'thiet-bi-ip';
+
+    const ownRows = getRowsForNode(folderId);
+    if (ownRows.length && fallbackParentId !== folderId) {
+      const dstRows = getRowsForNode(fallbackParentId);
+      ownRows.forEach(r => {
+        const norm = normalizeRow(r, dstRows.length, CFG.defaultSource, STANDARD_COLS, fallbackParentId);
+        norm.v[1] = String(dstRows.length + 1);
+        norm.r = dstRows.length + 1;
+        norm.ut = Date.now();
+        dstRows.push(norm);
+      });
+    }
+    delete storeData[folderId];
+
+    if (parentId && Array.isArray(customFoldersByParent[parentId])) {
+      customFoldersByParent[parentId] = customFoldersByParent[parentId].filter(x => x && x.id !== folderId);
+      if (!customFoldersByParent[parentId].length) delete customFoldersByParent[parentId];
+    }
+
+    deletedFolders[folderId] = {
+      id: folderId,
+      parentId: parentId || fallbackParentId,
+      label: folderLabel,
+      deletedAt: Date.now()
+    };
+
+    delete V.treeCollapsed[folderId];
+    rebuildTreeIndex();
+
+    if (V.activeId === folderId) {
+      V.activeId = fallbackParentId;
+      expandAncestorsOf(fallbackParentId);
+      V.route = { page: 'sheet', id: fallbackParentId };
+    }
+
+    persist();
+    render();
+    toast(`Đã xoá thư mục con "${folderLabel}"`);
   }
 
   function parseHash() {
@@ -933,6 +1026,7 @@
           const childPreview = hasChildren && isCollapsed
             ? node.children.map(c => c.label).join(', ')
             : '';
+          const canDelNode = isDeletableFolder(node.id);
 
           return `
             <div class="tree-node ${isCollapsed ? 'collapsed' : ''}" data-node="${esc(node.id)}" style="margin:2px 0;">
@@ -944,6 +1038,7 @@
                   <span>${esc(node.icon || (isExpandable ? '📁' : '📄'))}</span>
                   <span class="nm" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(node.label)}</span>
                 </button>
+                ${canDelNode ? `<button type="button" ${trashBtnAttr('tree-del-btn', `data-del-folder="${esc(node.id)}"`, `Xoá thư mục "${node.label}"`, 'Bấm nút Chỉnh sửa để xoá thư mục con')} style="${V.edit ? 'border:0;background:transparent;padding:0 2px;font-size:12px;opacity:1;cursor:pointer;' : 'border:0;background:transparent;padding:0 2px;font-size:12px;opacity:.35;cursor:not-allowed;filter:grayscale(100%);'}">🗑</button>` : ''}
                 <span class="ct" style="font-size:11.5px;opacity:.75;padding:1px 5px;border-radius:999px;background:rgba(11,58,91,.07);">${totalCount}</span>
               </div>
               ${!isCollapsed && hasChildren ? renderNodes(node.children, depth + 1) : ''}
@@ -1317,6 +1412,9 @@
     }
 
     const moveOpts = renderMoveOptions(currentNodeId);
+    const delRowStyle = V.edit
+      ? 'opacity:1;cursor:pointer;filter:none;'
+      : 'opacity:.35;cursor:not-allowed;filter:grayscale(100%);';
 
     return entries.map(({ row, idx }) => {
       const v = row.v;
@@ -1344,7 +1442,7 @@
                 <option value="">↗ Chuyển...</option>
                 ${moveOpts}
               </select>
-              <button type="button" class="btn-row-del" data-idx="${idx}" title="Xoá dòng">🗑</button>
+              <button type="button" ${trashBtnAttr('btn-row-del', `data-idx="${idx}"`, 'Xoá dòng', 'Bấm nút Chỉnh sửa để xoá dòng')} style="${delRowStyle}">🗑</button>
             </td>
           </tr>
         `;
@@ -1368,7 +1466,7 @@
               <option value="">↗ Chuyển...</option>
               ${moveOpts}
             </select>
-            <button type="button" class="btn-row-del" data-idx="${idx}" title="Xoá dòng">🗑</button>
+            <button type="button" ${trashBtnAttr('btn-row-del', `data-idx="${idx}"`, 'Xoá dòng', 'Bấm nút Chỉnh sửa để xoá dòng')} style="${delRowStyle}">🗑</button>
           </td>
         </tr>
       `;
@@ -1383,12 +1481,16 @@
         if (btnEdit) btnEdit.setAttribute('aria-pressed', 'true');
         const eb = $('#editbar');
         if (eb) eb.hidden = false;
-        renderMain();
+        render();
       });
     });
 
     $$('.btn-row-del', mainEl).forEach(btn => {
       btn.addEventListener('click', () => {
+        if (!V.edit) {
+          toast('Hãy bấm nút "Chỉnh sửa" để mở khoá nút xoá 🗑');
+          return;
+        }
         const idx = Number(btn.getAttribute('data-idx'));
         const rows = getRowsForNode(currentNodeId);
         if (!rows[idx]) return;
@@ -1462,11 +1564,16 @@
     const breadcrumb = currentEntry.pathNodes.map(n => n.label).join(' / ');
     const filtered = getFilteredRows(node.id);
     const syncInfo = getSyncStatusInfo();
+    const canDeleteCurrentFolder = isDeletableFolder(node.id);
 
     const srcFilterOpts = ['ALL', ...SRC_LIST].map(opt => {
       const label = opt === 'ALL' ? 'Tất cả nguồn' : opt;
       return `<option value="${esc(opt)}" ${V.sourceFilter === opt ? 'selected' : ''}>${esc(label)}</option>`;
     }).join('');
+
+    const delFolderBtnHtml = canDeleteCurrentFolder
+      ? `<button type="button" id="btnSheetDelFolder" ${trashBtnAttr('', '', `Xoá thư mục con "${node.label}"`, 'Bấm nút Chỉnh sửa để mở khoá xoá thư mục con')} style="${ACTION_BTN_STYLE.dangerFolder}${V.edit ? 'opacity:1;cursor:pointer;filter:none;' : 'opacity:.35;cursor:not-allowed;filter:grayscale(100%);'}">🗑 Xoá thư mục</button>`
+      : '';
 
     mainEl.innerHTML = `
       <div class="view-header" style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;">
@@ -1480,6 +1587,7 @@
           </select>
           <button type="button" id="btnSheetAddItem" style="${ACTION_BTN_STYLE.primary}">+ Thêm vật tư</button>
           <button type="button" id="btnSheetAddFolder" style="${ACTION_BTN_STYLE.folder}">＋ Tạo thư mục con</button>
+          ${delFolderBtnHtml}
           <button type="button" id="btnSheetOverview" style="${ACTION_BTN_STYLE.neutral}">🏠 Tổng quan</button>
         </div>
       </div>
@@ -1514,6 +1622,7 @@
 
     $('#btnSheetAddItem', mainEl)?.addEventListener('click', () => openAddItemModal(node.id));
     $('#btnSheetAddFolder', mainEl)?.addEventListener('click', () => createFolderUnder(node.id));
+    $('#btnSheetDelFolder', mainEl)?.addEventListener('click', () => deleteCustomFolder(node.id));
     $('#btnSheetOverview', mainEl)?.addEventListener('click', () => {
       V.route = { page: 'overview', id: null };
       render();
@@ -1550,6 +1659,9 @@
       } else if (remotePayload.slips && remotePayload.slips._customFolders && typeof remotePayload.slips._customFolders === 'object') {
         ST.customFolders = clone(remotePayload.slips._customFolders);
       }
+      if (remotePayload.deletedFolders && typeof remotePayload.deletedFolders === 'object') {
+        ST.deletedFolders = clone(remotePayload.deletedFolders);
+      }
       if (remotePayload.slips && typeof remotePayload.slips === 'object') {
         ST.slips = Object.assign({ xuat: [], nhap: [] }, clone(remotePayload.slips));
       }
@@ -1564,6 +1676,7 @@
       localStorage.setItem(LS('state'), JSON.stringify({
         ver: (DATA && DATA.meta && DATA.meta.version) || '',
         customFolders: customFoldersByParent,
+        deletedFolders: deletedFolders,
         sheets: ST.sheets,
         slips: ST.slips,
         dirty: ST.dirty,
@@ -1589,6 +1702,13 @@
     const sb = $('#sidebar');
     if (sb) {
       sb.addEventListener('click', e => {
+        const delFolderBtn = e.target.closest('[data-del-folder]');
+        if (delFolderBtn) {
+          e.stopPropagation();
+          deleteCustomFolder(delFolderBtn.getAttribute('data-del-folder'));
+          return;
+        }
+
         const toggleBtn = e.target.closest('[data-toggle-node]');
         if (toggleBtn) {
           e.stopPropagation();
@@ -1656,7 +1776,7 @@
         V.edit = !V.edit;
         btnEdit.setAttribute('aria-pressed', String(V.edit));
         if (editbar) editbar.hidden = !V.edit;
-        renderMain();
+        render();
       });
     }
 
@@ -1687,6 +1807,7 @@
         } else if (act === 'json-out') {
           const blob = new Blob([JSON.stringify({
             customFolders: customFoldersByParent,
+            deletedFolders: deletedFolders,
             sheets: ST.sheets,
             slips: ST.slips,
             updatedAt: ST.updatedAt || Date.now()
@@ -1741,6 +1862,7 @@
           try {
             const parsed = JSON.parse(String(reader.result || '{}'));
             if (parsed.customFolders) customFoldersByParent = clone(parsed.customFolders);
+            if (parsed.deletedFolders) deletedFolders = clone(parsed.deletedFolders);
             rebuildTreeIndex();
             initCollapsedState(true);
             if (Array.isArray(parsed.sheets)) {
@@ -1883,7 +2005,8 @@
     refresh: refreshFromSync,
     setData: setBaselineData,
     toast,
-    openAddItemModal
+    openAddItemModal,
+    deleteCustomFolder
   };
 
   if (document.readyState === 'loading') {
