@@ -468,21 +468,18 @@
   function loadState() {
     try {
       const saved = JSON.parse(localStorage.getItem(LS('state')) || 'null');
-      if (saved && Array.isArray(saved.sheets)) {
-        const metaVer = (DATA && DATA.meta && DATA.meta.version) || '';
-        if (!metaVer || saved.ver === metaVer) {
-          customFoldersByParent = saved.customFolders && typeof saved.customFolders === 'object' ? saved.customFolders : {};
-          rebuildTreeIndex();
-          initCollapsedState(true);
-          ensureIds(saved.sheets);
-          storeData = buildStoreFromSheets(saved.sheets);
-          syncSTFromStore();
-          ST.slips = saved.slips && typeof saved.slips === 'object'
-            ? Object.assign({ xuat: [], nhap: [] }, saved.slips)
-            : { xuat: [], nhap: [] };
-          ST.dirty = !!saved.dirty;
-          return;
-        }
+      if (saved && Array.isArray(saved.sheets) && saved.sheets.length > 0) {
+        customFoldersByParent = saved.customFolders && typeof saved.customFolders === 'object' ? saved.customFolders : {};
+        rebuildTreeIndex();
+        initCollapsedState(true);
+        ensureIds(saved.sheets);
+        storeData = buildStoreFromSheets(saved.sheets);
+        syncSTFromStore();
+        ST.slips = saved.slips && typeof saved.slips === 'object'
+          ? Object.assign({ xuat: [], nhap: [] }, saved.slips)
+          : { xuat: [], nhap: [] };
+        ST.dirty = !!saved.dirty;
+        return;
       }
     } catch (_) {}
 
@@ -1727,34 +1724,7 @@
     });
   }
 
-  function boot() {
-    try {
-      const tEl = $('#appTitle');
-      const sEl = $('#appSub');
-      if (tEl) tEl.textContent = CFG.title || 'Tài sản – Vật tư Truyền dẫn LAB';
-      if (sEl) sEl.textContent = CFG.subtitle || '';
-
-      if (window.APP_DATA && Array.isArray(window.APP_DATA.sheets)) {
-        DATA = window.APP_DATA;
-        window.LabApp.DATA = DATA;
-      }
-
-      loadState();
-      parseHash();
-      bindEvents();
-      render();
-    } catch (e) {
-      renderOverview($('#main') || document.body);
-      toast('Đã tải giao diện dự phòng', 3500);
-    } finally {
-      hideBoot();
-      if (window.Sync && typeof window.Sync.init === 'function') {
-        window.Sync.init(window.LabApp);
-      }
-    }
-  }
-
-  window.LabApp = {
+  const appApi = {
     ver: BUILD,
     CFG,
     DATA,
@@ -1773,6 +1743,35 @@
     toast,
     openAddItemModal
   };
+
+  window.LabApp = appApi;
+
+  function boot() {
+    try {
+      const tEl = $('#appTitle');
+      const sEl = $('#appSub');
+      if (tEl) tEl.textContent = CFG.title || 'Tài sản – Vật tư Truyền dẫn LAB';
+      if (sEl) sEl.textContent = CFG.subtitle || '';
+
+      if (window.APP_DATA && Array.isArray(window.APP_DATA.sheets)) {
+        DATA = window.APP_DATA;
+        appApi.DATA = DATA;
+      }
+
+      loadState();
+      parseHash();
+      bindEvents();
+      render();
+    } catch (e) {
+      renderOverview($('#main') || document.body);
+      toast('Đã tải giao diện dự phòng', 3500);
+    } finally {
+      hideBoot();
+      if (window.Sync && typeof window.Sync.init === 'function') {
+        window.Sync.init(appApi);
+      }
+    }
+  }
 
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', boot);
