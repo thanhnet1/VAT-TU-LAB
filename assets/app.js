@@ -439,9 +439,35 @@
     activeId: (flatNodes[0] && flatNodes[0].node.id) || null,
     edit: false,
     query: '',
+    folderQuery: '',
     sourceFilter: 'ALL',
     treeCollapsed: {}
   };
+
+  function getActiveSearchQuery() {
+    if (V.route.page === 'sheet') {
+      return (V.folderQuery && V.folderQuery.trim())
+        ? V.folderQuery
+        : (V.query || '');
+    }
+    return V.query || '';
+  }
+
+  function syncSearchInputs() {
+    const gq = $('#gq');
+    const gqClear = $('#gqClear');
+    if (V.route.page === 'sheet') {
+      const q = V.folderQuery || '';
+      if (gq && gq.value !== q) gq.value = q;
+      if (gq) gq.placeholder = 'Tìm trong thư mục này…';
+      if (gqClear) gqClear.hidden = !q;
+    } else {
+      const q = V.query || '';
+      if (gq && gq.value !== q) gq.value = q;
+      if (gq) gq.placeholder = 'Tìm tất cả vật tư, serial, part number…';
+      if (gqClear) gqClear.hidden = !q;
+    }
+  }
 
   function syncPublicHandles() {
     if (window.LabApp) {
@@ -626,7 +652,8 @@
 
   function getFilteredRows(nodeId) {
     const rows = getRowsForNode(nodeId);
-    const qTokens = tokensOf(V.query);
+    const q = (V.folderQuery && V.folderQuery.trim()) ? V.folderQuery : (V.query || '');
+    const qTokens = tokensOf(q);
     return rows
       .map((row, idx) => ({ row: normalizeRow(row, idx, CFG.defaultSource, STANDARD_COLS, nodeId), idx }))
       .filter(item => matchesRow(item.row, qTokens, V.sourceFilter));
@@ -1190,7 +1217,7 @@
       <div class="view-header" style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px;">
         <div>
           <div style="font-size:12px;opacity:.7;">Tìm kiếm toàn bộ danh mục tại Trang chủ</div>
-          <h2 style="margin:2px 0 0;font-size:20px;">🔍 Kết quả tìm kiếm: "${esc(V.query)}" <small style="font-weight:400;opacity:.7;">(${results.length} dòng)</small></h2>
+          <h2 style="margin:2px 0 0;font-size:20px;">🔍 Kết quả tìm kiếm toàn bộ: "${esc(V.query)}" <small style="font-weight:400;opacity:.7;">(${results.length} dòng)</small></h2>
         </div>
         <div style="display:flex;flex-wrap:wrap;gap:8px;">
           <button type="button" id="btnAddItemSearch" style="${ACTION_BTN_STYLE.primary}">+ Thêm vật tư</button>
@@ -1219,16 +1246,14 @@
     $('#btnAddItemSearch', mainEl)?.addEventListener('click', () => openAddItemModal(V.activeId));
     $('#btnBackOverview', mainEl)?.addEventListener('click', () => {
       V.query = '';
-      const gq = $('#gq');
-      const gqClear = $('#gqClear');
-      if (gq) gq.value = '';
-      if (gqClear) gqClear.hidden = true;
+      syncSearchInputs();
       V.route = { page: 'overview', id: null };
       render();
     });
     $$('[data-jump-folder]', mainEl).forEach(btn => {
       btn.addEventListener('click', () => {
         V.activeId = btn.getAttribute('data-jump-folder');
+        V.folderQuery = '';
         expandAncestorsOf(V.activeId);
         V.route = { page: 'sheet', id: V.activeId };
         render();
@@ -1358,6 +1383,7 @@
     $$('[data-open-node]', mainEl).forEach(btn => {
       btn.addEventListener('click', () => {
         V.activeId = btn.getAttribute('data-open-node');
+        V.folderQuery = '';
         expandAncestorsOf(V.activeId);
         V.route = { page: 'sheet', id: V.activeId };
         render();
@@ -1544,6 +1570,8 @@
     const mainEl = $('#main');
     if (!mainEl) return;
 
+    syncSearchInputs();
+
     if (V.route.page === 'overview') {
       if (V.query && V.query.trim()) {
         renderGlobalSearchView(mainEl);
@@ -1562,9 +1590,11 @@
 
     const node = currentEntry.node;
     const breadcrumb = currentEntry.pathNodes.map(n => n.label).join(' / ');
+    const allFolderRowsCount = getRowsForNode(node.id).length;
     const filtered = getFilteredRows(node.id);
     const syncInfo = getSyncStatusInfo();
     const canDeleteCurrentFolder = isDeletableFolder(node.id);
+    const currentFolderSearch = (V.folderQuery && V.folderQuery.trim()) ? V.folderQuery : (V.query || '');
 
     const srcFilterOpts = ['ALL', ...SRC_LIST].map(opt => {
       const label = opt === 'ALL' ? 'Tất cả nguồn' : opt;
@@ -1579,9 +1609,14 @@
       <div class="view-header" style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;">
         <div>
           <div style="font-size:12px;opacity:.75;">${esc(breadcrumb)} · ☁ ${esc(syncInfo.syncText)} (${esc(syncInfo.accountLabel)})</div>
-          <h2 style="margin:2px 0 0;font-size:20px;">${esc(node.icon || '📄')} ${esc(node.label)} <small style="font-weight:400;opacity:.7;">(${filtered.length} dòng)</small></h2>
+          <h2 style="margin:2px 0 0;font-size:20px;">${esc(node.icon || '📄')} ${esc(node.label)} <small style="font-weight:400;opacity:.7;">(${filtered.length}/${allFolderRowsCount} dòng trong thư mục)</small></h2>
         </div>
         <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;">
+          <div style="display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:7px;border:1px solid #cbd5e1;background:#ffffff;">
+            <span aria-hidden="true">🔎</span>
+            <input id="folderSearchInput" type="search" value="${esc(currentFolderSearch)}" placeholder="Tìm chỉ trong ${esc(node.label)}…" autocomplete="off" style="border:0;outline:none;background:transparent;font-size:12.5px;min-width:150px;max-width:210px;color:#0f172a;">
+            ${currentFolderSearch ? `<button type="button" id="btnClearFolderSearch" title="Xoá từ khoá trong thư mục" style="border:0;background:transparent;cursor:pointer;font-size:12px;opacity:.7;padding:0 2px;">✕</button>` : ''}
+          </div>
           <select id="selSourceFilter" aria-label="Lọc theo nguồn" style="padding:7px 10px;border-radius:7px;border:1px solid #cbd5e1;background:#ffffff;color:#1e293b;font-size:13px;font-weight:600;cursor:pointer;">
             ${srcFilterOpts}
           </select>
@@ -1615,6 +1650,22 @@
       </div>
     `;
 
+    const folderInp = $('#folderSearchInput', mainEl);
+    if (folderInp) {
+      folderInp.addEventListener('input', () => {
+        V.folderQuery = folderInp.value || '';
+        V.query = V.folderQuery;
+        syncSearchInputs();
+        renderMain();
+      });
+    }
+    $('#btnClearFolderSearch', mainEl)?.addEventListener('click', () => {
+      V.folderQuery = '';
+      V.query = '';
+      syncSearchInputs();
+      renderMain();
+    });
+
     $('#selSourceFilter', mainEl)?.addEventListener('change', e => {
       V.sourceFilter = e.target.value || 'ALL';
       renderMain();
@@ -1624,6 +1675,7 @@
     $('#btnSheetAddFolder', mainEl)?.addEventListener('click', () => createFolderUnder(node.id));
     $('#btnSheetDelFolder', mainEl)?.addEventListener('click', () => deleteCustomFolder(node.id));
     $('#btnSheetOverview', mainEl)?.addEventListener('click', () => {
+      V.folderQuery = '';
       V.route = { page: 'overview', id: null };
       render();
     });
@@ -1633,6 +1685,7 @@
         const targetId = btn.getAttribute('data-h-node');
         if (targetId && nodeById.has(targetId)) {
           V.activeId = targetId;
+          V.folderQuery = '';
           expandAncestorsOf(targetId);
           V.route = { page: 'sheet', id: targetId };
           render();
@@ -1645,6 +1698,7 @@
 
   function render() {
     syncPublicHandles();
+    syncSearchInputs();
     renderSidebar();
     renderMain();
   }
@@ -1720,6 +1774,7 @@
 
         const goOv = e.target.closest('[data-go-overview]');
         if (goOv) {
+          V.folderQuery = '';
           V.route = { page: 'overview', id: null };
           render();
           closeMobileSidebar();
@@ -1742,6 +1797,7 @@
               V.treeCollapsed[nid] = !V.treeCollapsed[nid];
             }
             V.activeId = nid;
+            V.folderQuery = '';
             expandAncestorsOf(nid);
             V.route = { page: 'sheet', id: nid };
             render();
@@ -1755,13 +1811,23 @@
     const gqClear = $('#gqClear');
     if (gq) {
       gq.addEventListener('input', () => {
-        V.query = gq.value || '';
-        if (gqClear) gqClear.hidden = !V.query;
+        const val = gq.value || '';
+        if (V.route.page === 'sheet') {
+          V.folderQuery = val;
+          V.query = val;
+        } else {
+          V.query = val;
+          V.folderQuery = '';
+        }
+        if (gqClear) gqClear.hidden = !val;
         renderMain();
       });
     }
     if (gqClear) {
       gqClear.addEventListener('click', () => {
+        if (V.route.page === 'sheet') {
+          V.folderQuery = '';
+        }
         V.query = '';
         if (gq) gq.value = '';
         gqClear.hidden = true;
@@ -2006,7 +2072,8 @@
     setData: setBaselineData,
     toast,
     openAddItemModal,
-    deleteCustomFolder
+    deleteCustomFolder,
+    getActiveSearchQuery
   };
 
   if (document.readyState === 'loading') {
