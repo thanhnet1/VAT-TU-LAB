@@ -1,6 +1,6 @@
 /* =====================================================================
    assets/app.js – VẬT TƯ – TÀI SẢN
-   - Cây thư mục chuẩn, thu gọn mặc định; VT-TS điều chuyển cùng cấp Tài sản
+   - Cây thư mục chuẩn, thu gọn mặc định; "VT-TS điều chuyển" nằm cùng cấp "Tài sản"
    - Đồng bộ dữ liệu hai chiều mượt mà trên nhiều thiết bị (qua Sync)
    - Tổng quan thống kê + màu phân biệt trạng thái + trạng thái đồng bộ
    - Tìm kiếm toàn bộ tại Trang chủ, tìm trong thư mục tại từng thư mục
@@ -35,39 +35,6 @@
     treeMenu: []
   }, window.APP_CONFIG || {});
 
-  function createTransferNode() {
-    return {
-      id: TRANSFER_FOLDER_ID,
-      label: TRANSFER_FOLDER_LABEL,
-      icon: '🚚',
-      children: [],
-      allowCreate: false,
-      matchKeywords: ['vt-ts dieu chuyen', 'dieu chuyen', 'bbbg', 'pxk', 'ban giao']
-    };
-  }
-
-  function normalizeTransferInTree(nodes = []) {
-    const clean = (list) => {
-      if (!Array.isArray(list)) return [];
-      return list
-        .filter(n => n && n.id !== TRANSFER_FOLDER_ID)
-        .map(n => Object.assign({}, n, {
-          children: Array.isArray(n.children) ? clean(n.children) : []
-        }));
-    };
-    const out = clean(nodes);
-    const assetIdx = out.findIndex(n => n.id === 'tai-san');
-    const transferNode = createTransferNode();
-    if (assetIdx >= 0) {
-      out.splice(assetIdx + 1, 0, transferNode);
-    } else {
-      out.push(transferNode);
-    }
-    return out;
-  }
-
-  CFG.treeMenu = normalizeTransferInTree(CFG.treeMenu);
-
   const SRC_LIST = Array.isArray(CFG.sourceOptions) && CFG.sourceOptions.length
     ? CFG.sourceOptions
     : SOURCE_OPTIONS;
@@ -97,11 +64,11 @@
     PXK: 'background:#ffedd5;color:#9a3412;border-color:#fdba74;'
   };
 
-  const BTN = {
+  const BTN_STYLE = {
     primary: 'padding:6px 11px;border-radius:7px;border:1px solid #0b3a5b;background:#0b3a5b;color:#ffffff;font-size:12.5px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:5px;box-shadow:0 1px 2px rgba(11,58,91,.18);',
     folder: 'padding:6px 11px;border-radius:7px;border:1px solid #0284c7;background:#e0f2fe;color:#0369a1;font-size:12.5px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:5px;',
     transfer: 'padding:6px 11px;border-radius:7px;border:1px solid #7c3aed;background:#f5f3ff;color:#5b21b6;font-size:12.5px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:5px;',
-    danger: 'padding:6px 11px;border-radius:7px;border:1px solid #dc2626;background:#fef2f2;color:#b91c1c;font-size:12.5px;font-weight:600;display:inline-flex;align-items:center;gap:5px;',
+    dangerFolder: 'padding:6px 11px;border-radius:7px;border:1px solid #dc2626;background:#fef2f2;color:#b91c1c;font-size:12.5px;font-weight:600;display:inline-flex;align-items:center;gap:5px;',
     sync: 'padding:6px 11px;border-radius:7px;border:1px solid #0d9488;background:#f0fdfa;color:#0f766e;font-size:12.5px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:5px;',
     exportBtn: 'padding:6px 11px;border-radius:7px;border:1px solid #16a34a;background:#f0fdf4;color:#15803d;font-size:12.5px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:5px;',
     neutral: 'padding:6px 11px;border-radius:7px;border:1px solid #cbd5e1;background:#ffffff;color:#1e293b;font-size:12.5px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:5px;'
@@ -128,6 +95,10 @@
     .toLowerCase();
 
   const tokensOf = q => fold(q).trim().split(/\s+/).filter(Boolean);
+  const isLeafNode = node => !node || !Array.isArray(node.children) || node.children.length === 0;
+
+  const btnHtml = (id, variant, text, extraStyle = '') =>
+    `<button type="button"${id ? ` id="${esc(id)}"` : ''} style="${BTN_STYLE[variant] || BTN_STYLE.neutral}${extraStyle}">${text}</button>`;
 
   const bgOf = hex => {
     const clean = String(hex || '').replace(/^#/, '');
@@ -162,25 +133,17 @@
   function getSyncStatusInfo() {
     const role = localStorage.getItem('lab_user_role') || localStorage.getItem('sync_role') || '';
     const username = localStorage.getItem('lab_username') || localStorage.getItem('sync_user') || '';
-    const accountLabel = username
-      ? `${username}${role ? ' (' + role + ')' : ''}`
-      : 'Tự động đồng bộ';
-
+    const accountLabel = username ? `${username}${role ? ' (' + role + ')' : ''}` : 'Tự động đồng bộ';
     const btnSync = $('#btnSync');
     const isConnected = !!(btnSync && !btnSync.classList.contains('sync-off') && !btnSync.classList.contains('sync-login'));
     const syncText = btnSync && btnSync.querySelector('span')
       ? btnSync.querySelector('span').textContent.trim()
       : (isConnected ? 'Đã đồng bộ' : 'Đang kết nối');
-
     return { accountLabel, role, syncText, isConnected };
   }
 
   function sanitizeSheetName(name, usedNames) {
-    const base = String(name || 'Sheet')
-      .replace(/[\\/?*[\]:]/g, ' ')
-      .replace(/\s+/g, ' ')
-      .trim()
-      .slice(0, 31) || 'Sheet';
+    const base = String(name || 'Sheet').replace(/[\\/?*[\]:]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 31) || 'Sheet';
     let candidate = base;
     let idx = 2;
     while (usedNames.has(candidate.toLowerCase())) {
@@ -212,12 +175,7 @@
   function normalizeStatus(val) {
     if (!val) return '';
     const raw = String(val).trim().toUpperCase();
-    if (raw === 'BBBG' || raw === 'PXK') return raw;
-    return String(val).trim();
-  }
-
-  function badgeHtml(text, styleStr) {
-    return `<span style="display:inline-block;padding:2px 7px;border-radius:999px;font-size:12px;font-weight:600;border:1px solid;${styleStr}">${esc(text)}</span>`;
+    return (raw === 'BBBG' || raw === 'PXK') ? raw : String(val).trim();
   }
 
   let uidN = 0;
@@ -264,9 +222,8 @@
         if (cell) extraNotes.push(cell);
       }
       ghiChu = extraNotes.join(' | ');
-
-      const ctx = `${tenVT} ${ghiChu} ${sheetId === 'vt-do-kiem' ? 'do kiem' : ''} ${sheetId === 'khong-ro-ng' ? 'khong ro' : ''}`;
-      src = r.src ? normalizeSource(r.src, fallbackSrc) : inferSourceFromRow(ctx, fallbackSrc);
+      const rowContext = `${tenVT} ${ghiChu} ${sheetId === 'vt-do-kiem' ? 'do kiem' : ''} ${sheetId === 'khong-ro-ng' ? 'khong ro' : ''}`;
+      src = r.src ? normalizeSource(r.src, fallbackSrc) : inferSourceFromRow(rowContext, fallbackSrc);
     } else {
       stt = String(v[0] ?? (index + 1));
       tenVT = String(v[2] ?? '');
@@ -285,17 +242,48 @@
     });
   }
 
+  function buildSingleTransferRoot() {
+    return {
+      id: TRANSFER_FOLDER_ID,
+      label: TRANSFER_FOLDER_LABEL,
+      icon: '🚚',
+      isDynamicGroup: true,
+      allowCreate: false,
+      children: [],
+      matchKeywords: ['vt-ts dieu chuyen', 'dieu chuyen', 'bbbg', 'pxk', 'ban giao']
+    };
+  }
+
+  function stripTransferFolderDeep(nodes = []) {
+    return (Array.isArray(nodes) ? nodes : [])
+      .filter(n => n && n.id !== TRANSFER_FOLDER_ID)
+      .map(n => Object.assign({}, n, {
+        children: Array.isArray(n.children) ? stripTransferFolderDeep(n.children) : []
+      }));
+  }
+
+  function insertTransferNextToAsset(nodes = []) {
+    const cleaned = stripTransferFolderDeep(nodes);
+    const transferNode = buildSingleTransferRoot();
+    const assetIdx = cleaned.findIndex(n => n && (n.id === 'tai-san' || fold(n.label).includes('tai san')));
+    if (assetIdx >= 0) {
+      cleaned.splice(assetIdx + 1, 0, transferNode);
+    } else {
+      cleaned.push(transferNode);
+    }
+    return cleaned;
+  }
+
+  CFG.treeMenu = insertTransferNextToAsset(CFG.treeMenu);
+
   function cloneTreeWithCustomFolders(nodes = [], customMap = {}) {
-    return normalizeTransferInTree(nodes).map(node => {
-      if (node.id === TRANSFER_FOLDER_ID) {
-        return Object.assign({}, node, { children: [], allowCreate: false });
-      }
+    const mapped = (Array.isArray(nodes) ? nodes : []).map(node => {
+      if (node.id === TRANSFER_FOLDER_ID) return buildSingleTransferRoot();
       const children = Array.isArray(node.children) ? cloneTreeWithCustomFolders(node.children, customMap) : [];
-      const extra = Array.isArray(customMap[node.id]) ? customMap[node.id] : [];
-      return Object.assign({}, node, {
-        children: [...children, ...extra]
-      });
+      const extra = Array.isArray(customMap[node.id]) ? customMap[node.id].filter(x => x && x.id !== TRANSFER_FOLDER_ID) : [];
+      return Object.assign({}, node, { children: [...children, ...extra] });
     });
+    return insertTransferNextToAsset(mapped);
   }
 
   function flattenTree(nodes = [], parentId = null, ancestors = []) {
@@ -336,9 +324,7 @@
 
   function trashBtnAttr(extraClass = '', attrs = '', titleWhenActive = 'Xoá', titleWhenLocked = 'Bấm nút Chỉnh sửa để mở khoá xoá') {
     const title = V.edit ? titleWhenActive : titleWhenLocked;
-    const style = V.edit
-      ? 'opacity:1;cursor:pointer;filter:none;'
-      : 'opacity:.35;cursor:not-allowed;filter:grayscale(100%);';
+    const style = V.edit ? 'opacity:1;cursor:pointer;filter:none;' : 'opacity:.35;cursor:not-allowed;filter:grayscale(100%);';
     return `class="${extraClass}" ${attrs} title="${esc(title)}" aria-disabled="${V.edit ? 'false' : 'true'}" style="${style}"`;
   }
 
@@ -403,44 +389,40 @@
     if (blob.includes('ericson') || blob.includes('ericsson') || blob.includes('ribbon') || blob.includes('3255') || blob.includes('mhl3000')) {
       return 'ribbon-ericson';
     }
-    if (blob.includes('vsat') || blob.includes('skyedge') || blob.includes('lnb') || blob.includes('buc') || blob.includes('soundwin')) {
-      return 'thiet-bi-vsat';
-    }
-    if (blob.includes('radio') || blob.includes('rrus') || blob.includes('baseband') || blob.includes('vo tuyen')) {
-      return 'thiet-bi-vo-tuyen';
-    }
+    if (blob.includes('vsat') || blob.includes('skyedge') || blob.includes('lnb') || blob.includes('buc') || blob.includes('soundwin')) return 'thiet-bi-vsat';
+    if (blob.includes('radio') || blob.includes('rrus') || blob.includes('baseband') || blob.includes('vo tuyen')) return 'thiet-bi-vo-tuyen';
     if (blob.includes('asr9010') || blob.includes('asr 9010') || blob.includes('mx2008') || blob.includes('mx2000') || blob.includes('mx960') || blob.includes('ne40e') || blob.includes('a9k-') || blob.includes('a99-') || blob.includes('router') || blob.includes('switch')) {
       return 'thiet-bi-ip';
     }
-    if (blob.includes('ko ro nguon') || blob.includes('khong ro nguon')) {
-      return 'vat-tu-khong-ro-nguon-goc';
-    }
+    if (blob.includes('ko ro nguon') || blob.includes('khong ro nguon')) return 'vat-tu-khong-ro-nguon-goc';
 
     if (fallbackNodeId && nodeById.has(fallbackNodeId)) return fallbackNodeId;
     if (sheetId === 'trang-tinh14') return 'vat-tu-sua-chua';
     if (sheetId === 'vt-do-kiem') return 'vat-tu-do-luong';
-    if (sheetId === 'khong-ro-ng' || sheetId === 'hang-ton-kho' || sheetId === 'ton-kho-xvt-26-10-2026') {
-      return 'vat-tu-khong-ro-nguon-goc';
-    }
+    if (sheetId === 'khong-ro-ng' || sheetId === 'hang-ton-kho' || sheetId === 'ton-kho-xvt-26-10-2026') return 'vat-tu-khong-ro-nguon-goc';
     if (rowNorm.src === 'Tài sản') return 'tai-san';
     return flatNodes[0] ? flatNodes[0].node.id : 'truyen-dan-thiet-bi';
+  }
+
+  function dedupeRowArray(rows, cols, sheetId, seenSet = new Set()) {
+    const out = [];
+    (Array.isArray(rows) ? rows : []).forEach((r, idx) => {
+      const norm = normalizeRow(r, out.length, CFG.defaultSource, cols, sheetId);
+      const key = norm.i || `${sheetId}:row:${idx + 1}`;
+      if (seenSet.has(key)) return;
+      seenSet.add(key);
+      norm.i = key;
+      norm.r = out.length + 1;
+      norm.v[1] = String(out.length + 1);
+      out.push(norm);
+    });
+    return out;
   }
 
   function buildSheetsFromStore(storeMap) {
     return flatNodes.map((entry, idx) => {
       const n = entry.node;
-      const seenIds = new Set();
-      const rows = [];
-      for (const r of (Array.isArray(storeMap[n.id]) ? storeMap[n.id] : [])) {
-        const norm = normalizeRow(r, rows.length, CFG.defaultSource, STANDARD_COLS, n.id);
-        const key = norm.i || `${n.id}:row:${rows.length + 1}`;
-        if (seenIds.has(key)) continue;
-        seenIds.add(key);
-        norm.i = key;
-        norm.r = rows.length + 1;
-        norm.v[1] = String(rows.length + 1);
-        rows.push(norm);
-      }
+      const rows = dedupeRowArray(storeMap[n.id], STANDARD_COLS, n.id);
       return {
         id: n.id,
         name: CFG.sheetLabels[n.id] || n.label,
@@ -454,34 +436,27 @@
   function buildStoreFromSheets(sheets) {
     const store = {};
     for (const item of flatNodes) store[item.node.id] = [];
-    const seenGlobalIds = new Set();
+    const seenGlobal = new Set();
 
     if (Array.isArray(sheets)) {
       for (const sh of sheets) {
         const shTarget = resolveTargetNodeId(sh.id) || resolveTargetNodeId(sh.name);
-        const blocks = Array.isArray(sh.blocks) ? sh.blocks : [];
-        for (const blk of blocks) {
+        for (const blk of (Array.isArray(sh.blocks) ? sh.blocks : [])) {
           const blkTarget = (CFG.splitTablesByTitle ? resolveTargetNodeId(blk.title) : null) || shTarget;
-          for (const [idx, r] of (Array.isArray(blk.rows) ? blk.rows : []).entries()) {
+          (Array.isArray(blk.rows) ? blk.rows : []).forEach((r, idx) => {
             const norm = normalizeRow(r, idx, CFG.defaultSource, blk.cols, sh.id);
             const destId = classifyRowTarget(sh.id, blk.title, norm, blkTarget);
-            if (!store[destId]) continue;
-            const uniqueKey = norm.i || `${destId}:${idx}:${fold(norm.v.slice(2, 7).join('|'))}`;
-            if (seenGlobalIds.has(uniqueKey)) continue;
-            seenGlobalIds.add(uniqueKey);
-            norm.i = uniqueKey;
+            if (!store[destId]) return;
+            const key = norm.i || `${destId}:${idx}:${fold(norm.v.slice(2, 7).join('|'))}`;
+            if (seenGlobal.has(key)) return;
+            seenGlobal.add(key);
+            norm.i = key;
+            norm.r = store[destId].length + 1;
+            norm.v[1] = String(norm.r);
             store[destId].push(norm);
-          }
+          });
         }
       }
-    }
-
-    for (const id of Object.keys(store)) {
-      store[id].forEach((r, idx) => {
-        if (!r.i) r.i = `${id}:0:${idx + 1}`;
-        r.r = idx + 1;
-        r.v[1] = String(idx + 1);
-      });
     }
     return store;
   }
@@ -508,10 +483,11 @@
   function syncSearchInputs() {
     const gq = $('#gq');
     const gqClear = $('#gqClear');
-    const isSheet = V.route.page === 'sheet';
-    const q = isSheet ? (V.folderQuery || '') : (V.query || '');
-    if (gq && gq.value !== q) gq.value = q;
-    if (gq) gq.placeholder = isSheet ? 'Tìm trong thư mục này…' : 'Tìm tất cả vật tư, serial, part number…';
+    const q = V.route.page === 'sheet' ? (V.folderQuery || '') : (V.query || '');
+    if (gq) {
+      if (gq.value !== q) gq.value = q;
+      gq.placeholder = V.route.page === 'sheet' ? 'Tìm trong thư mục này…' : 'Tìm tất cả vật tư, serial, part number…';
+    }
     if (gqClear) gqClear.hidden = !q;
   }
 
@@ -527,8 +503,9 @@
     const next = {};
     for (const entry of flatNodes) {
       const n = entry.node;
-      const isFolder = (Array.isArray(n.children) && n.children.length > 0) || n.allowCreate;
-      if (isFolder && collapseAll) next[n.id] = true;
+      if (((Array.isArray(n.children) && n.children.length > 0) || n.allowCreate) && collapseAll) {
+        next[n.id] = true;
+      }
     }
     V.treeCollapsed = next;
   }
@@ -536,7 +513,7 @@
   function expandAncestorsOf(nodeId) {
     const entry = nodeById.get(nodeId);
     if (!entry) return;
-    for (const anc of entry.ancestors) delete V.treeCollapsed[anc.id];
+    entry.ancestors.forEach(anc => { delete V.treeCollapsed[anc.id]; });
   }
 
   function syncSTFromStore() {
@@ -547,6 +524,18 @@
     syncPublicHandles();
   }
 
+  function ensureIds(sheets) {
+    if (!Array.isArray(sheets)) return;
+    const seen = new Set();
+    sheets.forEach(s => Array.isArray(s.blocks) && s.blocks.forEach((b, bi) => {
+      if (!Array.isArray(b.cols) || !b.cols.length) b.cols = STANDARD_COLS.slice();
+      b.rows = dedupeRowArray(b.rows, b.cols, s.id, seen);
+      b.rows.forEach((r, ri) => {
+        if (!r.i) r.i = r.r ? `${s.id}:${bi}:${r.r}` : 'u' + uid();
+      });
+    }));
+  }
+
   function syncStoreFromST() {
     if (ST && ST.customFolders && typeof ST.customFolders === 'object') customFoldersByParent = clone(ST.customFolders);
     if (ST && ST.deletedFolders && typeof ST.deletedFolders === 'object') deletedFolders = clone(ST.deletedFolders);
@@ -555,24 +544,6 @@
     storeData = buildStoreFromSheets(ST.sheets || []);
     ST.sheets = buildSheetsFromStore(storeData);
     syncPublicHandles();
-  }
-
-  function ensureIds(sheets) {
-    if (!Array.isArray(sheets)) return;
-    const seen = new Set();
-    sheets.forEach(s => Array.isArray(s.blocks) && s.blocks.forEach((b, bi) => {
-      if (!Array.isArray(b.cols) || !b.cols.length) b.cols = STANDARD_COLS.slice();
-      const uniqueRows = [];
-      (b.rows || []).forEach((r, ri) => {
-        const norm = normalizeRow(r, uniqueRows.length, CFG.defaultSource, b.cols, s.id);
-        const idKey = norm.i || (norm.r ? `${s.id}:${bi}:${norm.r}` : `${s.id}:${bi}:idx:${ri}`);
-        if (seen.has(idKey)) return;
-        seen.add(idKey);
-        norm.i = idKey;
-        uniqueRows.push(norm);
-      });
-      b.rows = uniqueRows;
-    }));
   }
 
   function hydrateFromBaseline(preserveCollapsed = true) {
@@ -604,9 +575,7 @@
             : ((saved.slips && saved.slips._customFolders && typeof saved.slips._customFolders === 'object')
               ? clone(saved.slips._customFolders)
               : {});
-          deletedFolders = (saved.deletedFolders && typeof saved.deletedFolders === 'object')
-            ? clone(saved.deletedFolders)
-            : {};
+          deletedFolders = (saved.deletedFolders && typeof saved.deletedFolders === 'object') ? clone(saved.deletedFolders) : {};
           rebuildTreeIndex();
           initCollapsedState(true);
           ensureIds(saved.sheets);
@@ -633,7 +602,7 @@
       localStorage.setItem(LS('state'), JSON.stringify({
         ver: (DATA && DATA.meta && DATA.meta.version) || '',
         customFolders: customFoldersByParent,
-        deletedFolders,
+        deletedFolders: deletedFolders,
         sheets: ST.sheets,
         slips: ST.slips,
         dirty: ST.dirty,
@@ -704,7 +673,7 @@
     const results = [];
     for (const entry of flatNodes) {
       const n = entry.node;
-      if (Array.isArray(n.children) && n.children.length > 0) continue;
+      if (!isLeafNode(n)) continue;
       getRowsForNode(n.id).forEach((r, idx) => {
         const norm = normalizeRow(r, idx, CFG.defaultSource, STANDARD_COLS, n.id);
         if (matchesRow(norm, qTokens, V.sourceFilter)) {
@@ -723,35 +692,35 @@
   }
 
   function collectCatalogLookups() {
-    const sets = { maVT: new Set(), tenVT: new Set(), serial: new Set(), partNo: new Set() };
+    const sets = { ma: new Set(), ten: new Set(), ser: new Set(), part: new Set() };
     const catalogItems = [];
 
     for (const entry of flatNodes) {
-      const n = entry.node;
-      if (Array.isArray(n.children) && n.children.length > 0) continue;
-      getRowsForNode(n.id).forEach((r, idx) => {
-        const v = normalizeRow(r, idx, CFG.defaultSource, STANDARD_COLS, n.id).v || [];
-        const item = {
-          tenVT: String(v[2] || '').trim(),
-          serial: String(v[3] || '').trim(),
-          maVT: String(v[4] || '').trim(),
-          partNo: String(v[5] || '').trim(),
-          ghiChu: String(v[6] || '').trim()
-        };
-        if (item.maVT) sets.maVT.add(item.maVT);
-        if (item.tenVT) sets.tenVT.add(item.tenVT);
-        if (item.serial) sets.serial.add(item.serial);
-        if (item.partNo) sets.partNo.add(item.partNo);
-        if (item.maVT || item.tenVT || item.serial || item.partNo) catalogItems.push(item);
+      if (!isLeafNode(entry.node)) continue;
+      getRowsForNode(entry.node.id).forEach((r, idx) => {
+        const norm = normalizeRow(r, idx, CFG.defaultSource, STANDARD_COLS, entry.node.id);
+        const v = norm.v || [];
+        const ten = String(v[2] || '').trim();
+        const ser = String(v[3] || '').trim();
+        const ma = String(v[4] || '').trim();
+        const part = String(v[5] || '').trim();
+        const note = String(v[6] || '').trim();
+        if (ma) sets.ma.add(ma);
+        if (ten) sets.ten.add(ten);
+        if (ser) sets.ser.add(ser);
+        if (part) sets.part.add(part);
+        if (ma || ten || ser || part) {
+          catalogItems.push({ src: norm.src, tenVT: ten, serial: ser, maVT: ma, partNo: part, ghiChu: note });
+        }
       });
     }
 
     const sortVi = s => Array.from(s).sort((a, b) => a.localeCompare(b, 'vi'));
     return {
-      maVTList: sortVi(sets.maVT),
-      tenVTList: sortVi(sets.tenVT),
-      serialList: sortVi(sets.serial),
-      partNoList: sortVi(sets.partNo),
+      maVTList: sortVi(sets.ma),
+      tenVTList: sortVi(sets.ten),
+      serialList: sortVi(sets.ser),
+      partNoList: sortVi(sets.part),
       catalogItems
     };
   }
@@ -762,24 +731,16 @@
     const rows = getRowsForNode(targetNodeId);
     const src = normalizeSource(payload.src || (V.sourceFilter !== 'ALL' ? V.sourceFilter : CFG.defaultSource), CFG.defaultSource);
     const status = normalizeStatus(payload.status || (targetNodeId === TRANSFER_FOLDER_ID ? 'BBBG' : ''));
-    rows.push(normalizeRow({
+    const newRow = normalizeRow({
       i: 'u' + uid(),
       ct: Date.now(),
       ut: Date.now(),
       src,
       status,
-      v: [
-        src,
-        String(rows.length + 1),
-        String(payload.tenVT || '').trim(),
-        String(payload.serial || '').trim(),
-        String(payload.maVT || '').trim(),
-        String(payload.partNo || '').trim(),
-        String(payload.ghiChu || '').trim(),
-        status
-      ]
-    }, rows.length, src, STANDARD_COLS, targetNodeId));
+      v: [src, String(rows.length + 1), String(payload.tenVT || '').trim(), String(payload.serial || '').trim(), String(payload.maVT || '').trim(), String(payload.partNo || '').trim(), String(payload.ghiChu || '').trim(), status]
+    }, rows.length, src, STANDARD_COLS, targetNodeId);
 
+    rows.push(newRow);
     persist();
     render();
     toast('Đã thêm vật tư vào danh mục');
@@ -793,31 +754,23 @@
       document.body.appendChild(host);
     }
 
-    const leafEntries = flatNodes.filter(e => !Array.isArray(e.node.children) || e.node.children.length === 0);
-    const chosenId = defaultNodeId && nodeById.has(defaultNodeId)
-      ? defaultNodeId
-      : (leafEntries[0] && leafEntries[0].node.id) || '';
-
-    const folderOpts = leafEntries.map(e =>
-      `<option value="${esc(e.node.id)}" ${e.node.id === chosenId ? 'selected' : ''}>${esc(e.pathNodes.map(x => x.label).join(' / '))}</option>`
-    ).join('');
-
+    const leafEntries = flatNodes.filter(e => isLeafNode(e.node));
+    const chosenId = defaultNodeId && nodeById.has(defaultNodeId) ? defaultNodeId : (leafEntries[0] && leafEntries[0].node.id) || '';
+    const folderOpts = leafEntries.map(e => `<option value="${esc(e.node.id)}" ${e.node.id === chosenId ? 'selected' : ''}>${esc(e.pathNodes.map(x => x.label).join(' / '))}</option>`).join('');
     const defaultSrc = V.sourceFilter !== 'ALL' ? V.sourceFilter : CFG.defaultSource;
     const srcOpts = SRC_LIST.map(s => `<option value="${esc(s)}" ${s === defaultSrc ? 'selected' : ''}>${esc(s)}</option>`).join('');
     const statusOpts = STATUS_OPTIONS.map(st => `<option value="${esc(st)}">${st ? esc(st) : '-- Chọn trạng thái (BBBG / PXK) --'}</option>`).join('');
     const lookups = collectCatalogLookups();
     const toOpts = arr => arr.map(val => `<option value="${esc(val)}">${esc(val)}</option>`).join('');
-
-    const lookupField = (idPrefix, label, placeholder, listArr) => `
+    const lookupBlock = (label, id, dlId, selId, ph, list) => `
       <label style="font-size:12px;font-weight:600;">${esc(label)}
-        <input id="ai${idPrefix}" list="dl${idPrefix}" type="text" placeholder="${esc(placeholder)}" style="width:100%;margin-top:3px;padding:7px 8px;border:1px solid #cbd5e1;border-radius:6px;">
-        <select id="sel${idPrefix}" aria-label="Chọn nhanh ${esc(label)}" style="width:100%;margin-top:4px;padding:5px 6px;border:1px solid #e2e8f0;border-radius:6px;font-size:12px;background:#f8fafc;">
+        <input id="${id}" list="${dlId}" type="text" placeholder="${esc(ph)}" style="width:100%;margin-top:3px;padding:7px 8px;border:1px solid #cbd5e1;border-radius:6px;">
+        <select id="${selId}" style="width:100%;margin-top:4px;padding:5px 6px;border:1px solid #e2e8f0;border-radius:6px;font-size:12px;background:#f8fafc;">
           <option value="">-- Danh sách ${esc(label)} --</option>
-          ${toOpts(listArr)}
+          ${toOpts(list)}
         </select>
-        <datalist id="dl${idPrefix}">${toOpts(listArr)}</datalist>
-      </label>
-    `;
+        <datalist id="${dlId}">${toOpts(list)}</datalist>
+      </label>`;
 
     host.innerHTML = `
       <div class="modal-backdrop" id="addItemBackdrop" style="position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:9998;padding:12px;">
@@ -839,19 +792,19 @@
               </label>
             </div>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-              ${lookupField('MaVT', 'Mã vật tư', 'Chọn hoặc nhập Mã VT...', lookups.maVTList)}
-              ${lookupField('Ten', 'Tên vật tư', 'Chọn hoặc nhập Tên Vật Tư...', lookups.tenVTList)}
+              ${lookupBlock('Mã VT', 'aiMaVT', 'dlMaVT', 'selMaVT', 'Chọn hoặc nhập Mã VT...', lookups.maVTList)}
+              ${lookupBlock('Tên Vật Tư', 'aiTen', 'dlTenVT', 'selTenVT', 'Chọn hoặc nhập Tên Vật Tư...', lookups.tenVTList)}
             </div>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-              ${lookupField('Serial', 'Serial', 'Chọn hoặc nhập Serial...', lookups.serialList)}
-              ${lookupField('PartNo', 'Part number', 'Chọn hoặc nhập Part number...', lookups.partNoList)}
+              ${lookupBlock('Serial', 'aiSerial', 'dlSerial', 'selSerial', 'Chọn hoặc nhập Serial...', lookups.serialList)}
+              ${lookupBlock('Part number', 'aiPartNo', 'dlPartNo', 'selPartNo', 'Chọn hoặc nhập Part number...', lookups.partNoList)}
             </div>
             <label style="font-size:12px;font-weight:600;">Ghi chú
               <input id="aiGhiChu" type="text" placeholder="Tình trạng, vị trí, ghi chú..." style="width:100%;margin-top:3px;padding:7px 8px;border:1px solid #cbd5e1;border-radius:6px;">
             </label>
             <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:8px;">
-              <button type="button" id="btnCancelAddItem" style="${BTN.neutral}">Huỷ</button>
-              <button type="submit" style="${BTN.primary}">+ Lưu vật tư</button>
+              ${btnHtml('btnCancelAddItem', 'neutral', 'Huỷ')}
+              <button type="submit" style="${BTN_STYLE.primary}">+ Lưu vật tư</button>
             </div>
           </form>
         </div>
@@ -861,9 +814,7 @@
     const closeModal = () => { host.innerHTML = ''; };
     $('#btnCloseAddItem', host)?.addEventListener('click', closeModal);
     $('#btnCancelAddItem', host)?.addEventListener('click', closeModal);
-    $('#addItemBackdrop', host)?.addEventListener('click', e => {
-      if (e.target && e.target.id === 'addItemBackdrop') closeModal();
-    });
+    $('#addItemBackdrop', host)?.addEventListener('click', e => { if (e.target && e.target.id === 'addItemBackdrop') closeModal(); });
 
     const maInp = $('#aiMaVT', host);
     const tenInp = $('#aiTen', host);
@@ -885,16 +836,12 @@
     const bindDropdown = (selId, inp, fieldKey) => {
       const sel = $(selId, host);
       if (!sel || !inp) return;
-      sel.addEventListener('change', () => {
-        if (!sel.value) return;
-        inp.value = sel.value;
-        autofillFromMatch(fieldKey, sel.value);
-      });
+      sel.addEventListener('change', () => { if (sel.value) { inp.value = sel.value; autofillFromMatch(fieldKey, sel.value); } });
       inp.addEventListener('change', () => autofillFromMatch(fieldKey, inp.value));
     };
 
     bindDropdown('#selMaVT', maInp, 'maVT');
-    bindDropdown('#selTen', tenInp, 'tenVT');
+    bindDropdown('#selTenVT', tenInp, 'tenVT');
     bindDropdown('#selSerial', serInp, 'serial');
     bindDropdown('#selPartNo', partInp, 'partNo');
 
@@ -916,6 +863,15 @@
     tenInp?.focus();
   }
 
+  function openNodeInSheet(nodeId) {
+    if (!nodeId || !nodeById.has(nodeId)) return;
+    V.activeId = nodeId;
+    V.folderQuery = '';
+    expandAncestorsOf(nodeId);
+    V.route = { page: 'sheet', id: nodeId };
+    render();
+  }
+
   function moveRowToNode(fromNodeId, rowIdx, toNodeId, chosenStatus = '') {
     if (!toNodeId || fromNodeId === toNodeId) return;
     const srcRows = getRowsForNode(fromNodeId);
@@ -926,9 +882,9 @@
     const dstRows = getRowsForNode(toNodeId);
     const normMoved = normalizeRow(moved, dstRows.length, CFG.defaultSource, STANDARD_COLS, toNodeId);
     normMoved.v[1] = String(dstRows.length + 1);
-    const nextStatus = chosenStatus ? normalizeStatus(chosenStatus) : (toNodeId === TRANSFER_FOLDER_ID && !normMoved.v[7] ? 'BBBG' : normMoved.v[7]);
-    normMoved.status = nextStatus;
-    normMoved.v[7] = nextStatus;
+    const st = chosenStatus ? normalizeStatus(chosenStatus) : (toNodeId === TRANSFER_FOLDER_ID && !normMoved.v[7] ? 'BBBG' : normMoved.v[7]);
+    normMoved.status = st;
+    normMoved.v[7] = st;
     normMoved.ut = Date.now();
     dstRows.push(normMoved);
 
@@ -953,7 +909,7 @@
     const candidates = [];
     for (const entry of flatNodes) {
       const n = entry.node;
-      if ((Array.isArray(n.children) && n.children.length > 0) || n.id === TRANSFER_FOLDER_ID) continue;
+      if (!isLeafNode(n) || n.id === TRANSFER_FOLDER_ID) continue;
       if (fromNodeId && n.id !== fromNodeId) continue;
       getRowsForNode(n.id).forEach((r, idx) => {
         const norm = normalizeRow(r, idx, CFG.defaultSource, STANDARD_COLS, n.id);
@@ -966,16 +922,10 @@
     }
 
     if (!candidates.length) {
-      V.activeId = TRANSFER_FOLDER_ID;
-      V.folderQuery = '';
-      expandAncestorsOf(TRANSFER_FOLDER_ID);
-      V.route = { page: 'sheet', id: TRANSFER_FOLDER_ID };
-      render();
+      openNodeInSheet(TRANSFER_FOLDER_ID);
       toast(`Đã mở thư mục "${TRANSFER_FOLDER_LABEL}"`);
       return;
     }
-
-    const itemOpts = candidates.map((c, i) => `<option value="${i}">${esc(c.label)}</option>`).join('');
 
     host.innerHTML = `
       <div class="modal-backdrop" id="transferBackdrop" style="position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:9998;padding:12px;">
@@ -986,7 +936,7 @@
           </div>
           <form id="transferForm" style="display:flex;flex-direction:column;gap:10px;">
             <label style="font-size:12px;font-weight:600;">Chọn vật tư / tài sản điều chuyển hoặc bàn giao
-              <select id="trItemSelect" style="width:100%;margin-top:4px;padding:7px 8px;border:1px solid #cbd5e1;border-radius:6px;">${itemOpts}</select>
+              <select id="trItemSelect" style="width:100%;margin-top:4px;padding:7px 8px;border:1px solid #cbd5e1;border-radius:6px;">${candidates.map((c, i) => `<option value="${i}">${esc(c.label)}</option>`).join('')}</select>
             </label>
             <label style="font-size:12px;font-weight:600;">Trạng thái bàn giao / điều chuyển
               <select id="trStatusSelect" style="width:100%;margin-top:4px;padding:7px 8px;border:1px solid #cbd5e1;border-radius:6px;">
@@ -995,10 +945,10 @@
               </select>
             </label>
             <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:6px;">
-              <button type="button" id="btnOpenTransferFolder" style="${BTN.neutral}">📂 Mở thư mục ${esc(TRANSFER_FOLDER_LABEL)}</button>
+              ${btnHtml('btnOpenTransferFolder', 'neutral', `📂 Mở ${esc(TRANSFER_FOLDER_LABEL)}`)}
               <div style="display:flex;gap:8px;">
-                <button type="button" id="btnCancelTransfer" style="${BTN.neutral}">Huỷ</button>
-                <button type="submit" style="${BTN.transfer}">🚚 Xác nhận chuyển</button>
+                ${btnHtml('btnCancelTransfer', 'neutral', 'Huỷ')}
+                <button type="submit" style="${BTN_STYLE.transfer}">🚚 Xác nhận chuyển</button>
               </div>
             </div>
           </form>
@@ -1009,17 +959,8 @@
     const closeModal = () => { host.innerHTML = ''; };
     $('#btnCloseTransfer', host)?.addEventListener('click', closeModal);
     $('#btnCancelTransfer', host)?.addEventListener('click', closeModal);
-    $('#transferBackdrop', host)?.addEventListener('click', e => {
-      if (e.target && e.target.id === 'transferBackdrop') closeModal();
-    });
-    $('#btnOpenTransferFolder', host)?.addEventListener('click', () => {
-      closeModal();
-      V.activeId = TRANSFER_FOLDER_ID;
-      V.folderQuery = '';
-      expandAncestorsOf(TRANSFER_FOLDER_ID);
-      V.route = { page: 'sheet', id: TRANSFER_FOLDER_ID };
-      render();
-    });
+    $('#transferBackdrop', host)?.addEventListener('click', e => { if (e.target && e.target.id === 'transferBackdrop') closeModal(); });
+    $('#btnOpenTransferFolder', host)?.addEventListener('click', () => { closeModal(); openNodeInSheet(TRANSFER_FOLDER_ID); });
     $('#transferForm', host)?.addEventListener('submit', e => {
       e.preventDefault();
       const pickedIdx = Number($('#trItemSelect', host)?.value ?? 0);
@@ -1031,14 +972,9 @@
   }
 
   function createFolderUnder(parentId) {
-    if (parentId === TRANSFER_FOLDER_ID) {
-      toast('Thư mục VT-TS điều chuyển lưu trực tiếp các vật tư điều chuyển, không tạo thư mục con.');
-      return;
-    }
     const parentEntry = nodeById.get(parentId) || nodeById.get('thiet-bi-ip') || flatNodes[0];
     const resolvedParentId = parentEntry ? parentEntry.node.id : 'thiet-bi-ip';
-    const parentLabel = parentEntry ? parentEntry.node.label : 'Thư mục';
-    const rawName = prompt(`Nhập tên thư mục mới trong "${parentLabel}":`);
+    const rawName = prompt(`Nhập tên thư mục mới trong "${parentEntry ? parentEntry.node.label : 'Thư mục'}":`);
     if (!rawName || !rawName.trim()) return;
     const cleanName = rawName.trim();
     const newId = 'folder-' + uid();
@@ -1057,12 +993,9 @@
 
     rebuildTreeIndex();
     delete V.treeCollapsed[resolvedParentId];
-    expandAncestorsOf(newId);
     if (!Array.isArray(storeData[newId])) storeData[newId] = [];
-    V.activeId = newId;
-    V.route = { page: 'sheet', id: newId };
     persist();
-    render();
+    openNodeInSheet(newId);
     toast(`Đã tạo thư mục "${cleanName}"`);
   }
 
@@ -1085,10 +1018,7 @@
       : `Xoá thư mục con "${folderLabel}"?`;
     if (!confirm(msg)) return;
 
-    const fallbackParentId = (parentId && nodeById.has(parentId))
-      ? parentId
-      : (flatNodes[0] && flatNodes[0].node.id) || 'thiet-bi-ip';
-
+    const fallbackParentId = (parentId && nodeById.has(parentId)) ? parentId : (flatNodes[0] && flatNodes[0].node.id) || 'thiet-bi-ip';
     const ownRows = getRowsForNode(folderId);
     if (ownRows.length && fallbackParentId !== folderId) {
       const dstRows = getRowsForNode(fallbackParentId);
@@ -1107,13 +1037,7 @@
       if (!customFoldersByParent[parentId].length) delete customFoldersByParent[parentId];
     }
 
-    deletedFolders[folderId] = {
-      id: folderId,
-      parentId: parentId || fallbackParentId,
-      label: folderLabel,
-      deletedAt: Date.now()
-    };
-
+    deletedFolders[folderId] = { id: folderId, parentId: parentId || fallbackParentId, label: folderLabel, deletedAt: Date.now() };
     delete V.treeCollapsed[folderId];
     rebuildTreeIndex();
 
@@ -1143,13 +1067,13 @@
     const sb = $('#sidebar');
     if (!sb) return;
 
-    const treeTargetParent = (V.activeId && V.activeId !== TRANSFER_FOLDER_ID) ? V.activeId : 'thiet-bi-ip';
+    const treeTargetParent = V.activeId || 'thiet-bi-ip';
 
     const renderNodes = (nodes, depth = 0) => {
       if (!Array.isArray(nodes) || !nodes.length) return '';
       return `<div class="tree-children" style="padding-left:${depth ? 12 : 0}px;border-left:${depth ? '1px dashed rgba(11,58,91,.22)' : 'none'};margin-left:${depth ? 6 : 0}px;">` +
         nodes.map(node => {
-          const hasChildren = Array.isArray(node.children) && node.children.length > 0;
+          const hasChildren = !isLeafNode(node);
           const isExpandable = hasChildren || !!node.allowCreate;
           const isCollapsed = !!V.treeCollapsed[node.id];
           const isActive = V.route.page === 'sheet' && V.activeId === node.id;
@@ -1191,48 +1115,34 @@
           <span>🏠</span><span class="nm"><b>Vật tư - Tài sản</b></span>
         </button>
         <div style="display:flex;gap:5px;margin-bottom:8px;">
-          <button type="button" data-create-folder="${esc(treeTargetParent)}" style="flex:1;text-align:center;padding:5px 6px;border:1px dashed rgba(11,58,91,.35);border-radius:6px;background:rgba(11,58,91,.04);color:#0b3a5b;font-size:11.5px;font-weight:600;cursor:pointer;">
-            ＋ Thư mục
-          </button>
-          <button type="button" id="btnTreeCollapseAll" title="Thu gọn tất cả thư mục" style="padding:5px 7px;border:1px solid rgba(11,58,91,.22);border-radius:6px;background:#fff;color:#0b3a5b;font-size:11.5px;cursor:pointer;">
-            ▾ Thu gọn
-          </button>
-          <button type="button" id="btnTreeExpandAll" title="Mở rộng tất cả thư mục" style="padding:5px 7px;border:1px solid rgba(11,58,91,.22);border-radius:6px;background:#fff;color:#0b3a5b;font-size:11.5px;cursor:pointer;">
-            ▸ Mở hết
-          </button>
+          <button type="button" data-create-folder="${esc(treeTargetParent)}" style="flex:1;text-align:center;padding:5px 6px;border:1px dashed rgba(11,58,91,.35);border-radius:6px;background:rgba(11,58,91,.04);color:#0b3a5b;font-size:11.5px;font-weight:600;cursor:pointer;">＋ Thư mục</button>
+          <button type="button" id="btnTreeCollapseAll" title="Thu gọn tất cả thư mục" style="padding:5px 7px;border:1px solid rgba(11,58,91,.22);border-radius:6px;background:#fff;color:#0b3a5b;font-size:11.5px;cursor:pointer;">▾ Thu gọn</button>
+          <button type="button" id="btnTreeExpandAll" title="Mở rộng tất cả thư mục" style="padding:5px 7px;border:1px solid rgba(11,58,91,.22);border-radius:6px;background:#fff;color:#0b3a5b;font-size:11.5px;cursor:pointer;">▸ Mở hết</button>
         </div>
         ${renderNodes(activeTree, 0)}
       </div>
     `;
 
-    $('#btnTreeCollapseAll', sb)?.addEventListener('click', () => {
-      initCollapsedState(true);
-      renderSidebar();
-    });
-    $('#btnTreeExpandAll', sb)?.addEventListener('click', () => {
-      V.treeCollapsed = {};
-      renderSidebar();
-    });
+    $('#btnTreeCollapseAll', sb)?.addEventListener('click', () => { initCollapsedState(true); renderSidebar(); });
+    $('#btnTreeExpandAll', sb)?.addEventListener('click', () => { V.treeCollapsed = {}; renderSidebar(); });
   }
 
   function renderHorizontalBar(currentEntry) {
     const currentNode = currentEntry ? currentEntry.node : null;
-    if (!currentNode || currentNode.id === TRANSFER_FOLDER_ID) return '';
+    if (!currentNode) return '';
 
     let horizontalItems = [];
     let groupTitle = '';
-
-    if (Array.isArray(currentNode.children) && currentNode.children.length > 0) {
+    if (!isLeafNode(currentNode)) {
       horizontalItems = currentNode.children;
       groupTitle = currentNode.label;
     } else if (currentEntry.parentId) {
       const parentEntry = nodeById.get(currentEntry.parentId);
-      if (parentEntry && Array.isArray(parentEntry.node.children) && parentEntry.node.children.length > 0) {
+      if (parentEntry && !isLeafNode(parentEntry.node)) {
         horizontalItems = parentEntry.node.children;
         groupTitle = parentEntry.node.label;
       }
     }
-
     if (!horizontalItems.length) return '';
 
     const summaryText = horizontalItems.map(x => x.label).join(' - ');
@@ -1242,19 +1152,14 @@
       return `
         <button type="button" class="h-folder-btn ${selected ? 'active' : ''}" data-h-node="${esc(item.id)}" style="padding:5px 10px;border-radius:6px;border:1px solid ${selected ? '#0b3a5b' : '#cbd5e1'};background:${selected ? '#0b3a5b' : '#ffffff'};color:${selected ? '#ffffff' : '#1e293b'};cursor:pointer;font-size:13px;font-weight:${selected ? '600' : '500'};white-space:nowrap;">
           ${esc(item.label)} (${countNodeRowsDeep(item)})
-        </button>
-        ${sep}
-      `;
+        </button>${sep}`;
     }).join('');
 
     return `
       <div class="horizontal-folder-bar" style="display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:10px 12px;margin-bottom:12px;border-radius:8px;background:#f8fafc;border:1px solid #cbd5e1;overflow-x:auto;">
-        <span style="font-size:12px;font-weight:700;text-transform:uppercase;color:#334155;margin-right:4px;">
-          ${esc(groupTitle)} [${esc(summaryText)}]:
-        </span>
+        <span style="font-size:12px;font-weight:700;text-transform:uppercase;color:#334155;margin-right:4px;">${esc(groupTitle)} [${esc(summaryText)}]:</span>
         ${chipsHtml}
-      </div>
-    `;
+      </div>`;
   }
 
   function computeStats() {
@@ -1266,31 +1171,26 @@
 
     for (const entry of flatNodes) {
       const n = entry.node;
-      if (!Array.isArray(n.children) || n.children.length === 0) folderCount++;
+      if (isLeafNode(n)) folderCount++;
       for (const r of getRowsForNode(n.id)) {
         total++;
         const src = normalizeSource(r.src || (r.v && r.v[0]), CFG.defaultSource);
         counts[src] = (counts[src] || 0) + 1;
         if (r.f && typeof r.f === 'object') {
-          new Set(Object.values(r.f).map(c => String(c || '').replace(/^#/, '').toUpperCase()).filter(Boolean)).forEach(hex => {
-            colorMap[hex] = (colorMap[hex] || 0) + 1;
-          });
+          new Set(Object.values(r.f).map(c => String(c || '').replace(/^#/, '').toUpperCase()).filter(Boolean))
+            .forEach(hex => { colorMap[hex] = (colorMap[hex] || 0) + 1; });
         }
       }
     }
 
-    return {
-      counts,
-      total,
-      folderCount,
-      colorEntries: Object.entries(colorMap).sort((a, b) => b[1] - a[1])
-    };
+    return { counts, total, folderCount, colorEntries: Object.entries(colorMap).sort((a, b) => b[1] - a[1]) };
   }
 
   function renderStatusBadge(statusVal) {
     const st = normalizeStatus(statusVal);
     if (!st) return `<span style="opacity:.45;font-size:12px;">—</span>`;
-    return badgeHtml(st, STATUS_BADGE_STYLE[st] || 'background:#f1f5f9;color:#334155;border-color:#cbd5e1;');
+    const bStyle = STATUS_BADGE_STYLE[st] || 'background:#f1f5f9;color:#334155;border-color:#cbd5e1;';
+    return `<span style="display:inline-block;padding:2px 7px;border-radius:999px;font-size:11.5px;font-weight:700;border:1px solid;${bStyle}">${esc(st)}</span>`;
   }
 
   function renderGlobalSearchView(mainEl) {
@@ -1298,24 +1198,18 @@
     const rowsHtml = results.length
       ? results.map((item, i) => {
           const v = item.row.v;
+          const badgeStyle = SOURCE_BADGE_STYLE[v[0]] || SOURCE_BADGE_STYLE['Không rõ nguồn'];
           return `
             <tr>
               <td style="text-align:center;">${i + 1}</td>
               <td>
-                <button type="button" data-jump-folder="${esc(item.nodeId)}" style="border:0;background:transparent;color:#0b3a5b;font-weight:600;cursor:pointer;text-align:left;padding:0;">
-                  ${esc(item.nodeLabel)}
-                </button>
+                <button type="button" data-jump-folder="${esc(item.nodeId)}" style="border:0;background:transparent;color:#0b3a5b;font-weight:600;cursor:pointer;text-align:left;padding:0;">${esc(item.nodeLabel)}</button>
                 <div style="font-size:11px;opacity:.65;">${esc(item.pathText)}</div>
               </td>
-              <td style="white-space:nowrap;">${badgeHtml(v[0], SOURCE_BADGE_STYLE[v[0]] || SOURCE_BADGE_STYLE['Không rõ nguồn'])}</td>
-              <td>${esc(v[2])}</td>
-              <td>${esc(v[3])}</td>
-              <td>${esc(v[4])}</td>
-              <td>${esc(v[5])}</td>
-              <td>${esc(v[6])}</td>
+              <td style="white-space:nowrap;"><span style="display:inline-block;padding:2px 7px;border-radius:999px;font-size:12px;font-weight:600;border:1px solid;${badgeStyle}">${esc(v[0])}</span></td>
+              <td>${esc(v[2])}</td><td>${esc(v[3])}</td><td>${esc(v[4])}</td><td>${esc(v[5])}</td><td>${esc(v[6])}</td>
               <td style="white-space:nowrap;">${renderStatusBadge(v[7])}</td>
-            </tr>
-          `;
+            </tr>`;
         }).join('')
       : `<tr><td colspan="9" style="text-align:center;padding:18px;opacity:.7;">Không tìm thấy vật tư nào khớp với từ khóa "${esc(V.query)}" trên toàn bộ thư mục.</td></tr>`;
 
@@ -1326,30 +1220,23 @@
           <h2 style="margin:2px 0 0;font-size:20px;">🔍 Kết quả tìm kiếm toàn bộ: "${esc(V.query)}" <small style="font-weight:400;opacity:.7;">(${results.length} dòng)</small></h2>
         </div>
         <div style="display:flex;flex-wrap:wrap;gap:8px;">
-          <button type="button" id="btnAddItemSearch" style="${BTN.primary}">+ Thêm vật tư</button>
-          <button type="button" id="btnTransferSearch" style="${BTN.transfer}">🚚 ${esc(TRANSFER_FOLDER_LABEL)}</button>
-          <button type="button" id="btnBackOverview" style="${BTN.neutral}">🏠 Về Trang chủ</button>
+          ${btnHtml('btnAddItemSearch', 'primary', '+ Thêm vật tư')}
+          ${btnHtml('btnTransferSearch', 'transfer', `🚚 ${esc(TRANSFER_FOLDER_LABEL)}`)}
+          ${btnHtml('btnBackOverview', 'neutral', '🏠 Về Trang chủ')}
         </div>
       </div>
       <div class="table-wrap responsive-table-wrap" style="overflow-x:auto;-webkit-overflow-scrolling:touch;border:1px solid rgba(0,0,0,.12);border-radius:8px;background:#fff;">
         <table class="data-table" style="width:100%;border-collapse:collapse;">
           <thead>
             <tr>
-              <th style="white-space:nowrap;">STT</th>
-              <th style="white-space:nowrap;">Thư mục</th>
-              <th style="white-space:nowrap;">Nguồn</th>
-              <th style="white-space:nowrap;">Tên Vật Tư</th>
-              <th style="white-space:nowrap;">Serial</th>
-              <th style="white-space:nowrap;">Mã VT</th>
-              <th style="white-space:nowrap;">Part number</th>
-              <th style="white-space:nowrap;">Ghi chú</th>
-              <th style="white-space:nowrap;">Trạng thái</th>
+              <th style="white-space:nowrap;">STT</th><th style="white-space:nowrap;">Thư mục</th><th style="white-space:nowrap;">Nguồn</th>
+              <th style="white-space:nowrap;">Tên Vật Tư</th><th style="white-space:nowrap;">Serial</th><th style="white-space:nowrap;">Mã VT</th>
+              <th style="white-space:nowrap;">Part number</th><th style="white-space:nowrap;">Ghi chú</th><th style="white-space:nowrap;">Trạng thái</th>
             </tr>
           </thead>
           <tbody>${rowsHtml}</tbody>
         </table>
-      </div>
-    `;
+      </div>`;
 
     $('#btnAddItemSearch', mainEl)?.addEventListener('click', () => openAddItemModal(V.activeId));
     $('#btnTransferSearch', mainEl)?.addEventListener('click', () => openTransferModal(null));
@@ -1359,15 +1246,7 @@
       V.route = { page: 'overview', id: null };
       render();
     });
-    $$('[data-jump-folder]', mainEl).forEach(btn => {
-      btn.addEventListener('click', () => {
-        V.activeId = btn.getAttribute('data-jump-folder');
-        V.folderQuery = '';
-        expandAncestorsOf(V.activeId);
-        V.route = { page: 'sheet', id: V.activeId };
-        render();
-      });
-    });
+    $$('[data-jump-folder]', mainEl).forEach(btn => btn.addEventListener('click', () => openNodeInSheet(btn.getAttribute('data-jump-folder'))));
   }
 
   function renderOverview(mainEl) {
@@ -1387,63 +1266,54 @@
       : meaningEntries.map(([hex, label]) => ({ hex, cnt: 0, label }));
 
     const compactColorChips = legendSource.map(item => {
-      const bg = bgOf(item.hex);
       const lbl = item.label || colorLabel(item.hex);
-      return `<span style="display:inline-flex;align-items:center;gap:6px;padding:3px 8px;border-radius:6px;background:${bg};border:1px solid rgba(0,0,0,.12);font-size:12px;font-weight:600;"><span style="width:9px;height:9px;border-radius:2px;background:#${esc(item.hex)};display:inline-block;border:1px solid rgba(0,0,0,.25);"></span><span>${esc(lbl)}</span>${item.cnt > 0 ? `<span style="opacity:.75;">(${item.cnt})</span>` : ''}</span>`;
+      return `<span style="display:inline-flex;align-items:center;gap:6px;padding:3px 8px;border-radius:6px;background:${bgOf(item.hex)};border:1px solid rgba(0,0,0,.12);font-size:12px;font-weight:600;"><span style="width:9px;height:9px;border-radius:2px;background:#${esc(item.hex)};display:inline-block;border:1px solid rgba(0,0,0,.25);"></span><span>${esc(lbl)}</span>${item.cnt > 0 ? `<span style="opacity:.75;">(${item.cnt})</span>` : ''}</span>`;
     }).join('');
 
-    const folderListItems = flatNodes
-      .filter(e => !Array.isArray(e.node.children) || e.node.children.length === 0)
-      .map((e, idx) => {
-        const n = e.node;
-        const rows = getRowsForNode(n.id);
-        const bySrc = {};
-        SRC_LIST.forEach(s => { bySrc[s] = 0; });
-        rows.forEach(r => {
-          const s = normalizeSource(r.src || (r.v && r.v[0]), CFG.defaultSource);
-          bySrc[s] = (bySrc[s] || 0) + 1;
-        });
-
-        const srcBreakdownHtml = SRC_LIST.map(s => {
-          const cnt = bySrc[s] || 0;
-          const st = SOURCE_BADGE_STYLE[s] || SOURCE_BADGE_STYLE['Không rõ nguồn'];
-          return `<span style="display:inline-flex;align-items:center;gap:4px;padding:1px 7px;border-radius:999px;font-size:11.5px;font-weight:600;border:1px solid;opacity:${cnt ? '1' : '.55'};${st}">${esc(s)}: <b>${cnt}</b></span>`;
-        }).join('');
-
-        return `
-          <div class="overview-list-item" style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px;padding:9px 12px;border-bottom:1px solid rgba(0,0,0,.08);">
-            <div style="min-width:200px;flex:1 1 240px;">
-              <div style="display:flex;align-items:center;gap:6px;">
-                <span style="font-size:11.5px;opacity:.6;min-width:22px;">${idx + 1}.</span>
-                <button type="button" class="link-btn" data-open-node="${esc(n.id)}" style="border:0;background:transparent;color:#0b3a5b;font-weight:700;font-size:14px;cursor:pointer;text-align:left;padding:0;">
-                  ${esc(n.label)}
-                </button>
-              </div>
-              <div style="font-size:11px;opacity:.62;padding-left:28px;margin-top:1px;">${esc(e.pathNodes.map(x => x.label).join(' / '))}</div>
-            </div>
-            <div style="display:flex;flex-wrap:wrap;align-items:center;gap:5px;flex:2 1 320px;">${srcBreakdownHtml}</div>
-            <div style="display:flex;align-items:center;gap:8px;margin-left:auto;">
-              <span style="font-size:12px;opacity:.7;">Tổng:</span>
-              <strong style="font-size:15px;color:#0b3a5b;min-width:28px;text-align:right;">${rows.length}</strong>
-            </div>
-          </div>
-        `;
+    const folderListItems = flatNodes.filter(e => isLeafNode(e.node)).map((e, idx) => {
+      const n = e.node;
+      const rows = getRowsForNode(n.id);
+      const bySrc = {};
+      SRC_LIST.forEach(s => { bySrc[s] = 0; });
+      rows.forEach(r => {
+        const s = normalizeSource(r.src || (r.v && r.v[0]), CFG.defaultSource);
+        bySrc[s] = (bySrc[s] || 0) + 1;
+      });
+      const srcBreakdownHtml = SRC_LIST.map(s => {
+        const cnt = bySrc[s] || 0;
+        const st = SOURCE_BADGE_STYLE[s] || SOURCE_BADGE_STYLE['Không rõ nguồn'];
+        return `<span style="display:inline-flex;align-items:center;gap:4px;padding:1px 7px;border-radius:999px;font-size:11.5px;font-weight:600;border:1px solid;opacity:${cnt ? '1' : '.55'};${st}">${esc(s)}: <b>${cnt}</b></span>`;
       }).join('');
+
+      return `
+        <div class="overview-list-item" style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px;padding:9px 12px;border-bottom:1px solid rgba(0,0,0,.08);">
+          <div style="min-width:200px;flex:1 1 240px;">
+            <div style="display:flex;align-items:center;gap:6px;">
+              <span style="font-size:11.5px;opacity:.6;min-width:22px;">${idx + 1}.</span>
+              <button type="button" class="link-btn" data-open-node="${esc(n.id)}" style="border:0;background:transparent;color:#0b3a5b;font-weight:700;font-size:14px;cursor:pointer;text-align:left;padding:0;">${esc(n.label)}</button>
+            </div>
+            <div style="font-size:11px;opacity:.62;padding-left:28px;margin-top:1px;">${esc(e.pathNodes.map(x => x.label).join(' / '))}</div>
+          </div>
+          <div style="display:flex;flex-wrap:wrap;align-items:center;gap:5px;flex:2 1 320px;">${srcBreakdownHtml}</div>
+          <div style="display:flex;align-items:center;gap:8px;margin-left:auto;">
+            <span style="font-size:12px;opacity:.7;">Tổng:</span>
+            <strong style="font-size:15px;color:#0b3a5b;min-width:28px;text-align:right;">${rows.length}</strong>
+          </div>
+        </div>`;
+    }).join('');
 
     mainEl.innerHTML = `
       <div class="view-header" style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px;">
         <div>
           <h2 style="margin:0;font-size:19px;">📊 Tổng quan Vật tư – Tài sản</h2>
-          <div style="font-size:11.5px;opacity:.72;margin-top:2px;">
-            ${esc(meta.source || 'LAB')} · ${esc(meta.generated || '')} · ☁ <b>${esc(syncInfo.syncText)}</b> (${esc(syncInfo.accountLabel)})
-          </div>
+          <div style="font-size:11.5px;opacity:.72;margin-top:2px;">${esc(meta.source || 'LAB')} · ${esc(meta.generated || '')} · ☁ <b>${esc(syncInfo.syncText)}</b> (${esc(syncInfo.accountLabel)})</div>
         </div>
         <div style="display:flex;flex-wrap:wrap;align-items:center;gap:6px;">
-          <button type="button" id="btnOverviewAddItem" style="${BTN.primary}">+ Thêm vật tư</button>
-          <button type="button" id="btnOverviewTransfer" style="${BTN.transfer}">🚚 ${esc(TRANSFER_FOLDER_LABEL)} (${transferCount})</button>
-          <button type="button" id="btnOverviewAddFolder" style="${BTN.folder}">＋ Thư mục mới</button>
-          <button type="button" id="btnOverviewSync" style="${BTN.sync}">☁ Đồng bộ</button>
-          <button type="button" id="btnOverviewExportAll" style="${BTN.exportBtn}">📗 Xuất Excel</button>
+          ${btnHtml('btnOverviewAddItem', 'primary', '+ Thêm vật tư')}
+          ${btnHtml('btnOverviewTransfer', 'transfer', `🚚 ${esc(TRANSFER_FOLDER_LABEL)} (${transferCount})`)}
+          ${btnHtml('btnOverviewAddFolder', 'folder', '＋ Thư mục mới')}
+          ${btnHtml('btnOverviewSync', 'sync', '☁ Đồng bộ')}
+          ${btnHtml('btnOverviewExportAll', 'exportBtn', '📗 Xuất Excel')}
         </div>
       </div>
 
@@ -1463,56 +1333,27 @@
           <span>📁 Danh sách thống kê theo thư mục / danh mục (${folderCount})</span>
           <span style="opacity:.75;">Bấm tên để mở</span>
         </div>
-        <div class="overview-list-body">
-          ${folderListItems || `<div style="padding:16px;text-align:center;opacity:.7;">Chưa có danh mục nào.</div>`}
-        </div>
-      </div>
-    `;
+        <div class="overview-list-body">${folderListItems || `<div style="padding:16px;text-align:center;opacity:.7;">Chưa có danh mục nào.</div>`}</div>
+      </div>`;
 
-    $$('[data-open-node]', mainEl).forEach(btn => {
-      btn.addEventListener('click', () => {
-        V.activeId = btn.getAttribute('data-open-node');
-        V.folderQuery = '';
-        expandAncestorsOf(V.activeId);
-        V.route = { page: 'sheet', id: V.activeId };
-        render();
-      });
-    });
-
+    $$('[data-open-node]', mainEl).forEach(btn => btn.addEventListener('click', () => openNodeInSheet(btn.getAttribute('data-open-node'))));
     $('#btnOverviewTransfer', mainEl)?.addEventListener('click', () => openTransferModal(null));
     $('#btnOverviewAddFolder', mainEl)?.addEventListener('click', () => createFolderUnder(V.activeId || 'thiet-bi-ip'));
     $('#btnOverviewAddItem', mainEl)?.addEventListener('click', () => openAddItemModal(V.activeId));
-    $('#btnOverviewSync', mainEl)?.addEventListener('click', () => {
-      if (window.Sync && typeof window.Sync.open === 'function') window.Sync.open();
-    });
-    $('#btnOverviewExportAll', mainEl)?.addEventListener('click', () => {
-      if (typeof XLSX === 'undefined') return;
-      const wb = XLSX.utils.book_new();
-      const used = new Set();
-      for (const entry of flatNodes) {
-        const n = entry.node;
-        if (Array.isArray(n.children) && n.children.length > 0) continue;
-        const sName = sanitizeSheetName(CFG.sheetLabels[n.id] || n.label, used);
-        const rows = getRowsForNode(n.id).map((r, i) => normalizeRow(r, i, CFG.defaultSource, STANDARD_COLS, n.id).v);
-        XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([STANDARD_COLS.slice(), ...rows]), sName);
-      }
-      XLSX.writeFile(wb, 'vat-tu-tai-san-all-sheets.xlsx');
-    });
+    $('#btnOverviewSync', mainEl)?.addEventListener('click', () => { if (window.Sync && typeof window.Sync.open === 'function') window.Sync.open(); });
+    $('#btnOverviewExportAll', mainEl)?.addEventListener('click', () => exportAllXlsx('vat-tu-tai-san-all-sheets.xlsx'));
   }
 
   function renderMoveOptions(currentNodeId) {
     return flatNodes
-      .filter(e => !Array.isArray(e.node.children) || e.node.children.length === 0)
-      .filter(e => e.node.id !== currentNodeId)
+      .filter(e => isLeafNode(e.node) && e.node.id !== currentNodeId)
       .map(e => `<option value="${esc(e.node.id)}">${esc(e.pathNodes.map(x => x.label).join(' / '))}</option>`)
       .join('');
   }
 
   function renderStatusSelect(currentStatus, idx) {
     const st = normalizeStatus(currentStatus);
-    const opts = STATUS_OPTIONS.map(opt =>
-      `<option value="${esc(opt)}" ${st === opt ? 'selected' : ''}>${opt ? esc(opt) : '-- Trạng thái --'}</option>`
-    ).join('');
+    const opts = STATUS_OPTIONS.map(opt => `<option value="${esc(opt)}" ${st === opt ? 'selected' : ''}>${opt ? esc(opt) : '-- Trạng thái --'}</option>`).join('');
     const bStyle = STATUS_BADGE_STYLE[st] || 'background:#ffffff;color:#1e293b;border-color:#cbd5e1;';
     return `<select class="row-status-select" data-idx="${idx}" title="Chọn trạng thái (BBBG, PXK)" style="padding:3px 6px;border-radius:6px;border:1px solid;font-size:12px;font-weight:700;cursor:pointer;${bStyle}">${opts}</select>`;
   }
@@ -1523,9 +1364,7 @@
     }
 
     const moveOpts = renderMoveOptions(currentNodeId);
-    const delRowStyle = V.edit
-      ? 'opacity:1;cursor:pointer;filter:none;'
-      : 'opacity:.35;cursor:not-allowed;filter:grayscale(100%);';
+    const delRowStyle = V.edit ? 'opacity:1;cursor:pointer;filter:none;' : 'opacity:.35;cursor:not-allowed;filter:grayscale(100%);';
 
     return entries.map(({ row, idx }) => {
       const v = row.v;
@@ -1537,96 +1376,82 @@
           })()
         : '';
 
-      const srcCell = !V.edit
-        ? badgeHtml(v[0], badgeStyle)
-        : `<select class="cell-edit" data-col="0">${SRC_LIST.map(opt => `<option value="${esc(opt)}" ${v[0] === opt ? 'selected' : ''}>${esc(opt)}</option>`).join('')}</select>`;
+      const actionCell = `
+        <td style="white-space:nowrap;">
+          ${!V.edit ? `<button type="button" class="btn-row-edit" data-idx="${idx}" title="Sửa dòng">✏️</button>` : ''}
+          <select class="row-move-select" data-idx="${idx}" title="Chuyển sang thư mục khác" style="max-width:118px;padding:3px 4px;border-radius:5px;border:1px solid rgba(0,0,0,.2);font-size:12px;">
+            <option value="">↗ Chuyển...</option>
+            ${moveOpts}
+          </select>
+          <button type="button" ${trashBtnAttr('btn-row-del', `data-idx="${idx}"`, 'Xoá dòng', 'Bấm nút Chỉnh sửa để xoá dòng')} style="${delRowStyle}">🗑</button>
+        </td>`;
 
-      const textCell = (col, val) => !V.edit
-        ? esc(val)
-        : `<input type="text" class="cell-edit" data-col="${col}" value="${esc(val)}">`;
+      if (!V.edit) {
+        return `
+          <tr data-row-idx="${idx}" style="${rowBg ? `background:${rowBg};` : ''}">
+            <td style="white-space:nowrap;"><span style="display:inline-block;padding:2px 7px;border-radius:999px;font-size:12px;font-weight:600;border:1px solid;${badgeStyle}">${esc(v[0])}</span></td>
+            <td style="text-align:center;white-space:nowrap;">${esc(v[1])}</td>
+            <td>${esc(v[2])}</td><td>${esc(v[3])}</td><td>${esc(v[4])}</td><td>${esc(v[5])}</td><td>${esc(v[6])}</td>
+            <td style="white-space:nowrap;">${renderStatusSelect(v[7], idx)}</td>
+            ${actionCell}
+          </tr>`;
+      }
 
-      const editBtn = !V.edit
-        ? `<button type="button" class="btn-row-edit" data-idx="${idx}" title="Sửa dòng">✏️</button>`
-        : '';
-
+      const srcOpts = SRC_LIST.map(opt => `<option value="${esc(opt)}" ${v[0] === opt ? 'selected' : ''}>${esc(opt)}</option>`).join('');
       return `
         <tr data-row-idx="${idx}" style="${rowBg ? `background:${rowBg};` : ''}">
-          <td style="white-space:nowrap;">${srcCell}</td>
+          <td><select class="cell-edit" data-col="0">${srcOpts}</select></td>
           <td style="text-align:center;white-space:nowrap;">${esc(v[1])}</td>
-          <td>${textCell(2, v[2])}</td>
-          <td>${textCell(3, v[3])}</td>
-          <td>${textCell(4, v[4])}</td>
-          <td>${textCell(5, v[5])}</td>
-          <td>${textCell(6, v[6])}</td>
+          <td><input type="text" class="cell-edit" data-col="2" value="${esc(v[2])}"></td>
+          <td><input type="text" class="cell-edit" data-col="3" value="${esc(v[3])}"></td>
+          <td><input type="text" class="cell-edit" data-col="4" value="${esc(v[4])}"></td>
+          <td><input type="text" class="cell-edit" data-col="5" value="${esc(v[5])}"></td>
+          <td><input type="text" class="cell-edit" data-col="6" value="${esc(v[6])}"></td>
           <td style="white-space:nowrap;">${renderStatusSelect(v[7], idx)}</td>
-          <td style="white-space:nowrap;">
-            ${editBtn}
-            <select class="row-move-select" data-idx="${idx}" title="Chuyển sang thư mục khác" style="max-width:118px;padding:3px 4px;border-radius:5px;border:1px solid rgba(0,0,0,.2);font-size:12px;">
-              <option value="">↗ Chuyển...</option>
-              ${moveOpts}
-            </select>
-            <button type="button" ${trashBtnAttr('btn-row-del', `data-idx="${idx}"`, 'Xoá dòng', 'Bấm nút Chỉnh sửa để xoá dòng')} style="${delRowStyle}">🗑</button>
-          </td>
-        </tr>
-      `;
+          ${actionCell}
+        </tr>`;
     }).join('');
   }
 
   function bindMainTableEvents(mainEl, currentNodeId) {
-    $$('.row-status-select', mainEl).forEach(sel => {
-      sel.addEventListener('change', () => {
-        const idx = Number(sel.getAttribute('data-idx'));
-        const rowObj = getRowsForNode(currentNodeId)[idx];
-        if (!rowObj) return;
-        const stNorm = normalizeStatus(sel.value);
-        if (!Array.isArray(rowObj.v)) rowObj.v = [DEFAULT_SOURCE, String(idx + 1), '', '', '', '', '', stNorm];
-        else rowObj.v[7] = stNorm;
-        rowObj.status = stNorm;
-        touch(rowObj);
-        persist();
-        renderMain();
-        toast(stNorm ? `Đã cập nhật trạng thái: ${stNorm}` : 'Đã xoá trạng thái');
-      });
-    });
+    $$('.row-status-select', mainEl).forEach(sel => sel.addEventListener('change', () => {
+      const idx = Number(sel.getAttribute('data-idx'));
+      const rowObj = getRowsForNode(currentNodeId)[idx];
+      if (!rowObj) return;
+      const stNorm = normalizeStatus(sel.value);
+      if (!Array.isArray(rowObj.v)) rowObj.v = [DEFAULT_SOURCE, String(idx + 1), '', '', '', '', '', stNorm];
+      else rowObj.v[7] = stNorm;
+      rowObj.status = stNorm;
+      touch(rowObj);
+      persist();
+      renderMain();
+      toast(stNorm ? `Đã cập nhật trạng thái: ${stNorm}` : 'Đã xoá trạng thái');
+    }));
 
-    $$('.btn-row-edit', mainEl).forEach(btn => {
-      btn.addEventListener('click', () => {
-        V.edit = true;
-        const btnEdit = $('#btnEdit');
-        if (btnEdit) btnEdit.setAttribute('aria-pressed', 'true');
-        const eb = $('#editbar');
-        if (eb) eb.hidden = false;
-        render();
-      });
-    });
+    $$('.btn-row-edit', mainEl).forEach(btn => btn.addEventListener('click', () => {
+      V.edit = true;
+      const btnEdit = $('#btnEdit');
+      if (btnEdit) btnEdit.setAttribute('aria-pressed', 'true');
+      const eb = $('#editbar');
+      if (eb) eb.hidden = false;
+      render();
+    }));
 
-    $$('.btn-row-del', mainEl).forEach(btn => {
-      btn.addEventListener('click', () => {
-        if (!V.edit) {
-          toast('Hãy bấm nút "Chỉnh sửa" để mở khoá nút xoá 🗑');
-          return;
-        }
-        const idx = Number(btn.getAttribute('data-idx'));
-        const rows = getRowsForNode(currentNodeId);
-        if (!rows[idx] || !confirm('Xoá dòng vật tư này?')) return;
-        rows.splice(idx, 1);
-        rows.forEach((r, i) => {
-          r.r = i + 1;
-          if (Array.isArray(r.v)) r.v[1] = String(i + 1);
-        });
-        persist();
-        render();
-        toast('Đã xoá dòng');
-      });
-    });
+    $$('.btn-row-del', mainEl).forEach(btn => btn.addEventListener('click', () => {
+      if (!V.edit) { toast('Hãy bấm nút "Chỉnh sửa" để mở khoá nút xoá 🗑'); return; }
+      const idx = Number(btn.getAttribute('data-idx'));
+      const rows = getRowsForNode(currentNodeId);
+      if (!rows[idx] || !confirm('Xoá dòng vật tư này?')) return;
+      rows.splice(idx, 1);
+      rows.forEach((r, i) => { r.r = i + 1; if (Array.isArray(r.v)) r.v[1] = String(i + 1); });
+      persist();
+      render();
+      toast('Đã xoá dòng');
+    }));
 
-    $$('.row-move-select', mainEl).forEach(sel => {
-      sel.addEventListener('change', () => {
-        const targetId = sel.value;
-        const idx = Number(sel.getAttribute('data-idx'));
-        if (targetId) moveRowToNode(currentNodeId, idx, targetId);
-      });
-    });
+    $$('.row-move-select', mainEl).forEach(sel => sel.addEventListener('change', () => {
+      if (sel.value) moveRowToNode(currentNodeId, Number(sel.getAttribute('data-idx')), sel.value);
+    }));
 
     if (V.edit) {
       $$('tbody tr[data-row-idx]', mainEl).forEach(tr => {
@@ -1636,11 +1461,10 @@
         $$('.cell-edit', tr).forEach(inp => {
           const colIdx = Number(inp.getAttribute('data-col'));
           inp.addEventListener('change', () => {
-            const val = inp.value;
             if (!Array.isArray(rowObj.v)) rowObj.v = [DEFAULT_SOURCE, String(idx + 1), '', '', '', '', '', ''];
-            rowObj.v[colIdx] = val;
+            rowObj.v[colIdx] = inp.value;
             if (colIdx === 0) {
-              const normSrc = normalizeSource(val, CFG.defaultSource);
+              const normSrc = normalizeSource(inp.value, CFG.defaultSource);
               rowObj.src = normSrc;
               rowObj.v[0] = normSrc;
             }
@@ -1665,10 +1489,7 @@
     }
 
     const currentEntry = nodeById.get(V.activeId) || flatNodes[0];
-    if (!currentEntry) {
-      renderOverview(mainEl);
-      return;
-    }
+    if (!currentEntry) { renderOverview(mainEl); return; }
     V.activeId = currentEntry.node.id;
 
     const node = currentEntry.node;
@@ -1676,7 +1497,6 @@
     const allFolderRowsCount = getRowsForNode(node.id).length;
     const filtered = getFilteredRows(node.id);
     const syncInfo = getSyncStatusInfo();
-    const canDeleteCurrentFolder = isDeletableFolder(node.id);
     const currentFolderSearch = (V.folderQuery && V.folderQuery.trim()) ? V.folderQuery : (V.query || '');
     const transferCount = getRowsForNode(TRANSFER_FOLDER_ID).length;
 
@@ -1684,16 +1504,12 @@
       `<option value="${esc(opt)}" ${V.sourceFilter === opt ? 'selected' : ''}>${esc(opt === 'ALL' ? 'Tất cả nguồn' : opt)}</option>`
     ).join('');
 
-    const delFolderBtnHtml = canDeleteCurrentFolder
-      ? `<button type="button" id="btnSheetDelFolder" ${trashBtnAttr('', '', `Xoá thư mục con "${node.label}"`, 'Bấm nút Chỉnh sửa để mở khoá xoá thư mục con')} style="${BTN.danger}${V.edit ? 'opacity:1;cursor:pointer;filter:none;' : 'opacity:.35;cursor:not-allowed;filter:grayscale(100%);'}">🗑 Xoá thư mục</button>`
+    const delFolderBtnHtml = isDeletableFolder(node.id)
+      ? `<button type="button" id="btnSheetDelFolder" ${trashBtnAttr('', '', `Xoá thư mục con "${node.label}"`, 'Bấm nút Chỉnh sửa để mở khoá xoá thư mục con')} style="${BTN_STYLE.dangerFolder}${V.edit ? 'opacity:1;cursor:pointer;filter:none;' : 'opacity:.35;cursor:not-allowed;filter:grayscale(100%);'}">🗑 Xoá thư mục</button>`
       : '';
 
     const transferBtnHtml = node.id !== TRANSFER_FOLDER_ID
-      ? `<button type="button" id="btnSheetTransfer" style="${BTN.transfer}">🚚 ${esc(TRANSFER_FOLDER_LABEL)} (${transferCount})</button>`
-      : '';
-
-    const createSubBtnHtml = node.id !== TRANSFER_FOLDER_ID
-      ? `<button type="button" id="btnSheetAddFolder" style="${BTN.folder}">＋ Tạo thư mục con</button>`
+      ? btnHtml('btnSheetTransfer', 'transfer', `🚚 ${esc(TRANSFER_FOLDER_LABEL)} (${transferCount})`)
       : '';
 
     mainEl.innerHTML = `
@@ -1708,14 +1524,12 @@
             <input id="folderSearchInput" type="search" value="${esc(currentFolderSearch)}" placeholder="Tìm chỉ trong ${esc(node.label)}…" autocomplete="off" style="border:0;outline:none;background:transparent;font-size:12.5px;min-width:150px;max-width:210px;color:#0f172a;">
             ${currentFolderSearch ? `<button type="button" id="btnClearFolderSearch" title="Xoá từ khoá trong thư mục" style="border:0;background:transparent;cursor:pointer;font-size:12px;opacity:.7;padding:0 2px;">✕</button>` : ''}
           </div>
-          <select id="selSourceFilter" aria-label="Lọc theo nguồn" style="padding:7px 10px;border-radius:7px;border:1px solid #cbd5e1;background:#ffffff;color:#1e293b;font-size:13px;font-weight:600;cursor:pointer;">
-            ${srcFilterOpts}
-          </select>
-          <button type="button" id="btnSheetAddItem" style="${BTN.primary}">+ Thêm vật tư</button>
+          <select id="selSourceFilter" aria-label="Lọc theo nguồn" style="padding:7px 10px;border-radius:7px;border:1px solid #cbd5e1;background:#ffffff;color:#1e293b;font-size:13px;font-weight:600;cursor:pointer;">${srcFilterOpts}</select>
+          ${btnHtml('btnSheetAddItem', 'primary', '+ Thêm vật tư')}
           ${transferBtnHtml}
-          ${createSubBtnHtml}
+          ${btnHtml('btnSheetAddFolder', 'folder', '＋ Tạo thư mục con')}
           ${delFolderBtnHtml}
-          <button type="button" id="btnSheetOverview" style="${BTN.neutral}">🏠 Tổng quan</button>
+          ${btnHtml('btnSheetOverview', 'neutral', '🏠 Tổng quan')}
         </div>
       </div>
 
@@ -1725,67 +1539,35 @@
         <table class="data-table" style="width:100%;border-collapse:collapse;">
           <thead>
             <tr>
-              <th style="white-space:nowrap;">Nguồn</th>
-              <th style="white-space:nowrap;">STT</th>
-              <th style="white-space:nowrap;">Tên Vật Tư</th>
-              <th style="white-space:nowrap;">Serial</th>
-              <th style="white-space:nowrap;">Mã VT</th>
-              <th style="white-space:nowrap;">Part number</th>
-              <th style="white-space:nowrap;">Ghi chú</th>
-              <th style="white-space:nowrap;">Trạng thái</th>
-              <th style="white-space:nowrap;">Thao tác</th>
+              <th style="white-space:nowrap;">Nguồn</th><th style="white-space:nowrap;">STT</th><th style="white-space:nowrap;">Tên Vật Tư</th>
+              <th style="white-space:nowrap;">Serial</th><th style="white-space:nowrap;">Mã VT</th><th style="white-space:nowrap;">Part number</th>
+              <th style="white-space:nowrap;">Ghi chú</th><th style="white-space:nowrap;">Trạng thái</th><th style="white-space:nowrap;">Thao tác</th>
             </tr>
           </thead>
-          <tbody>
-            ${renderTableRows(node.id, filtered)}
-          </tbody>
+          <tbody>${renderTableRows(node.id, filtered)}</tbody>
         </table>
-      </div>
-    `;
+      </div>`;
 
     const folderInp = $('#folderSearchInput', mainEl);
-    if (folderInp) {
-      folderInp.addEventListener('input', () => {
-        V.folderQuery = folderInp.value || '';
-        V.query = V.folderQuery;
-        syncSearchInputs();
-        renderMain();
-      });
-    }
+    folderInp?.addEventListener('input', () => {
+      V.folderQuery = folderInp.value || '';
+      V.query = V.folderQuery;
+      syncSearchInputs();
+      renderMain();
+    });
     $('#btnClearFolderSearch', mainEl)?.addEventListener('click', () => {
       V.folderQuery = '';
       V.query = '';
       syncSearchInputs();
       renderMain();
     });
-
-    $('#selSourceFilter', mainEl)?.addEventListener('change', e => {
-      V.sourceFilter = e.target.value || 'ALL';
-      renderMain();
-    });
-
+    $('#selSourceFilter', mainEl)?.addEventListener('change', e => { V.sourceFilter = e.target.value || 'ALL'; renderMain(); });
     $('#btnSheetAddItem', mainEl)?.addEventListener('click', () => openAddItemModal(node.id));
     $('#btnSheetTransfer', mainEl)?.addEventListener('click', () => openTransferModal(node.id));
     $('#btnSheetAddFolder', mainEl)?.addEventListener('click', () => createFolderUnder(node.id));
     $('#btnSheetDelFolder', mainEl)?.addEventListener('click', () => deleteCustomFolder(node.id));
-    $('#btnSheetOverview', mainEl)?.addEventListener('click', () => {
-      V.folderQuery = '';
-      V.route = { page: 'overview', id: null };
-      render();
-    });
-
-    $$('[data-h-node]', mainEl).forEach(btn => {
-      btn.addEventListener('click', () => {
-        const targetId = btn.getAttribute('data-h-node');
-        if (targetId && nodeById.has(targetId)) {
-          V.activeId = targetId;
-          V.folderQuery = '';
-          expandAncestorsOf(targetId);
-          V.route = { page: 'sheet', id: targetId };
-          render();
-        }
-      });
-    });
+    $('#btnSheetOverview', mainEl)?.addEventListener('click', () => { V.folderQuery = ''; V.route = { page: 'overview', id: null }; render(); });
+    $$('[data-h-node]', mainEl).forEach(btn => btn.addEventListener('click', () => openNodeInSheet(btn.getAttribute('data-h-node'))));
 
     bindMainTableEvents(mainEl, node.id);
   }
@@ -1797,23 +1579,26 @@
     renderMain();
   }
 
+  function exportAllXlsx(filename) {
+    if (typeof XLSX === 'undefined') return;
+    const wb = XLSX.utils.book_new();
+    const used = new Set();
+    for (const entry of flatNodes) {
+      if (!isLeafNode(entry.node)) continue;
+      const rows = getRowsForNode(entry.node.id).map((r, i) => normalizeRow(r, i, CFG.defaultSource, STANDARD_COLS, entry.node.id).v);
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([STANDARD_COLS.slice(), ...rows]), sanitizeSheetName(CFG.sheetLabels[entry.node.id] || entry.node.label, used));
+    }
+    XLSX.writeFile(wb, filename);
+  }
+
   function refreshFromSync(remotePayload) {
     if (remotePayload && typeof remotePayload === 'object') {
       if (Array.isArray(remotePayload.sheets)) ST.sheets = clone(remotePayload.sheets);
-      if (remotePayload.customFolders && typeof remotePayload.customFolders === 'object') {
-        ST.customFolders = clone(remotePayload.customFolders);
-      } else if (remotePayload.slips && remotePayload.slips._customFolders && typeof remotePayload.slips._customFolders === 'object') {
-        ST.customFolders = clone(remotePayload.slips._customFolders);
-      }
-      if (remotePayload.deletedFolders && typeof remotePayload.deletedFolders === 'object') {
-        ST.deletedFolders = clone(remotePayload.deletedFolders);
-      }
-      if (remotePayload.slips && typeof remotePayload.slips === 'object') {
-        ST.slips = Object.assign({ xuat: [], nhap: [] }, clone(remotePayload.slips));
-      }
-      if (typeof remotePayload.updatedAt === 'number' && remotePayload.updatedAt > 0) {
-        ST.updatedAt = remotePayload.updatedAt;
-      }
+      if (remotePayload.customFolders && typeof remotePayload.customFolders === 'object') ST.customFolders = clone(remotePayload.customFolders);
+      else if (remotePayload.slips && remotePayload.slips._customFolders && typeof remotePayload.slips._customFolders === 'object') ST.customFolders = clone(remotePayload.slips._customFolders);
+      if (remotePayload.deletedFolders && typeof remotePayload.deletedFolders === 'object') ST.deletedFolders = clone(remotePayload.deletedFolders);
+      if (remotePayload.slips && typeof remotePayload.slips === 'object') ST.slips = Object.assign({ xuat: [], nhap: [] }, clone(remotePayload.slips));
+      if (typeof remotePayload.updatedAt === 'number' && remotePayload.updatedAt > 0) ST.updatedAt = remotePayload.updatedAt;
       ST.dirty = false;
     }
 
@@ -1822,7 +1607,7 @@
       localStorage.setItem(LS('state'), JSON.stringify({
         ver: (DATA && DATA.meta && DATA.meta.version) || '',
         customFolders: customFoldersByParent,
-        deletedFolders,
+        deletedFolders: deletedFolders,
         sheets: ST.sheets,
         slips: ST.slips,
         dirty: ST.dirty,
@@ -1844,59 +1629,36 @@
     render();
   }
 
-  function downloadFile(blob, filename) {
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = filename;
-    a.click();
-  }
-
   function bindEvents() {
     const sb = $('#sidebar');
+    const sidebar = $('#sidebar');
+    const overlay = $('#overlay');
+    const closeMobileSidebar = () => {
+      if (sidebar) sidebar.classList.remove('open');
+      if (overlay) overlay.classList.remove('show');
+    };
+
     if (sb) {
       sb.addEventListener('click', e => {
         const delFolderBtn = e.target.closest('[data-del-folder]');
-        if (delFolderBtn) {
-          e.stopPropagation();
-          deleteCustomFolder(delFolderBtn.getAttribute('data-del-folder'));
-          return;
-        }
+        if (delFolderBtn) { e.stopPropagation(); deleteCustomFolder(delFolderBtn.getAttribute('data-del-folder')); return; }
 
         const toggleBtn = e.target.closest('[data-toggle-node]');
-        if (toggleBtn) {
-          e.stopPropagation();
-          const nid = toggleBtn.getAttribute('data-toggle-node');
-          V.treeCollapsed[nid] = !V.treeCollapsed[nid];
-          renderSidebar();
-          return;
-        }
+        if (toggleBtn) { e.stopPropagation(); const nid = toggleBtn.getAttribute('data-toggle-node'); V.treeCollapsed[nid] = !V.treeCollapsed[nid]; renderSidebar(); return; }
 
-        if (e.target.closest('[data-go-overview]')) {
-          V.folderQuery = '';
-          V.route = { page: 'overview', id: null };
-          render();
-          closeMobileSidebar();
-          return;
-        }
+        if (e.target.closest('[data-go-overview]')) { V.folderQuery = ''; V.route = { page: 'overview', id: null }; render(); closeMobileSidebar(); return; }
 
         const createF = e.target.closest('[data-create-folder]');
-        if (createF) {
-          createFolderUnder(createF.getAttribute('data-create-folder'));
-          return;
-        }
+        if (createF) { createFolderUnder(createF.getAttribute('data-create-folder')); return; }
 
         const nodeBtn = e.target.closest('[data-node-id]');
         if (nodeBtn) {
           const nid = nodeBtn.getAttribute('data-node-id');
           if (nid && nodeById.has(nid)) {
             const entry = nodeById.get(nid);
-            const hasChildren = entry && Array.isArray(entry.node.children) && entry.node.children.length > 0;
+            const hasChildren = entry && !isLeafNode(entry.node);
             if (hasChildren) V.treeCollapsed[nid] = !V.treeCollapsed[nid];
-            V.activeId = nid;
-            V.folderQuery = '';
-            expandAncestorsOf(nid);
-            V.route = { page: 'sheet', id: nid };
-            render();
+            openNodeInSheet(nid);
             if (!hasChildren) closeMobileSidebar();
           }
         }
@@ -1905,178 +1667,108 @@
 
     const gq = $('#gq');
     const gqClear = $('#gqClear');
-    if (gq) {
-      gq.addEventListener('input', () => {
-        const val = gq.value || '';
-        if (V.route.page === 'sheet') {
-          V.folderQuery = val;
-          V.query = val;
-        } else {
-          V.query = val;
-          V.folderQuery = '';
-        }
-        if (gqClear) gqClear.hidden = !val;
-        renderMain();
-      });
-    }
-    if (gqClear) {
-      gqClear.addEventListener('click', () => {
-        if (V.route.page === 'sheet') V.folderQuery = '';
-        V.query = '';
-        if (gq) gq.value = '';
-        gqClear.hidden = true;
-        renderMain();
-      });
-    }
+    gq?.addEventListener('input', () => {
+      const val = gq.value || '';
+      if (V.route.page === 'sheet') { V.folderQuery = val; V.query = val; }
+      else { V.query = val; V.folderQuery = ''; }
+      if (gqClear) gqClear.hidden = !val;
+      renderMain();
+    });
+    gqClear?.addEventListener('click', () => {
+      if (V.route.page === 'sheet') V.folderQuery = '';
+      V.query = '';
+      if (gq) gq.value = '';
+      if (gqClear) gqClear.hidden = true;
+      renderMain();
+    });
 
     const btnEdit = $('#btnEdit');
     const editbar = $('#editbar');
-    if (btnEdit) {
-      btnEdit.addEventListener('click', () => {
-        V.edit = !V.edit;
-        btnEdit.setAttribute('aria-pressed', String(V.edit));
-        if (editbar) editbar.hidden = !V.edit;
-        render();
-      });
-    }
+    btnEdit?.addEventListener('click', () => {
+      V.edit = !V.edit;
+      btnEdit.setAttribute('aria-pressed', String(V.edit));
+      if (editbar) editbar.hidden = !V.edit;
+      render();
+    });
 
     $('#btnTheme')?.addEventListener('click', () => document.body.classList.toggle('dark'));
     $('#btnPrint')?.addEventListener('click', () => window.print());
 
     const menuExport = $('#menuExport');
-    if (menuExport) {
-      menuExport.addEventListener('click', e => {
-        const actBtn = e.target.closest('[data-act]');
-        if (!actBtn) return;
-        const act = actBtn.getAttribute('data-act');
-        if (act === 'reset') {
-          if (confirm('Khôi phục toàn bộ dữ liệu gốc? Mọi thay đổi chưa xuất sẽ mất.')) {
-            resetToBaseline();
-            render();
-            toast('Đã khôi phục dữ liệu gốc');
-          }
-        } else if (act === 'json-out') {
-          downloadFile(new Blob([JSON.stringify({
-            customFolders: customFoldersByParent,
-            deletedFolders,
-            sheets: ST.sheets,
-            slips: ST.slips,
-            updatedAt: ST.updatedAt || Date.now()
-          }, null, 2)], { type: 'application/json' }), 'vat-tu-tai-san-backup.json');
-        } else if (act === 'json-in') {
-          $('#fileIn')?.click();
-        } else if (act === 'csv-cur') {
-          const targetId = V.activeId || (flatNodes[0] && flatNodes[0].node.id);
-          const rows = targetId ? getRowsForNode(targetId) : [];
-          const csvLines = [STANDARD_COLS.join(',')].concat(
-            rows.map((r, i) => normalizeRow(r, i, CFG.defaultSource, STANDARD_COLS, targetId).v
-              .map(cell => `"${String(cell ?? '').replace(/"/g, '""')}"`).join(','))
-          );
-          downloadFile(new Blob(['\ufeff' + csvLines.join('\n')], { type: 'text/csv;charset=utf-8;' }), `${targetId || 'sheet'}.csv`);
-        } else if (act === 'xlsx-cur' && typeof XLSX !== 'undefined') {
-          const targetId = V.activeId || (flatNodes[0] && flatNodes[0].node.id);
-          const entry = nodeById.get(targetId);
-          const rows = targetId ? getRowsForNode(targetId).map((r, i) => normalizeRow(r, i, CFG.defaultSource, STANDARD_COLS, targetId).v) : [];
-          const wb = XLSX.utils.book_new();
-          XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([STANDARD_COLS.slice(), ...rows]), sanitizeSheetName(entry ? entry.node.label : 'Sheet', new Set()));
-          XLSX.writeFile(wb, `${targetId || 'sheet'}.xlsx`);
-        } else if (act === 'xlsx-all' && typeof XLSX !== 'undefined') {
-          const wb = XLSX.utils.book_new();
-          const used = new Set();
-          for (const entry of flatNodes) {
-            const n = entry.node;
-            if (Array.isArray(n.children) && n.children.length > 0) continue;
-            const rows = getRowsForNode(n.id).map((r, i) => normalizeRow(r, i, CFG.defaultSource, STANDARD_COLS, n.id).v);
-            XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([STANDARD_COLS.slice(), ...rows]), sanitizeSheetName(n.label, used));
-          }
-          XLSX.writeFile(wb, 'vat-tu-tai-san-all.xlsx');
-        }
-        menuExport.removeAttribute('open');
-      });
-    }
+    menuExport?.addEventListener('click', e => {
+      const act = e.target.closest('[data-act]')?.getAttribute('data-act');
+      if (!act) return;
+      if (act === 'reset') {
+        if (confirm('Khôi phục toàn bộ dữ liệu gốc? Mọi thay đổi chưa xuất sẽ mất.')) { resetToBaseline(); render(); toast('Đã khôi phục dữ liệu gốc'); }
+      } else if (act === 'json-out') {
+        const blob = new Blob([JSON.stringify({ customFolders: customFoldersByParent, deletedFolders, sheets: ST.sheets, slips: ST.slips, updatedAt: ST.updatedAt || Date.now() }, null, 2)], { type: 'application/json' });
+        const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'vat-tu-tai-san-backup.json'; a.click();
+      } else if (act === 'json-in') {
+        $('#fileIn')?.click();
+      } else if (act === 'csv-cur') {
+        const targetId = V.activeId || (flatNodes[0] && flatNodes[0].node.id);
+        const rows = targetId ? getRowsForNode(targetId) : [];
+        const csvLines = [STANDARD_COLS.join(',')].concat(rows.map((r, i) => normalizeRow(r, i, CFG.defaultSource, STANDARD_COLS, targetId).v.map(cell => `"${String(cell ?? '').replace(/"/g, '""')}"`).join(',')));
+        const blob = new Blob(['\ufeff' + csvLines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+        const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `${targetId || 'sheet'}.csv`; a.click();
+      } else if (act === 'xlsx-cur' && typeof XLSX !== 'undefined') {
+        const targetId = V.activeId || (flatNodes[0] && flatNodes[0].node.id);
+        const entry = nodeById.get(targetId);
+        const rows = targetId ? getRowsForNode(targetId).map((r, i) => normalizeRow(r, i, CFG.defaultSource, STANDARD_COLS, targetId).v) : [];
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([STANDARD_COLS.slice(), ...rows]), sanitizeSheetName(entry ? entry.node.label : 'Sheet', new Set()));
+        XLSX.writeFile(wb, `${targetId || 'sheet'}.xlsx`);
+      } else if (act === 'xlsx-all') {
+        exportAllXlsx('vat-tu-tai-san-all.xlsx');
+      }
+      menuExport.removeAttribute('open');
+    });
 
     const fileIn = $('#fileIn');
-    if (fileIn) {
-      fileIn.addEventListener('change', () => {
-        const f = fileIn.files && fileIn.files[0];
-        if (!f) return;
-        const reader = new FileReader();
-        reader.onload = () => {
-          try {
-            const parsed = JSON.parse(String(reader.result || '{}'));
-            if (parsed.customFolders) customFoldersByParent = clone(parsed.customFolders);
-            if (parsed.deletedFolders) deletedFolders = clone(parsed.deletedFolders);
-            rebuildTreeIndex();
-            initCollapsedState(true);
-            if (Array.isArray(parsed.sheets)) {
-              ensureIds(parsed.sheets);
-              storeData = buildStoreFromSheets(parsed.sheets);
-            }
-            if (parsed.slips) ST.slips = Object.assign({ xuat: [], nhap: [] }, clone(parsed.slips));
-            persist();
-            render();
-            toast('Đã nhập sao lưu JSON');
-          } catch (_) {
-            toast('File JSON không hợp lệ', 3500);
-          }
-        };
-        reader.readAsText(f);
-        fileIn.value = '';
-      });
-    }
-
-    const btnMenu = $('#btnMenu');
-    const sidebar = $('#sidebar');
-    const overlay = $('#overlay');
-    function closeMobileSidebar() {
-      if (sidebar) sidebar.classList.remove('open');
-      if (overlay) overlay.classList.remove('show');
-    }
-    btnMenu?.addEventListener('click', () => {
-      if (sidebar) sidebar.classList.toggle('open');
-      if (overlay) overlay.classList.toggle('show');
+    fileIn?.addEventListener('change', () => {
+      const f = fileIn.files && fileIn.files[0];
+      if (!f) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        try {
+          const parsed = JSON.parse(String(reader.result || '{}'));
+          if (parsed.customFolders) customFoldersByParent = clone(parsed.customFolders);
+          if (parsed.deletedFolders) deletedFolders = clone(parsed.deletedFolders);
+          rebuildTreeIndex();
+          initCollapsedState(true);
+          if (Array.isArray(parsed.sheets)) { ensureIds(parsed.sheets); storeData = buildStoreFromSheets(parsed.sheets); }
+          if (parsed.slips) ST.slips = Object.assign({ xuat: [], nhap: [] }, clone(parsed.slips));
+          persist();
+          render();
+          toast('Đã nhập sao lưu JSON');
+        } catch (_) { toast('File JSON không hợp lệ', 3500); }
+      };
+      reader.readAsText(f);
+      fileIn.value = '';
     });
+
+    $('#btnMenu')?.addEventListener('click', () => { sidebar?.classList.toggle('open'); overlay?.classList.toggle('show'); });
     overlay?.addEventListener('click', closeMobileSidebar);
 
     document.addEventListener('keydown', e => {
       if (e.key === '/' && document.activeElement !== gq && !/INPUT|TEXTAREA|SELECT/.test((document.activeElement && document.activeElement.tagName) || '')) {
-        e.preventDefault();
-        gq?.focus();
+        e.preventDefault(); gq?.focus();
       }
     });
 
-    window.addEventListener('hashchange', () => {
-      parseHash();
-      render();
-    });
-
-    window.addEventListener('lab:data-ready', e => {
-      const next = (e && e.detail) || window.APP_DATA;
-      if (next && Array.isArray(next.sheets)) setBaselineData(next);
-    });
-
+    window.addEventListener('hashchange', () => { parseHash(); render(); });
+    window.addEventListener('lab:data-ready', e => { const next = (e && e.detail) || window.APP_DATA; if (next && Array.isArray(next.sheets)) setBaselineData(next); });
     window.addEventListener('sync:status', () => renderMain());
     window.addEventListener('lab:sync-state', () => renderMain());
     window.addEventListener('sync:updated', e => refreshFromSync(e && e.detail ? e.detail : null));
-
-    window.addEventListener('storage', e => {
-      if (!e || e.key === LS('state')) {
-        loadState();
-        render();
-      }
-    });
+    window.addEventListener('storage', e => { if (!e || e.key === LS('state')) { loadState(); render(); } });
   }
 
   function initSyncBridge() {
     if (!window.Sync || typeof window.Sync.init !== 'function') return;
     try {
       const res = window.Sync.init(window.LabApp);
-      if (res && typeof res.then === 'function') {
-        res.then(() => {
-          syncStoreFromST();
-          render();
-        }).catch(() => {});
-      }
+      if (res && typeof res.then === 'function') res.then(() => { syncStoreFromST(); render(); }).catch(() => {});
     } catch (_) {}
   }
 
@@ -2090,10 +1782,8 @@
         const sEl = $('#appSub');
         if (tEl) tEl.textContent = CFG.title || 'Tài sản – Vật tư Truyền dẫn LAB';
         if (sEl) sEl.textContent = CFG.subtitle || '';
-
         if (window.APP_DATA && Array.isArray(window.APP_DATA.sheets)) DATA = window.APP_DATA;
         syncPublicHandles();
-
         loadState();
         parseHash();
         bindEvents();
@@ -2107,41 +1797,15 @@
       }
     };
 
-    if (window.APP_DATA && Array.isArray(window.APP_DATA.sheets)) {
-      finishBoot();
-      return;
-    }
-
+    if (window.APP_DATA && Array.isArray(window.APP_DATA.sheets)) { finishBoot(); return; }
     const waitTimer = setTimeout(finishBoot, 250);
-    window.addEventListener('lab:data-ready', () => {
-      clearTimeout(waitTimer);
-      finishBoot();
-    }, { once: true });
+    window.addEventListener('lab:data-ready', () => { clearTimeout(waitTimer); finishBoot(); }, { once: true });
   }
 
   window.LabApp = {
-    ver: BUILD,
-    CFG,
-    DATA,
-    ST,
-    V,
-    esc,
-    normalizeSource,
-    sheetById,
-    labelOf,
-    isStock,
-    stockRows,
-    touch,
-    saveLocal,
-    persist,
-    resetToBaseline,
-    refresh: refreshFromSync,
-    setData: setBaselineData,
-    toast,
-    openAddItemModal,
-    openTransferModal,
-    deleteCustomFolder,
-    getActiveSearchQuery
+    ver: BUILD, CFG, DATA, ST, V, esc, normalizeSource, sheetById, labelOf, isStock, stockRows, touch,
+    saveLocal, persist, resetToBaseline, refresh: refreshFromSync, setData: setBaselineData,
+    toast, openAddItemModal, openTransferModal, deleteCustomFolder, getActiveSearchQuery
   };
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
