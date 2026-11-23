@@ -266,11 +266,8 @@
     const cleaned = stripTransferFolderDeep(nodes);
     const transferNode = buildSingleTransferRoot();
     const assetIdx = cleaned.findIndex(n => n && (n.id === 'tai-san' || fold(n.label).includes('tai san')));
-    if (assetIdx >= 0) {
-      cleaned.splice(assetIdx + 1, 0, transferNode);
-    } else {
-      cleaned.push(transferNode);
-    }
+    if (assetIdx >= 0) cleaned.splice(assetIdx + 1, 0, transferNode);
+    else cleaned.push(transferNode);
     return cleaned;
   }
 
@@ -332,9 +329,7 @@
     if (!textOrId) return null;
     const raw = String(textOrId).trim();
     if (nodeById.has(raw)) return raw;
-    if (CFG.sheetRouteMap && CFG.sheetRouteMap[raw] && nodeById.has(CFG.sheetRouteMap[raw])) {
-      return CFG.sheetRouteMap[raw];
-    }
+    if (CFG.sheetRouteMap && CFG.sheetRouteMap[raw] && nodeById.has(CFG.sheetRouteMap[raw])) return CFG.sheetRouteMap[raw];
     const f = fold(raw);
     if (f.includes('dieu chuyen') || f === TRANSFER_FOLDER_ID) return TRANSFER_FOLDER_ID;
     if (CFG.blockRouteMap) {
@@ -474,10 +469,12 @@
     treeCollapsed: {}
   };
 
+  function getCurrentFolderQuery() {
+    return (V.folderQuery && V.folderQuery.trim()) ? V.folderQuery : (V.query || '');
+  }
+
   function getActiveSearchQuery() {
-    return V.route.page === 'sheet'
-      ? ((V.folderQuery && V.folderQuery.trim()) ? V.folderQuery : (V.query || ''))
-      : (V.query || '');
+    return V.route.page === 'sheet' ? getCurrentFolderQuery() : (V.query || '');
   }
 
   function syncSearchInputs() {
@@ -530,9 +527,7 @@
     sheets.forEach(s => Array.isArray(s.blocks) && s.blocks.forEach((b, bi) => {
       if (!Array.isArray(b.cols) || !b.cols.length) b.cols = STANDARD_COLS.slice();
       b.rows = dedupeRowArray(b.rows, b.cols, s.id, seen);
-      b.rows.forEach((r, ri) => {
-        if (!r.i) r.i = r.r ? `${s.id}:${bi}:${r.r}` : 'u' + uid();
-      });
+      b.rows.forEach(r => { if (!r.i) r.i = r.r ? `${s.id}:${bi}:${r.r}` : 'u' + uid(); });
     }));
   }
 
@@ -637,6 +632,22 @@
   const stockRows = b => (b && b.rows) || [];
   const touch = r => { if (r) r.ut = Date.now(); };
 
+  function setRowField(rowObj, idx, colIdx, val) {
+    if (!rowObj) return;
+    if (!Array.isArray(rowObj.v)) rowObj.v = [DEFAULT_SOURCE, String(idx + 1), '', '', '', '', '', ''];
+    rowObj.v[colIdx] = val;
+    if (colIdx === 0) {
+      const normSrc = normalizeSource(val, CFG.defaultSource);
+      rowObj.src = normSrc;
+      rowObj.v[0] = normSrc;
+    } else if (colIdx === 7) {
+      const normSt = normalizeStatus(val);
+      rowObj.status = normSt;
+      rowObj.v[7] = normSt;
+    }
+    touch(rowObj);
+  }
+
   function getRowsForNode(nodeId) {
     if (!Array.isArray(storeData[nodeId])) storeData[nodeId] = [];
     return storeData[nodeId];
@@ -661,8 +672,7 @@
 
   function getFilteredRows(nodeId) {
     const rows = getRowsForNode(nodeId);
-    const q = (V.folderQuery && V.folderQuery.trim()) ? V.folderQuery : (V.query || '');
-    const qTokens = tokensOf(q);
+    const qTokens = tokensOf(getCurrentFolderQuery());
     return rows
       .map((row, idx) => ({ row: normalizeRow(row, idx, CFG.defaultSource, STANDARD_COLS, nodeId), idx }))
       .filter(item => matchesRow(item.row, qTokens, V.sourceFilter));
@@ -1378,7 +1388,6 @@
 
       const actionCell = `
         <td style="white-space:nowrap;">
-          ${!V.edit ? `<button type="button" class="btn-row-edit" data-idx="${idx}" title="Sửa dòng">✏️</button>` : ''}
           <select class="row-move-select" data-idx="${idx}" title="Chuyển sang thư mục khác" style="max-width:118px;padding:3px 4px;border-radius:5px;border:1px solid rgba(0,0,0,.2);font-size:12px;">
             <option value="">↗ Chuyển...</option>
             ${moveOpts}
@@ -1418,23 +1427,10 @@
       const idx = Number(sel.getAttribute('data-idx'));
       const rowObj = getRowsForNode(currentNodeId)[idx];
       if (!rowObj) return;
-      const stNorm = normalizeStatus(sel.value);
-      if (!Array.isArray(rowObj.v)) rowObj.v = [DEFAULT_SOURCE, String(idx + 1), '', '', '', '', '', stNorm];
-      else rowObj.v[7] = stNorm;
-      rowObj.status = stNorm;
-      touch(rowObj);
+      setRowField(rowObj, idx, 7, sel.value);
       persist();
       renderMain();
-      toast(stNorm ? `Đã cập nhật trạng thái: ${stNorm}` : 'Đã xoá trạng thái');
-    }));
-
-    $$('.btn-row-edit', mainEl).forEach(btn => btn.addEventListener('click', () => {
-      V.edit = true;
-      const btnEdit = $('#btnEdit');
-      if (btnEdit) btnEdit.setAttribute('aria-pressed', 'true');
-      const eb = $('#editbar');
-      if (eb) eb.hidden = false;
-      render();
+      toast(rowObj.status ? `Đã cập nhật trạng thái: ${rowObj.status}` : 'Đã xoá trạng thái');
     }));
 
     $$('.btn-row-del', mainEl).forEach(btn => btn.addEventListener('click', () => {
@@ -1461,14 +1457,7 @@
         $$('.cell-edit', tr).forEach(inp => {
           const colIdx = Number(inp.getAttribute('data-col'));
           inp.addEventListener('change', () => {
-            if (!Array.isArray(rowObj.v)) rowObj.v = [DEFAULT_SOURCE, String(idx + 1), '', '', '', '', '', ''];
-            rowObj.v[colIdx] = inp.value;
-            if (colIdx === 0) {
-              const normSrc = normalizeSource(inp.value, CFG.defaultSource);
-              rowObj.src = normSrc;
-              rowObj.v[0] = normSrc;
-            }
-            touch(rowObj);
+            setRowField(rowObj, idx, colIdx, inp.value);
             persist();
           });
         });
@@ -1497,7 +1486,7 @@
     const allFolderRowsCount = getRowsForNode(node.id).length;
     const filtered = getFilteredRows(node.id);
     const syncInfo = getSyncStatusInfo();
-    const currentFolderSearch = (V.folderQuery && V.folderQuery.trim()) ? V.folderQuery : (V.query || '');
+    const currentFolderSearch = getCurrentFolderQuery();
     const transferCount = getRowsForNode(TRANSFER_FOLDER_ID).length;
 
     const srcFilterOpts = ['ALL', ...SRC_LIST].map(opt =>
