@@ -268,6 +268,42 @@
       }
     });
 
+    var delMap = (A.ST && A.ST.deletedFolders) || {};
+    Object.keys(delMap).forEach(function (fid) {
+      if (!lf.has(fid) && M.folders[fid] !== 'DEL') {
+        var df = delMap[fid] || {};
+        ops.push({
+          col: 'folders',
+          key: fid,
+          sig: 'DEL',
+          data: {
+            id: fid,
+            parentId: df.parentId || '',
+            label: df.label || fid,
+            icon: '📄',
+            del: true
+          }
+        });
+      }
+    });
+
+    Object.keys(M.folders).forEach(function (fid) {
+      if (!lf.has(fid) && M.folders[fid] !== 'DEL') {
+        ops.push({
+          col: 'folders',
+          key: fid,
+          sig: 'DEL',
+          data: {
+            id: fid,
+            parentId: '',
+            label: fid,
+            icon: '📄',
+            del: true
+          }
+        });
+      }
+    });
+
     lr.forEach(function (e, rid) {
       var sig = rowSig(e.row), last = M.rows[rid];
       var need = last !== undefined ? last !== sig : (!base.rows.has(rid) || base.rows.get(rid).sig !== sig);
@@ -384,6 +420,9 @@
           ch.forEach(function (o) {
             if (!S.M[o.col]) S.M[o.col] = {};
             S.M[o.col][o.key] = o.sig;
+            if (o.col === 'folders' && o.sig === 'DEL' && A && A.ST && A.ST.deletedFolders) {
+              delete A.ST.deletedFolders[o.key];
+            }
           });
           saveMeta();
         });
@@ -542,13 +581,27 @@
     var idx = arr.findIndex(function (x) { return x && x.id === fid; });
 
     if (data.del) {
+      var removed = false;
       if (idx >= 0) {
         arr.splice(idx, 1);
-        A.ST.customFolders[pid] = arr;
-        S.M.folders[fid] = 'DEL';
-        return true;
+        if (arr.length) A.ST.customFolders[pid] = arr;
+        else delete A.ST.customFolders[pid];
+        removed = true;
+      } else {
+        Object.keys(A.ST.customFolders).forEach(function (k) {
+          var list = Array.isArray(A.ST.customFolders[k]) ? A.ST.customFolders[k] : [];
+          var i2 = list.findIndex(function (x) { return x && x.id === fid; });
+          if (i2 >= 0) {
+            list.splice(i2, 1);
+            if (list.length) A.ST.customFolders[k] = list;
+            else delete A.ST.customFolders[k];
+            removed = true;
+          }
+        });
       }
-      return false;
+      if (A.ST.deletedFolders) delete A.ST.deletedFolders[fid];
+      S.M.folders[fid] = 'DEL';
+      return removed;
     }
 
     var folderObj = {
@@ -607,6 +660,7 @@
         A.refresh({
           sheets: A.ST ? A.ST.sheets : undefined,
           customFolders: A.ST ? A.ST.customFolders : undefined,
+          deletedFolders: A.ST ? A.ST.deletedFolders : undefined,
           slips: A.ST ? A.ST.slips : undefined,
           updatedAt: Date.now()
         });
