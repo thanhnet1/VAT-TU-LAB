@@ -57,11 +57,11 @@
   };
 
   const ACTION_BTN_STYLE = {
-    primary: 'padding:7px 12px;border-radius:7px;border:1px solid #0b3a5b;background:#0b3a5b;color:#ffffff;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:5px;box-shadow:0 1px 2px rgba(11,58,91,.18);',
-    folder: 'padding:7px 12px;border-radius:7px;border:1px solid #0284c7;background:#e0f2fe;color:#0369a1;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:5px;',
-    sync: 'padding:7px 12px;border-radius:7px;border:1px solid #0d9488;background:#f0fdfa;color:#0f766e;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:5px;',
-    exportBtn: 'padding:7px 12px;border-radius:7px;border:1px solid #16a34a;background:#f0fdf4;color:#15803d;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:5px;',
-    neutral: 'padding:7px 12px;border-radius:7px;border:1px solid #cbd5e1;background:#ffffff;color:#1e293b;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:5px;'
+    primary: 'padding:6px 11px;border-radius:7px;border:1px solid #0b3a5b;background:#0b3a5b;color:#ffffff;font-size:12.5px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:5px;box-shadow:0 1px 2px rgba(11,58,91,.18);',
+    folder: 'padding:6px 11px;border-radius:7px;border:1px solid #0284c7;background:#e0f2fe;color:#0369a1;font-size:12.5px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:5px;',
+    sync: 'padding:6px 11px;border-radius:7px;border:1px solid #0d9488;background:#f0fdfa;color:#0f766e;font-size:12.5px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:5px;',
+    exportBtn: 'padding:6px 11px;border-radius:7px;border:1px solid #16a34a;background:#f0fdf4;color:#15803d;font-size:12.5px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:5px;',
+    neutral: 'padding:6px 11px;border-radius:7px;border:1px solid #cbd5e1;background:#ffffff;color:#1e293b;font-size:12.5px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:5px;'
   };
 
   const $ = (s, el = document) => el.querySelector(s);
@@ -1147,34 +1147,33 @@
     const meaningEntries = Object.entries(CFG.colorMeaning || {});
     const syncInfo = getSyncStatusInfo();
 
-    const sourceCards = SRC_LIST.map(src => {
+    const compactSourceChips = SRC_LIST.map(src => {
       const style = SOURCE_BADGE_STYLE[src] || SOURCE_BADGE_STYLE['Không rõ nguồn'];
       return `
-        <div class="kpi" style="padding:12px 14px;border-radius:10px;border:1px solid rgba(0,0,0,.1);background:#fff;">
-          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
-            <span class="src-badge" style="display:inline-block;padding:2px 8px;border-radius:999px;font-size:12px;font-weight:600;border:1px solid;${style}">${esc(src)}</span>
-            <strong style="font-size:20px;">${(counts[src] || 0).toLocaleString('vi-VN')}</strong>
-          </div>
-          <div style="font-size:12px;opacity:.7;margin-top:6px;">Số dòng thuộc nguồn ${esc(src)}</div>
-        </div>
+        <span style="display:inline-flex;align-items:center;gap:6px;padding:4px 9px;border-radius:999px;font-size:12px;font-weight:600;border:1px solid;${style}">
+          <span>${esc(src)}</span>
+          <strong style="font-size:13px;">${(counts[src] || 0).toLocaleString('vi-VN')}</strong>
+        </span>
       `;
     }).join('');
 
-    const legendItems = (colorEntries.length ? colorEntries.map(([hex, cnt]) => ({ hex, cnt })) : meaningEntries.map(([hex, label]) => ({ hex, cnt: 0, label }))).map(item => {
+    const legendSource = colorEntries.length
+      ? colorEntries.map(([hex, cnt]) => ({ hex, cnt }))
+      : meaningEntries.map(([hex, label]) => ({ hex, cnt: 0, label }));
+
+    const compactColorChips = legendSource.map(item => {
       const bg = bgOf(item.hex);
       const lbl = item.label || colorLabel(item.hex);
       return `
-        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 10px;border-radius:8px;background:${bg};border:1px solid rgba(0,0,0,.12);">
-          <span style="display:inline-flex;align-items:center;gap:8px;font-size:13px;font-weight:600;">
-            <span style="width:12px;height:12px;border-radius:3px;background:#${esc(item.hex)};display:inline-block;border:1px solid rgba(0,0,0,.25);"></span>
-            <span>${esc(lbl)}</span>
-          </span>
-          ${item.cnt > 0 ? `<strong style="font-size:13px;">${item.cnt}</strong>` : ''}
-        </div>
+        <span style="display:inline-flex;align-items:center;gap:6px;padding:3px 8px;border-radius:6px;background:${bg};border:1px solid rgba(0,0,0,.12);font-size:12px;font-weight:600;">
+          <span style="width:9px;height:9px;border-radius:2px;background:#${esc(item.hex)};display:inline-block;border:1px solid rgba(0,0,0,.25);"></span>
+          <span>${esc(lbl)}</span>
+          ${item.cnt > 0 ? `<span style="opacity:.75;">(${item.cnt})</span>` : ''}
+        </span>
       `;
     }).join('');
 
-    const folderSummaryRows = flatNodes
+    const folderListItems = flatNodes
       .filter(e => !Array.isArray(e.node.children) || e.node.children.length === 0)
       .map((e, idx) => {
         const n = e.node;
@@ -1186,79 +1185,78 @@
           bySrc[s] = (bySrc[s] || 0) + 1;
         });
         const pathTxt = e.pathNodes.map(x => x.label).join(' / ');
+
+        const srcBreakdownHtml = SRC_LIST.map(s => {
+          const cnt = bySrc[s] || 0;
+          const st = SOURCE_BADGE_STYLE[s] || SOURCE_BADGE_STYLE['Không rõ nguồn'];
+          return `<span style="display:inline-flex;align-items:center;gap:4px;padding:1px 7px;border-radius:999px;font-size:11.5px;font-weight:600;border:1px solid;opacity:${cnt ? '1' : '.55'};${st}">${esc(s)}: <b>${cnt}</b></span>`;
+        }).join('');
+
         return `
-          <tr>
-            <td style="text-align:center;">${idx + 1}</td>
-            <td>
-              <button type="button" class="link-btn" data-open-node="${esc(n.id)}" style="border:0;background:transparent;color:#0b3a5b;font-weight:600;cursor:pointer;text-align:left;padding:0;">
-                ${esc(n.label)}
-              </button>
-              <div style="font-size:11px;opacity:.65;">${esc(pathTxt)}</div>
-            </td>
-            <td style="text-align:right;font-weight:700;">${rows.length}</td>
-            <td style="text-align:right;">${bySrc['Vật tư'] || 0}</td>
-            <td style="text-align:right;">${bySrc['Tài sản'] || 0}</td>
-            <td style="text-align:right;">${bySrc['Đo kiểm'] || 0}</td>
-            <td style="text-align:right;">${bySrc['Sửa chữa'] || 0}</td>
-            <td style="text-align:right;">${bySrc['Không rõ nguồn'] || 0}</td>
-          </tr>
+          <div class="overview-list-item" style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px;padding:9px 12px;border-bottom:1px solid rgba(0,0,0,.08);">
+            <div style="min-width:200px;flex:1 1 240px;">
+              <div style="display:flex;align-items:center;gap:6px;">
+                <span style="font-size:11.5px;opacity:.6;min-width:22px;">${idx + 1}.</span>
+                <button type="button" class="link-btn" data-open-node="${esc(n.id)}" style="border:0;background:transparent;color:#0b3a5b;font-weight:700;font-size:14px;cursor:pointer;text-align:left;padding:0;">
+                  ${esc(n.label)}
+                </button>
+              </div>
+              <div style="font-size:11px;opacity:.62;padding-left:28px;margin-top:1px;">${esc(pathTxt)}</div>
+            </div>
+
+            <div style="display:flex;flex-wrap:wrap;align-items:center;gap:5px;flex:2 1 320px;">
+              ${srcBreakdownHtml}
+            </div>
+
+            <div style="display:flex;align-items:center;gap:8px;margin-left:auto;">
+              <span style="font-size:12px;opacity:.7;">Tổng:</span>
+              <strong style="font-size:15px;color:#0b3a5b;min-width:28px;text-align:right;">${rows.length}</strong>
+            </div>
+          </div>
         `;
       }).join('');
 
     mainEl.innerHTML = `
-      <div class="view-header" style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;margin-bottom:14px;">
+      <div class="view-header" style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px;">
         <div>
-          <h2 style="margin:0;font-size:20px;">📊 Tổng quan Vật tư – Tài sản</h2>
-          <div style="font-size:12px;opacity:.75;">
-            Nguồn dữ liệu: ${esc(meta.source || 'LAB')} · Cập nhật: ${esc(meta.generated || '')} ·
-            Đồng bộ đa thiết bị: <b>${esc(syncInfo.syncText)}</b> (${esc(syncInfo.accountLabel)})
+          <h2 style="margin:0;font-size:19px;">📊 Tổng quan Vật tư – Tài sản</h2>
+          <div style="font-size:11.5px;opacity:.72;margin-top:2px;">
+            ${esc(meta.source || 'LAB')} · ${esc(meta.generated || '')} · ☁ <b>${esc(syncInfo.syncText)}</b> (${esc(syncInfo.accountLabel)})
           </div>
         </div>
-        <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;">
+        <div style="display:flex;flex-wrap:wrap;align-items:center;gap:6px;">
           <button type="button" id="btnOverviewAddItem" style="${ACTION_BTN_STYLE.primary}">+ Thêm vật tư</button>
-          <button type="button" id="btnOverviewAddFolder" style="${ACTION_BTN_STYLE.folder}">＋ Tạo thư mục mới</button>
-          <button type="button" id="btnOverviewSync" style="${ACTION_BTN_STYLE.sync}">☁ Đồng bộ (${esc(syncInfo.accountLabel)})</button>
-          <button type="button" id="btnOverviewExportAll" style="${ACTION_BTN_STYLE.exportBtn}">📗 Xuất Excel toàn bộ</button>
+          <button type="button" id="btnOverviewAddFolder" style="${ACTION_BTN_STYLE.folder}">＋ Thư mục mới</button>
+          <button type="button" id="btnOverviewSync" style="${ACTION_BTN_STYLE.sync}">☁ Đồng bộ</button>
+          <button type="button" id="btnOverviewExportAll" style="${ACTION_BTN_STYLE.exportBtn}">📗 Xuất Excel</button>
         </div>
       </div>
 
-      <div class="kpis" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(175px,1fr));gap:10px;margin-bottom:14px;">
-        <div class="kpi" style="padding:12px 14px;border-radius:10px;border:1px solid rgba(0,0,0,.1);background:#fff;">
-          <div style="font-size:12px;opacity:.7;">Tổng thư mục / danh mục</div>
-          <strong style="font-size:22px;">${folderCount}</strong>
-        </div>
-        <div class="kpi" style="padding:12px 14px;border-radius:10px;border:1px solid rgba(0,0,0,.1);background:#fff;">
-          <div style="font-size:12px;opacity:.7;">Tổng dòng thống kê</div>
-          <strong style="font-size:22px;">${total.toLocaleString('vi-VN')}</strong>
-        </div>
-        ${sourceCards}
+      <div class="compact-summary-strip" style="display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:8px 10px;border-radius:8px;border:1px solid rgba(0,0,0,.1);background:#fff;margin-bottom:8px;">
+        <span style="display:inline-flex;align-items:center;gap:5px;padding:4px 9px;border-radius:999px;background:#0b3a5b;color:#fff;font-size:12px;font-weight:600;">
+          <span>Danh mục</span>
+          <strong style="font-size:13px;">${folderCount}</strong>
+        </span>
+        <span style="display:inline-flex;align-items:center;gap:5px;padding:4px 9px;border-radius:999px;background:#e2e8f0;color:#0f172a;font-size:12px;font-weight:600;">
+          <span>Tổng dòng</span>
+          <strong style="font-size:13px;">${total.toLocaleString('vi-VN')}</strong>
+        </span>
+        ${compactSourceChips}
       </div>
 
-      <div style="margin-bottom:16px;padding:12px;border-radius:10px;border:1px solid rgba(0,0,0,.1);background:#fff;">
-        <div style="font-size:13px;font-weight:700;margin-bottom:8px;">🎨 Màu phân biệt trạng thái & nguồn</div>
-        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:8px;">
-          ${legendItems}
-        </div>
+      <div class="compact-color-strip" style="display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:7px 10px;border-radius:8px;border:1px solid rgba(0,0,0,.1);background:#fff;margin-bottom:10px;">
+        <span style="font-size:11.5px;font-weight:700;opacity:.75;margin-right:2px;">🎨 Trạng thái:</span>
+        ${compactColorChips}
       </div>
 
-      <div class="table-wrap" style="overflow-x:auto;border:1px solid rgba(0,0,0,.12);border-radius:8px;background:#fff;">
-        <table class="data-table stats-overview-table" style="width:100%;border-collapse:collapse;">
-          <thead>
-            <tr>
-              <th style="white-space:nowrap;">STT</th>
-              <th style="white-space:nowrap;">Thư mục / Danh mục</th>
-              <th style="white-space:nowrap;">Tổng</th>
-              <th style="white-space:nowrap;">Vật tư</th>
-              <th style="white-space:nowrap;">Tài sản</th>
-              <th style="white-space:nowrap;">Đo kiểm</th>
-              <th style="white-space:nowrap;">Sửa chữa</th>
-              <th style="white-space:nowrap;">Không rõ</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${folderSummaryRows}
-          </tbody>
-        </table>
+      <div class="overview-list-card" style="border:1px solid rgba(0,0,0,.12);border-radius:8px;background:#fff;overflow:hidden;">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:#f8fafc;border-bottom:1px solid rgba(0,0,0,.1);font-size:12px;font-weight:700;color:#334155;">
+          <span>📁 Danh sách thống kê theo thư mục / danh mục (${folderCount})</span>
+          <span style="opacity:.75;">Bấm tên để mở</span>
+        </div>
+        <div class="overview-list-body">
+          ${folderListItems || `<div style="padding:16px;text-align:center;opacity:.7;">Chưa có danh mục nào.</div>`}
+        </div>
       </div>
     `;
 
